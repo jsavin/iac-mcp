@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+# Pre-commit hook for iac-mcp
+# Runs before each commit to catch common issues
+#
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# Check if TypeScript compiles
+echo "Checking TypeScript compilation..."
+npm run build --silent
+
+# Run linter
+echo "Running linter..."
+npm run lint --silent
+
+# Run tests (if they exist)
+if [ -d "tests" ]; then
+  echo "Running tests..."
+  npm test --silent
+fi
+
+echo "✓ Pre-commit checks passed!"
+exit 0
