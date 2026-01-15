@@ -451,6 +451,218 @@ If you're a freelancer/consultant:
 
 **Assessment:** Exceptional outcome, can work full-time + hire 1-2 people
 
+### Month-by-Month Revenue Projections
+
+#### Target Scenario (Recommended Planning)
+
+**Key Assumptions:**
+- Launch open source Month 1
+- Pro beta launch Month 7
+- Public launch Month 10
+- 3.5% overall free→paid conversion rate
+- 60% monthly / 40% annual mix
+- 5% monthly churn
+- $19.99/month, $149/year pricing
+
+**User Growth:**
+
+| Month | Free Users | New Pro | Total Pro | Churn | Net Pro Users |
+|-------|-----------|---------|-----------|-------|---------------|
+| M1 | 500 | 0 | 0 | 0 | 0 |
+| M2 | 1,000 | 0 | 0 | 0 | 0 |
+| M3 | 2,000 | 0 | 0 | 0 | 0 |
+| M4 | 3,500 | 0 | 0 | 0 | 0 |
+| M5 | 5,000 | 0 | 0 | 0 | 0 |
+| M6 | 6,500 | 0 | 0 | 0 | 0 |
+| M7 | 8,000 | 80 | 80 | 0 | 80 |
+| M8 | 9,500 | 30 | 110 | 4 | 106 |
+| M9 | 11,000 | 25 | 135 | 5 | 130 |
+| M10 | 13,000 | 100 | 235 | 7 | 228 |
+| M11 | 14,500 | 80 | 315 | 11 | 304 |
+| M12 | 16,000 | 70 | 385 | 15 | 370 |
+| M13 | 17,000 | 60 | 445 | 18 | 427 |
+| M14 | 18,000 | 55 | 500 | 21 | 479 |
+| M15 | 18,500 | 50 | 550 | 24 | 526 |
+| M16 | 19,000 | 45 | 595 | 26 | 569 |
+| M17 | 19,500 | 40 | 635 | 28 | 607 |
+| M18 | 20,000 | 35 | 670 | 30 | 640 |
+
+**Revenue Breakdown:**
+
+| Month | MRR | Lifetime Sales | Total Cash | ARR (End of Month) |
+|-------|-----|----------------|------------|--------------------|
+| M1-6 | $0 | $0 | $0 | $0 |
+| M7 | $960 | $9,000 | $9,960 | $11,520 |
+| M8 | $1,590 | $3,000 | $4,590 | $19,080 |
+| M9 | $1,950 | $2,400 | $4,350 | $23,400 |
+| M10 | $3,420 | $9,000 | $12,420 | $41,040 |
+| M11 | $4,560 | $6,000 | $10,560 | $54,720 |
+| M12 | $5,550 | $4,500 | $10,050 | $66,600 |
+| M13 | $6,405 | $3,600 | $10,005 | $76,860 |
+| M14 | $7,185 | $3,000 | $10,185 | $86,220 |
+| M15 | $7,890 | $2,700 | $10,590 | $94,680 |
+| M16 | $8,535 | $2,400 | $10,935 | $102,420 |
+| M17 | $9,105 | $2,100 | $11,205 | $109,260 |
+| M18 | $9,600 | $1,800 | $11,400 | $115,200 |
+
+**Cumulative Totals (18 Months):**
+- Total Cash Collected: ~$118,650
+- ARR at Month 18: $115,200
+- Total Pro Users: 640
+- Lifetime Sales: 100 @ $299 = $29,900
+
+**Cash Flow Analysis:**
+
+| Quarter | New Customers | Revenue | Cumulative Cash |
+|---------|--------------|---------|-----------------|
+| Q1 (M1-3) | 0 | $0 | $0 |
+| Q2 (M4-6) | 0 | $0 | $0 |
+| Q3 (M7-9) | 235 | $18,900 | $18,900 |
+| Q4 (M10-12) | 305 | $32,610 | $51,510 |
+| Q5 (M13-15) | 260 | $30,600 | $82,110 |
+| Q6 (M16-18) | 180 | $33,540 | $115,650 |
+
+#### Conservative Scenario
+
+**Adjusted Assumptions:**
+- 2% conversion rate (vs 3.5%)
+- Slower user growth
+- Higher churn (7% monthly)
+
+| Month | Free Users | Net Pro Users | MRR | ARR |
+|-------|-----------|---------------|-----|-----|
+| M6 | 5,000 | 0 | $0 | $0 |
+| M9 | 8,000 | 75 | $1,125 | $13,500 |
+| M12 | 12,000 | 180 | $2,700 | $32,400 |
+| M15 | 14,000 | 250 | $3,750 | $45,000 |
+| M18 | 15,000 | 300 | $4,500 | $54,000 |
+
+**18-Month Totals:**
+- ARR: $54,000
+- Lifetime sales: 50 @ $299 = $14,950
+- Total cash: ~$69,000
+
+**Assessment:** Below target but validates market. Need to optimize conversion or accelerate growth.
+
+#### Optimistic Scenario
+
+**Adjusted Assumptions:**
+- 5% conversion rate (strong product-market fit)
+- Viral growth
+- Low churn (3% monthly)
+
+| Month | Free Users | Net Pro Users | MRR | ARR |
+|-------|-----------|---------------|-----|-----|
+| M6 | 10,000 | 0 | $0 | $0 |
+| M9 | 18,000 | 400 | $6,000 | $72,000 |
+| M12 | 28,000 | 1,000 | $15,000 | $180,000 |
+| M15 | 35,000 | 1,450 | $21,750 | $261,000 |
+| M18 | 40,000 | 1,850 | $27,750 | $333,000 |
+
+**18-Month Totals:**
+- ARR: $333,000
+- Lifetime sales: 200 @ $299 = $59,800
+- Total cash: ~$393,000
+
+**Assessment:** Exceptional outcome. Can hire team, accelerate Windows development, invest in growth.
+
+### Sensitivity Analysis
+
+**Impact of Pricing Changes:**
+
+| Price Point | Users Needed for $100K ARR | At 3.5% Conversion | Free Users Needed |
+|-------------|---------------------------|-------------------|-------------------|
+| $9.99/mo ($100/yr) | 1,000 | 1,000 users | 28,571 |
+| $14.99/mo ($150/yr) | 667 | 667 users | 19,057 |
+| $19.99/mo ($200/yr) | 500 | 500 users | 14,286 |
+| $24.99/mo ($250/yr) | 400 | 400 users | 11,429 |
+
+**Impact of Conversion Rate:**
+
+| Conversion Rate | Pro Users (18mo) | ARR @ $19.99 | Free Users Needed |
+|----------------|------------------|--------------|-------------------|
+| 1% | 200 | $40,000 | 20,000 |
+| 2% | 400 | $80,000 | 20,000 |
+| 3% | 600 | $120,000 | 20,000 |
+| 4% | 800 | $160,000 | 20,000 |
+| 5% | 1,000 | $200,000 | 20,000 |
+
+**Impact of Churn:**
+
+| Monthly Churn | Users Lost (Year 1) | Net Users @ M18 | ARR Impact |
+|---------------|---------------------|-----------------|------------|
+| 3% (low) | 45 | 680 | +$8,000 |
+| 5% (target) | 70 | 640 | baseline |
+| 7% (high) | 95 | 595 | -$9,000 |
+| 10% (poor) | 130 | 540 | -$20,000 |
+
+### Key Performance Indicators (KPIs)
+
+**Critical Metrics to Track:**
+
+| Metric | Month 6 Target | Month 12 Target | Month 18 Target |
+|--------|---------------|-----------------|-----------------|
+| **Growth** |
+| Free Users | 5,000 | 16,000 | 20,000 |
+| GitHub Stars | 500 | 1,500 | 2,500 |
+| npm Downloads | 5,000 | 25,000 | 50,000 |
+| **Revenue** |
+| MRR | $0 | $5,550 | $9,600 |
+| ARR | $0 | $66,600 | $115,200 |
+| Pro Users | 0 | 370 | 640 |
+| Lifetime Sales | 0 | 60 | 100 |
+| **Quality** |
+| Conversion Rate | N/A | 3.5% | 3.5% |
+| Monthly Churn | N/A | 5% | 5% |
+| NPS Score | N/A | 40+ | 50+ |
+| CAC | N/A | <$30 | <$40 |
+| LTV | N/A | $400 | $500 |
+| LTV:CAC | N/A | 13:1 | 12:1 |
+
+### Financial Planning
+
+**Bootstrap Runway Analysis:**
+
+**Scenario: You work part-time (20 hrs/week) during development:**
+
+| Period | Your Opportunity Cost | Project Revenue | Net Position |
+|--------|----------------------|-----------------|--------------|
+| M1-6 | -$30,000 | $0 | -$30,000 |
+| M7-9 | -$15,000 | $18,900 | +$3,900 |
+| M10-12 | -$15,000 | $32,610 | +$17,610 |
+| M13-15 | -$15,000 | $30,600 | +$15,600 |
+| M16-18 | -$15,000 | $33,540 | +$18,540 |
+| **Total** | **-$90,000** | **$115,650** | **+$25,650** |
+
+**If you go full-time at Month 10:**
+
+| Period | Your Salary Need | Project Revenue | Burn Rate |
+|--------|-----------------|-----------------|-----------|
+| M10-12 | -$15,000 | $32,610 | +$17,610 |
+| M13-15 | -$15,000 | $30,600 | +$15,600 |
+| M16-18 | -$15,000 | $33,540 | +$18,540 |
+| **Subtotal** | **-$45,000** | **$96,750** | **+$51,750** |
+
+**Conclusion:** At Month 12 with $66K ARR, project can sustain you working full-time.
+
+### Break-Even Analysis
+
+**Monthly costs (if working full-time):**
+- Your salary need: ~$5,000/month
+- Tools & services: ~$500/month
+- Marketing budget: ~$1,000/month
+- **Total burn: ~$6,500/month**
+
+**MRR needed to break even:** $6,500
+- Achieved at Month 13-14 in target scenario
+- Requires ~430 Pro users
+- With 3.5% conversion: ~12,300 free users
+
+**Path to profitability:**
+- Month 1-12: Building, not yet profitable
+- Month 13-14: Break even
+- Month 15+: Profitable, can reinvest in growth
+
 ---
 
 ## Risk Analysis & Mitigation
