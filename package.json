@@ -1,0 +1,48 @@
+{
+  "name": "iac-mcp",
+  "version": "0.1.0",
+  "description": "Universal bridge between AI/LLMs and native macOS applications using Just-In-Time Discovery (JITD)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "iac-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run --dir tests/unit",
+    "test:integration": "vitest run --dir tests/integration",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "clean": "rm -rf dist",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "macos",
+    "automation",
+    "applescript",
+    "jxa",
+    "sdef"
+  ],
+  "author": "Jake Savin",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@typescript-eslint/eslint-plugin": "^8.19.1",
+    "@typescript-eslint/parser": "^8.19.1",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
