@@ -30,6 +30,7 @@
 ### Competitive Pricing Landscape
 
 **Direct Competitors (Automation):**
+
 | Product | Price | Model | Notes |
 |---------|-------|-------|-------|
 | Zapier | $20-50/month | Subscription | Web services, established |
@@ -40,6 +41,7 @@
 | Hazel | $42 one-time | One-time | File automation only |
 
 **AI Tool Competitors:**
+
 | Product | Price | Model | Notes |
 |---------|-------|-------|-------|
 | Claude Max | $20/month | Subscription | Includes Cowork (file/browser) |
@@ -48,6 +50,7 @@
 | ChatGPT Plus | $20/month | Subscription | General AI assistant |
 
 **Productivity Tools (Mac):**
+
 | Product | Price | Model | Notes |
 |---------|-------|-------|-------|
 | Things 3 | $50 one-time | One-time | Task management |
