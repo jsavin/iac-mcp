@@ -402,8 +402,8 @@ export class ToolValidator {
       }
     }
 
-    // Check array items
-    if (schema.items && typeof schema.items === 'object') {
+    // Check array items (only JSONSchemaProperty has items)
+    if ('items' in schema && schema.items && typeof schema.items === 'object') {
       const branchVisited = new Set(visited);
       if (this.detectCircularReferences(schema.items, branchVisited)) {
         return true;
