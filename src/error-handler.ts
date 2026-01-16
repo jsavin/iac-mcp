@@ -50,20 +50,6 @@ export interface HandledError {
  */
 export class ErrorHandler {
   /**
-   * Optional custom logger function
-   * Default: console.error
-   */
-  private logger: (message: string) => void;
-
-  /**
-   * Constructor
-   * @param logger - Optional custom logging function. If not provided, uses console.error
-   */
-  constructor(logger?: (message: string) => void) {
-    this.logger = logger || ((message: string) => console.error(message));
-  }
-
-  /**
    * App-specific messaging preferences
    */
   private appSpecificMessages: Record<string, Record<JXAErrorType, string>> = {
@@ -263,7 +249,7 @@ export class ErrorHandler {
       parameters: context.parameters,
     };
 
-    // Use configured logger (defaults to console.error)
-    this.logger('[ErrorHandler] ' + JSON.stringify(logEntry));
+    // Log to console for now (could be extended to file logging)
+    console.log('[ErrorHandler]', JSON.stringify(logEntry));
   }
 }

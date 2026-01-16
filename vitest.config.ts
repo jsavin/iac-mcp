@@ -5,6 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    testTimeout: 10000, // Increase timeout for tests that validate long timeouts
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -15,6 +16,8 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.config.ts',
       ],
+      all: true,
+      reportOnFailure: true,
     },
   },
 });
