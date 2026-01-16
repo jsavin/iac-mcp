@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+
+<dictionary title="Test Application">
+	<suite name="Standard Suite" code="CoRe" description="Common terms for testing">
+		<command name="open" code="aevtodoc" description="Open the specified object(s)">
+			<direct-parameter type="file" description="the file to open"/>
+			<parameter name="using" code="usin" type="text" optional="yes" description="the application to open with"/>
+			<result type="boolean" description="true if successful"/>
+		</command>
+		<command name="quit" code="aevtquit" description="Quit the application"/>
+
+		<class name="application" code="capp" description="The application">
+			<property name="name" code="pnam" type="text" access="r" description="the application's name"/>
+			<property name="version" code="vers" type="text" access="r" description="the version number"/>
+			<property name="frontmost" code="pisf" type="boolean" access="rw" description="Is the application frontmost?"/>
+			<element type="window" access="r"/>
+		</class>
+
+		<class name="window" code="cwin" description="A window">
+			<property name="name" code="pnam" type="text" access="r" description="the window's name"/>
+			<property name="id" code="ID  " type="integer" access="r" description="the unique id of the window"/>
+			<property name="bounds" code="pbnd" type="rectangle" access="rw" description="the boundary rectangle for the window"/>
+		</class>
+
+		<enumeration name="save options" code="savo">
+			<enumerator name="yes" code="yes " description="Save the file"/>
+			<enumerator name="no" code="no  " description="Do not save the file"/>
+			<enumerator name="ask" code="ask " description="Ask the user whether or not to save the file"/>
+		</enumeration>
+
+		<enumeration name="print error handling" code="enum">
+			<enumerator name="standard" code="lwst" description="Standard PostScript error handling"/>
+			<enumerator name="detailed" code="lwdt" description="Detailed PostScript error handling"/>
+		</enumeration>
+	</suite>
+
+	<suite name="Test Suite" code="TEST" description="Suite for testing purposes">
+		<command name="test command" code="TESTtest" description="A test command with various parameter types">
+			<direct-parameter type="text" description="the main parameter"/>
+			<parameter name="with count" code="cnt " type="integer" optional="yes" description="an optional count"/>
+			<parameter name="with flag" code="flag" type="boolean" optional="yes" description="a boolean flag"/>
+			<parameter name="with list" code="list" type="list" optional="yes" description="a list of items"/>
+		</command>
+
+		<class name="test object" code="tobj" description="A test object">
+			<property name="test property" code="tprp" type="text" access="rw" description="a test property"/>
+		</class>
+	</suite>
+</dictionary>
