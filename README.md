@@ -66,21 +66,30 @@ npm run verify
 
 ### Node Version Management
 
-This project uses **Node.js 20.11.0** (LTS). We provide `.nvmrc` and `.node-version` files for automatic version management.
+This project requires **Node.js 20+**. We recommend Node.js 20.x LTS for stability, but any 20+ version (including 22.x LTS or 25.x Current) works fine.
 
-**Option 1: Using nvm (recommended)**
+**Option 1: Using Homebrew (macOS)**
+```bash
+# Install Node.js LTS
+brew install node@20
+
+# Or use the current release (25.x)
+brew install node
+```
+
+**Option 2: Using nvm (recommended for multiple versions)**
 ```bash
 # Install nvm if you don't have it
 # See: https://github.com/nvm-sh/nvm
 
-# Use the correct Node version (reads .nvmrc automatically)
+# Use the LTS version (reads .nvmrc automatically)
 nvm use
 
-# Or install if you don't have Node 20.11.0
-nvm install
+# Or install if you don't have Node 20+
+nvm install 20  # or 'nvm install --lts'
 ```
 
-**Option 2: Using Volta**
+**Option 3: Using Volta**
 ```bash
 # Volta automatically detects .node-version
 # See: https://volta.sh/
@@ -89,9 +98,10 @@ nvm install
 cd iac-mcp
 ```
 
-**Option 3: Manual installation**
-- Download Node.js 20.11.0 from https://nodejs.org/
-- Verify: `node --version` should show `v20.11.0`
+**Option 4: Manual installation**
+- Download from https://nodejs.org/
+- Install either LTS (20.x, 22.x) or Current (25.x)
+- Verify: `node --version` should show `v20+`
 
 ### Dependency Management
 
