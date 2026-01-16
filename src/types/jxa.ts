@@ -12,6 +12,7 @@ export type JXAExecutionResult<T = unknown> =
       error: {
         type:
           | 'APP_NOT_FOUND'
+          | 'APP_NOT_RUNNING'
           | 'PERMISSION_DENIED'
           | 'INVALID_PARAM'
           | 'EXECUTION_ERROR'

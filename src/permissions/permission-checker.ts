@@ -42,14 +42,12 @@ export class PermissionChecker {
    * Used to maintain state between check() and recordDecision()
    */
   private lastCheckedTool?: MCPTool;
-  private lastCheckedArgs: Record<string, any> = {};
 
   /**
    * Pending preference to be applied to next check()
    * Used when recordDecision() is called before check()
    */
   private pendingPreference?: UserPreference;
-  private pendingDecision?: PermissionDecision;
 
   constructor() {
     this.classifier = new PermissionClassifier();
@@ -68,9 +66,8 @@ export class PermissionChecker {
    * @returns Permission decision
    */
   async check(tool: MCPTool, args: Record<string, any>): Promise<PermissionDecision> {
-    // Store tool and args for recordDecision() to reference
+    // Store tool for recordDecision() to reference
     this.lastCheckedTool = tool;
-    this.lastCheckedArgs = args;
 
     // If there's a pending preference from a prior recordDecision() call,
     // apply it and store it for this tool
@@ -130,7 +127,7 @@ export class PermissionChecker {
       // Update the last audit log entry with this decision if possible
       if (this.auditLog.length > 0) {
         const lastEntry = this.auditLog[this.auditLog.length - 1];
-        if (lastEntry.tool === this.lastCheckedTool.name) {
+        if (lastEntry !== undefined && lastEntry.tool === this.lastCheckedTool?.name) {
           lastEntry.decision = decision;
         }
       }
@@ -183,7 +180,7 @@ export class PermissionChecker {
    */
   private makeDecision(
     tool: MCPTool,
-    args: Record<string, any>,
+    _args: Record<string, any>,
     level: SafetyLevel,
     reason: string
   ): PermissionDecision {

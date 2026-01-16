@@ -24,11 +24,8 @@ import {
   CallToolRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
-  TextContent,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-
-import type { MCPTool } from '../types/mcp-tool.js';
 import type { PermissionDecision } from '../permissions/types.js';
 import type { ToolGenerator } from '../jitd/tool-generator/generator.js';
 import type { MacOSAdapter } from '../adapters/macos/macos-adapter.js';
@@ -65,10 +62,10 @@ type ResourceCache = Map<string, { uri: string; name: string; content: string }>
  */
 export async function setupHandlers(
   server: Server,
-  toolGenerator: ToolGenerator,
-  permissionChecker: PermissionChecker,
-  adapter: MacOSAdapter,
-  errorHandler: ErrorHandler
+  _toolGenerator: ToolGenerator,
+  _permissionChecker: PermissionChecker,
+  _adapter: MacOSAdapter,
+  _errorHandler: ErrorHandler
 ): Promise<void> {
   // Initialize resource cache for app dictionaries
   const resourceCache: ResourceCache = new Map();
@@ -112,7 +109,7 @@ export async function setupHandlers(
    * 5. Error handling and formatting
    */
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name: toolName, arguments: args } = request.params;
+    const { name: toolName } = request.params;
 
     try {
       // In a real implementation, we would:
