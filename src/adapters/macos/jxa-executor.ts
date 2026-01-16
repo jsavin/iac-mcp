@@ -40,6 +40,11 @@ export interface JXAExecutionResult {
 const MAX_OUTPUT_SIZE = 10 * 1024 * 1024;
 
 /**
+ * Default execution timeout in milliseconds (30 seconds)
+ */
+const DEFAULT_TIMEOUT_MS = 30000;
+
+/**
  * JXA Executor
  *
  * Executes JavaScript for Automation (JXA) scripts via osascript.
@@ -47,9 +52,67 @@ const MAX_OUTPUT_SIZE = 10 * 1024 * 1024;
  */
 export class JXAExecutor {
   /**
+   * Validate JXA script for command injection attempts
+   *
+   * Security rationale:
+   * - JXA scripts run with user privileges and can access AppleEvents
+   * - While JXA has a limited sandbox, certain patterns can escape to shell
+   * - `do shell script` executes arbitrary shell commands
+   * - `system.run()` spawns new processes
+   * - Other patterns can bypass intended application control flow
+   *
+   * This validation provides defense-in-depth against:
+   * - Malicious scripts from untrusted sources
+   * - Script injection via template/parameter manipulation
+   * - Unintended privilege escalation
+   *
+   * @param script - JXA script to validate
+   * @throws Error if dangerous patterns are detected
+   */
+  private validateScript(script: string): void {
+    // Dangerous patterns that can escape JXA sandbox or execute shell commands
+    const dangerousPatterns = [
+      {
+        pattern: /do\s+shell\s+script/i,
+        description: 'Shell command execution via AppleScript',
+      },
+      {
+        pattern: /system\.run\s*\(/i,
+        description: 'Process spawning via system.run()',
+      },
+      {
+        pattern: /ObjC\.import\s*\(\s*['"]Foundation['"]\s*\)/i,
+        description: 'Objective-C bridge to Foundation framework (potential privilege escalation)',
+      },
+      {
+        pattern: /NSTask/i,
+        description: 'Process spawning via NSTask',
+      },
+      {
+        pattern: /NSAppleScript/i,
+        description: 'Nested AppleScript execution',
+      },
+      {
+        pattern: /@import\s+['"]AppKit['"]/i,
+        description: 'AppKit import (potential UI/process manipulation)',
+      },
+    ];
+
+    for (const { pattern, description } of dangerousPatterns) {
+      if (pattern.test(script)) {
+        throw new Error(
+          `Command injection attempt detected: ${description}. ` +
+          `Script validation failed for security reasons.`
+        );
+      }
+    }
+  }
+
+  /**
    * Execute a JXA script via osascript
    *
    * Runs a JXA script in a subprocess with:
+   * - Script validation (command injection protection)
    * - Timeout protection
    * - stderr capture
    * - Output size limiting (10MB max)
@@ -58,10 +121,13 @@ export class JXAExecutor {
    * @param script - JXA script to execute
    * @param options - Execution options
    * @returns Execution result with stdout/stderr and exit code
-   * @throws Error if execution fails or timeout occurs
+   * @throws Error if script validation fails, execution fails, or timeout occurs
    */
   async execute(script: string, options?: JXAExecutionOptions): Promise<JXAExecutionResult> {
-    const timeoutMs = options?.timeoutMs ?? 30000;
+    // Validate script for command injection attempts before execution
+    this.validateScript(script);
+
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const captureStderr = options?.captureStderr !== false;
 
     return new Promise((resolve) => {
