@@ -43,11 +43,48 @@ git push origin feature/<name>  # Push feature branch (NEVER push to origin/mast
 
 ### Documentation Quick Links
 
+- **[Code Quality Standards](CODE-QUALITY.md)** - **MANDATORY** testing and DRY principles
 - **[Vision](planning/VISION.md)** - Complete project vision
 - **[Roadmap](planning/ROADMAP.md)** - 18-month plan with phases
 - **[Start Here](planning/START-HERE.md)** - New contributor guide
 - **[Decisions](planning/DECISIONS.md)** - All key decisions documented
 - **[MVP Plan](planning/MVP-IMPLEMENTATION.md)** - Current phase implementation
+
+---
+
+## ⚠️ MANDATORY: Code Quality Standards
+
+**READ THIS FIRST:** [CODE-QUALITY.md](CODE-QUALITY.md)
+
+### Non-Negotiable Requirements
+
+Every contribution MUST meet these standards:
+
+1. **100% Test Coverage**
+   - NOT 90%. NOT 95%. **100%**.
+   - Combination of unit + integration tests
+   - CI enforced - PRs blocked if < 100%
+   - Rationale: Enable development without manual code inspection
+
+2. **Zero Code Duplication**
+   - No duplicated logic anywhere
+   - If you see same code twice → refactor immediately
+   - Automated detection via jscpd
+   - Pre-commit hook enforced
+
+3. **DRY Principle (Don't Repeat Yourself)**
+   - Extract shared code to `src/utils/` or module `common.ts`
+   - Parameterize variations
+   - Delete duplicates completely
+
+**Quick checks before committing:**
+```bash
+npm run test:coverage  # Must show 100% for all metrics
+npx jscpd src/        # Must show zero duplications
+npm run lint          # Must pass with no errors
+```
+
+**See [CODE-QUALITY.md](CODE-QUALITY.md) for complete standards, enforcement, and examples.**
 
 ---
 
@@ -625,23 +662,27 @@ interface PermissionCheck {
 
 ## Testing Strategy
 
-### Unit Tests
-- SDEF parser (parse various SDEF files)
-- Tool generator (SDEF → correct tool schemas)
-- Type mapper (AppleScript types → JSON)
-- Permission checker (classify operations correctly)
+**See [CODE-QUALITY.md](CODE-QUALITY.md) for comprehensive testing standards.**
 
-### Integration Tests
-- End-to-end: Discovery → Tools → Execution
-- Test with real apps (Finder, Safari, Mail)
-- Permission prompts (mock user responses)
-- Error cases (app not found, invalid params)
+**Summary:**
+- ✅ **100% coverage required** (unit + integration)
+- ✅ **Every function needs:** happy path, error paths, edge cases
+- ✅ **Test naming:** Descriptive, start with "should"
+- ✅ **CI enforced:** PRs blocked if coverage < 100%
 
-### Manual Testing
-- Use MCP Inspector: `npx @modelcontextprotocol/inspector`
-- Test with Claude Desktop
-- Try various workflows
-- Test permission system
+**Testing tools:**
+```bash
+npm run test              # Run all tests
+npm run test:coverage     # Run with coverage (must be 100%)
+npm run test:unit         # Unit tests only
+npm run test:integration  # Integration tests only
+npm run test:watch        # Watch mode for development
+```
+
+**Manual testing:**
+- MCP Inspector: `npx @modelcontextprotocol/inspector`
+- Claude Desktop integration
+- Real-world app testing (Finder, Safari, Mail)
 
 ## What to Avoid
 
