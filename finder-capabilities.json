@@ -1,0 +1,3280 @@
+{
+  "title": "Untitled",
+  "suites": [
+    {
+      "name": "Standard Suite",
+      "code": "CoRe",
+      "description": "Common terms that most applications should support",
+      "commands": [
+        {
+          "name": "open",
+          "code": "aevtodoc",
+          "description": "Open the specified object(s)",
+          "parameters": [
+            {
+              "name": "using",
+              "code": "usin",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the application file to open the object with",
+              "optional": true
+            },
+            {
+              "name": "with properties",
+              "code": "prdt",
+              "type": {
+                "kind": "record",
+                "properties": {}
+              },
+              "description": "the initial values for the properties, to be included with the open command sent to the application that opens the direct object",
+              "optional": true
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "list of objects to open",
+            "optional": false
+          }
+        },
+        {
+          "name": "print",
+          "code": "aevtpdoc",
+          "description": "Print the specified object(s)",
+          "parameters": [
+            {
+              "name": "with properties",
+              "code": "prdt",
+              "type": {
+                "kind": "record",
+                "properties": {}
+              },
+              "description": "optional properties to be included with the print command sent to the application that prints the direct object",
+              "optional": true
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "list of objects to print",
+            "optional": false
+          }
+        },
+        {
+          "name": "quit",
+          "code": "aevtquit",
+          "description": "Quit the Finder",
+          "parameters": []
+        },
+        {
+          "name": "activate",
+          "code": "miscactv",
+          "description": "Activate the specified window (or the Finder)",
+          "parameters": [],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the window to activate (if not specified, activates the Finder)",
+            "optional": true
+          }
+        },
+        {
+          "name": "close",
+          "code": "coreclos",
+          "description": "Close an object",
+          "parameters": [],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the object to close",
+            "optional": false
+          }
+        },
+        {
+          "name": "count",
+          "code": "corecnte",
+          "description": "Return the number of elements of a particular class within an object",
+          "parameters": [
+            {
+              "name": "each",
+              "code": "kocl",
+              "type": {
+                "kind": "class",
+                "className": "type"
+              },
+              "description": "the class of the elements to be counted",
+              "optional": false
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the object whose elements are to be counted",
+            "optional": false
+          },
+          "result": {
+            "kind": "primitive",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "data size",
+          "code": "coredsiz",
+          "description": "Return the size in bytes of an object",
+          "parameters": [
+            {
+              "name": "as",
+              "code": "rtyp",
+              "type": {
+                "kind": "class",
+                "className": "type"
+              },
+              "description": "the data type for which the size is calculated",
+              "optional": true
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the object whose data size is to be returned",
+            "optional": false
+          },
+          "result": {
+            "kind": "primitive",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "delete",
+          "code": "coredelo",
+          "description": "Move an item from its container to the trash",
+          "parameters": [],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the item to delete",
+            "optional": false
+          },
+          "result": {
+            "kind": "class",
+            "className": "specifier"
+          }
+        },
+        {
+          "name": "duplicate",
+          "code": "coreclon",
+          "description": "Duplicate one or more object(s)",
+          "parameters": [
+            {
+              "name": "to",
+              "code": "insh",
+              "type": {
+                "kind": "class",
+                "className": "location specifier"
+              },
+              "description": "the new location for the object(s)",
+              "optional": true
+            },
+            {
+              "name": "replacing",
+              "code": "alrp",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Specifies whether or not to replace items in the destination that have the same name as items being duplicated",
+              "optional": true
+            },
+            {
+              "name": "routing suppressed",
+              "code": "rout",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Specifies whether or not to autoroute items (default is false). Only applies when copying to the system folder.",
+              "optional": true
+            },
+            {
+              "name": "exact copy",
+              "code": "exct",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Specifies whether or not to copy permissions/ownership as is",
+              "optional": true
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the object(s) to duplicate",
+            "optional": false
+          },
+          "result": {
+            "kind": "class",
+            "className": "specifier"
+          }
+        },
+        {
+          "name": "exists",
+          "code": "coredoex",
+          "description": "Verify if an object exists",
+          "parameters": [],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the object in question",
+            "optional": false
+          },
+          "result": {
+            "kind": "primitive",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "make",
+          "code": "corecrel",
+          "description": "Make a new element",
+          "parameters": [
+            {
+              "name": "new",
+              "code": "kocl",
+              "type": {
+                "kind": "class",
+                "className": "type"
+              },
+              "description": "the class of the new element",
+              "optional": false
+            },
+            {
+              "name": "at",
+              "code": "insh",
+              "type": {
+                "kind": "class",
+                "className": "location specifier"
+              },
+              "description": "the location at which to insert the element",
+              "optional": false
+            },
+            {
+              "name": "to",
+              "code": "to  ",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "when creating an alias file, the original item to create an alias to or when creating a file viewer window, the target of the window",
+              "optional": true
+            },
+            {
+              "name": "with properties",
+              "code": "prdt",
+              "type": {
+                "kind": "record",
+                "properties": {}
+              },
+              "description": "the initial values for the properties of the element",
+              "optional": true
+            }
+          ],
+          "result": {
+            "kind": "class",
+            "className": "specifier"
+          }
+        },
+        {
+          "name": "move",
+          "code": "coremove",
+          "description": "Move object(s) to a new location",
+          "parameters": [
+            {
+              "name": "to",
+              "code": "insh",
+              "type": {
+                "kind": "class",
+                "className": "location specifier"
+              },
+              "description": "the new location for the object(s)",
+              "optional": false
+            },
+            {
+              "name": "replacing",
+              "code": "alrp",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Specifies whether or not to replace items in the destination that have the same name as items being moved",
+              "optional": true
+            },
+            {
+              "name": "positioned at",
+              "code": "mvpl",
+              "type": {
+                "kind": "list",
+                "itemType": {
+                  "kind": "primitive",
+                  "type": "text"
+                }
+              },
+              "description": "Gives a list (in local window coordinates) of positions for the destination items",
+              "optional": true
+            },
+            {
+              "name": "routing suppressed",
+              "code": "rout",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Specifies whether or not to autoroute items (default is false). Only applies when moving to the system folder.",
+              "optional": true
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the object(s) to move",
+            "optional": false
+          },
+          "result": {
+            "kind": "class",
+            "className": "specifier"
+          }
+        },
+        {
+          "name": "select",
+          "code": "miscslct",
+          "description": "Select the specified object(s)",
+          "parameters": [],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the object to select",
+            "optional": false
+          }
+        }
+      ],
+      "classes": [],
+      "enumerations": []
+    },
+    {
+      "name": "Finder Basics",
+      "code": "fndr",
+      "description": "Commonly-used Finder commands and object classes",
+      "commands": [
+        {
+          "name": "openVirtualLocation",
+          "code": "fndrovir",
+          "description": "Private event to open a virtual location",
+          "parameters": [],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "primitive",
+              "type": "text"
+            },
+            "description": "the location to open",
+            "optional": false
+          }
+        },
+        {
+          "name": "copy",
+          "code": "misccopy",
+          "description": "(NOT AVAILABLE YET) Copy the selected items to the clipboard (the Finder must be the front application)",
+          "parameters": []
+        },
+        {
+          "name": "sort",
+          "code": "DATASORT",
+          "description": "Return the specified object(s) in a sorted list",
+          "parameters": [
+            {
+              "name": "by",
+              "code": "by  ",
+              "type": {
+                "kind": "class",
+                "className": "property"
+              },
+              "description": "the property to sort the items by (name, index, date, etc.)",
+              "optional": false
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "a list of finder objects to sort",
+            "optional": false
+          },
+          "result": {
+            "kind": "class",
+            "className": "specifier"
+          }
+        }
+      ],
+      "classes": [
+        {
+          "name": "application",
+          "code": "capp",
+          "description": "The Finder",
+          "properties": [
+            {
+              "name": "clipboard",
+              "code": "pcli",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "(NOT AVAILABLE YET) the Finder’s clipboard window",
+              "access": "r"
+            },
+            {
+              "name": "name",
+              "code": "pnam",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the Finder’s name",
+              "access": "r"
+            },
+            {
+              "name": "visible",
+              "code": "pvis",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the Finder’s layer visible?",
+              "access": "rw"
+            },
+            {
+              "name": "frontmost",
+              "code": "pisf",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the Finder the frontmost process?",
+              "access": "rw"
+            },
+            {
+              "name": "selection",
+              "code": "sele",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the selection in the frontmost Finder window",
+              "access": "rw"
+            },
+            {
+              "name": "insertion location",
+              "code": "pins",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the container in which a new folder would appear if “New Folder” was selected",
+              "access": "r"
+            },
+            {
+              "name": "product version",
+              "code": "ver2",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the version of the System software running on this computer",
+              "access": "r"
+            },
+            {
+              "name": "version",
+              "code": "vers",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the version of the Finder",
+              "access": "r"
+            },
+            {
+              "name": "startup disk",
+              "code": "sdsk",
+              "type": {
+                "kind": "class",
+                "className": "disk"
+              },
+              "description": "the startup disk",
+              "access": "r"
+            },
+            {
+              "name": "desktop",
+              "code": "desk",
+              "type": {
+                "kind": "class",
+                "className": "desktop-object"
+              },
+              "description": "the desktop",
+              "access": "r"
+            },
+            {
+              "name": "trash",
+              "code": "trsh",
+              "type": {
+                "kind": "class",
+                "className": "trash-object"
+              },
+              "description": "the trash",
+              "access": "r"
+            },
+            {
+              "name": "home",
+              "code": "home",
+              "type": {
+                "kind": "class",
+                "className": "folder"
+              },
+              "description": "the home directory",
+              "access": "r"
+            },
+            {
+              "name": "computer container",
+              "code": "pcmp",
+              "type": {
+                "kind": "class",
+                "className": "computer-object"
+              },
+              "description": "the computer location (as in Go > Computer)",
+              "access": "r"
+            },
+            {
+              "name": "Finder preferences",
+              "code": "pfrp",
+              "type": {
+                "kind": "class",
+                "className": "preferences"
+              },
+              "description": "Various preferences that apply to the Finder as a whole",
+              "access": "r"
+            }
+          ],
+          "elements": [
+            {
+              "type": "item",
+              "access": "r"
+            },
+            {
+              "type": "container",
+              "access": "r"
+            },
+            {
+              "type": "disk",
+              "access": "r"
+            },
+            {
+              "type": "folder",
+              "access": "r"
+            },
+            {
+              "type": "file",
+              "access": "r"
+            },
+            {
+              "type": "alias file",
+              "access": "r"
+            },
+            {
+              "type": "application file",
+              "access": "r"
+            },
+            {
+              "type": "document file",
+              "access": "r"
+            },
+            {
+              "type": "internet location file",
+              "access": "r"
+            },
+            {
+              "type": "clipping",
+              "access": "r"
+            },
+            {
+              "type": "package",
+              "access": "r"
+            },
+            {
+              "type": "window",
+              "access": "r"
+            },
+            {
+              "type": "Finder window",
+              "access": "r"
+            },
+            {
+              "type": "clipping window",
+              "access": "r"
+            }
+          ]
+        }
+      ],
+      "enumerations": []
+    },
+    {
+      "name": "Finder items",
+      "code": "fndr",
+      "description": "Commands used with file system items, and basic item definition",
+      "commands": [
+        {
+          "name": "clean up",
+          "code": "fndrfclu",
+          "description": "Arrange items in window nicely (only applies to open windows in icon view that are not kept arranged)",
+          "parameters": [
+            {
+              "name": "by",
+              "code": "by  ",
+              "type": {
+                "kind": "class",
+                "className": "property"
+              },
+              "description": "the order in which to clean up the objects (name, index, date, etc.)",
+              "optional": true
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the window to clean up",
+            "optional": false
+          }
+        },
+        {
+          "name": "eject",
+          "code": "fndrejct",
+          "description": "Eject the specified disk(s)",
+          "parameters": [],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the disk(s) to eject",
+            "optional": true
+          }
+        },
+        {
+          "name": "empty",
+          "code": "fndrempt",
+          "description": "Empty the trash",
+          "parameters": [
+            {
+              "name": "security",
+              "code": "sec?",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "(obsolete)",
+              "optional": true
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "“empty” and “empty trash” both do the same thing",
+            "optional": true
+          }
+        },
+        {
+          "name": "erase",
+          "code": "fndrfera",
+          "description": "(NOT AVAILABLE) Erase the specified disk(s)",
+          "parameters": [],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the items to erase",
+            "optional": false
+          }
+        },
+        {
+          "name": "reveal",
+          "code": "miscmvis",
+          "description": "Bring the specified object(s) into view",
+          "parameters": [],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the object to be made visible",
+            "optional": false
+          }
+        },
+        {
+          "name": "update",
+          "code": "fndrfupd",
+          "description": "Update the display of the specified object(s) to match their on-disk representation",
+          "parameters": [
+            {
+              "name": "necessity",
+              "code": "nec?",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "only update if necessary (i.e. a finder window is open). default is false",
+              "optional": true
+            },
+            {
+              "name": "registering applications",
+              "code": "reg?",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "register applications. default is true",
+              "optional": true
+            }
+          ],
+          "directParameter": {
+            "name": "direct-parameter",
+            "code": "----",
+            "type": {
+              "kind": "class",
+              "className": "specifier"
+            },
+            "description": "the item to update",
+            "optional": false
+          }
+        }
+      ],
+      "classes": [
+        {
+          "name": "item",
+          "code": "cobj",
+          "description": "An item",
+          "properties": [
+            {
+              "name": "name",
+              "code": "pnam",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the name of the item",
+              "access": "rw"
+            },
+            {
+              "name": "displayed name",
+              "code": "dnam",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the user-visible name of the item",
+              "access": "r"
+            },
+            {
+              "name": "name extension",
+              "code": "nmxt",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the name extension of the item (such as “txt”)",
+              "access": "rw"
+            },
+            {
+              "name": "extension hidden",
+              "code": "hidx",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the item's extension hidden from the user?",
+              "access": "rw"
+            },
+            {
+              "name": "index",
+              "code": "pidx",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the index in the front-to-back ordering within its container",
+              "access": "r"
+            },
+            {
+              "name": "container",
+              "code": "ctnr",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the container of the item",
+              "access": "r"
+            },
+            {
+              "name": "disk",
+              "code": "cdis",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the disk on which the item is stored",
+              "access": "r"
+            },
+            {
+              "name": "position",
+              "code": "posn",
+              "type": {
+                "kind": "class",
+                "className": "point"
+              },
+              "description": "the position of the item within its parent window (can only be set for an item in a window viewed as icons or buttons)",
+              "access": "rw"
+            },
+            {
+              "name": "desktop position",
+              "code": "dpos",
+              "type": {
+                "kind": "class",
+                "className": "point"
+              },
+              "description": "the position of the item on the desktop",
+              "access": "rw"
+            },
+            {
+              "name": "bounds",
+              "code": "pbnd",
+              "type": {
+                "kind": "class",
+                "className": "rectangle"
+              },
+              "description": "the bounding rectangle of the item (can only be set for an item in a window viewed as icons or buttons)",
+              "access": "rw"
+            },
+            {
+              "name": "label index",
+              "code": "labi",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the label of the item",
+              "access": "rw"
+            },
+            {
+              "name": "locked",
+              "code": "aslk",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the file locked?",
+              "access": "rw"
+            },
+            {
+              "name": "kind",
+              "code": "kind",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the kind of the item",
+              "access": "r"
+            },
+            {
+              "name": "description",
+              "code": "dscr",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "a description of the item",
+              "access": "r"
+            },
+            {
+              "name": "comment",
+              "code": "comt",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the comment of the item, displayed in the “Get Info” window",
+              "access": "rw"
+            },
+            {
+              "name": "size",
+              "code": "ptsz",
+              "type": {
+                "kind": "class",
+                "className": "double integer"
+              },
+              "description": "the logical size of the item",
+              "access": "r"
+            },
+            {
+              "name": "physical size",
+              "code": "phys",
+              "type": {
+                "kind": "class",
+                "className": "double integer"
+              },
+              "description": "the actual space used by the item on disk",
+              "access": "r"
+            },
+            {
+              "name": "creation date",
+              "code": "ascd",
+              "type": {
+                "kind": "class",
+                "className": "date"
+              },
+              "description": "the date on which the item was created",
+              "access": "r"
+            },
+            {
+              "name": "modification date",
+              "code": "asmo",
+              "type": {
+                "kind": "class",
+                "className": "date"
+              },
+              "description": "the date on which the item was last modified",
+              "access": "rw"
+            },
+            {
+              "name": "icon",
+              "code": "iimg",
+              "type": {
+                "kind": "class",
+                "className": "icon family"
+              },
+              "description": "the icon bitmap of the item",
+              "access": "rw"
+            },
+            {
+              "name": "URL",
+              "code": "pURL",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the URL of the item",
+              "access": "r"
+            },
+            {
+              "name": "owner",
+              "code": "sown",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the user that owns the container",
+              "access": "rw"
+            },
+            {
+              "name": "group",
+              "code": "sgrp",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the user or group that has special access to the container",
+              "access": "rw"
+            },
+            {
+              "name": "owner privileges",
+              "code": "ownr",
+              "type": {
+                "kind": "class",
+                "className": "priv"
+              },
+              "access": "rw"
+            },
+            {
+              "name": "group privileges",
+              "code": "gppr",
+              "type": {
+                "kind": "class",
+                "className": "priv"
+              },
+              "access": "rw"
+            },
+            {
+              "name": "everyones privileges",
+              "code": "gstp",
+              "type": {
+                "kind": "class",
+                "className": "priv"
+              },
+              "access": "rw"
+            },
+            {
+              "name": "information window",
+              "code": "iwnd",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the information window for the item",
+              "access": "r"
+            },
+            {
+              "name": "properties",
+              "code": "pALL",
+              "type": {
+                "kind": "record",
+                "properties": {}
+              },
+              "description": "every property of an item",
+              "access": "rw"
+            },
+            {
+              "name": "class",
+              "code": "pcls",
+              "type": {
+                "kind": "class",
+                "className": "type"
+              },
+              "description": "the class of the item",
+              "access": "r"
+            }
+          ],
+          "elements": []
+        }
+      ],
+      "enumerations": [
+        {
+          "name": "priv",
+          "code": "priv",
+          "enumerators": [
+            {
+              "name": "read only",
+              "code": "read"
+            },
+            {
+              "name": "read write",
+              "code": "rdwr"
+            },
+            {
+              "name": "write only",
+              "code": "writ"
+            },
+            {
+              "name": "none",
+              "code": "none"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Containers and folders",
+      "code": "fndr",
+      "description": "Classes that can contain other file system items",
+      "commands": [],
+      "classes": [
+        {
+          "name": "container",
+          "code": "ctnr",
+          "description": "An item that contains other items",
+          "properties": [
+            {
+              "name": "entire contents",
+              "code": "ects",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the entire contents of the container, including the contents of its children",
+              "access": "r"
+            },
+            {
+              "name": "expandable",
+              "code": "pexa",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "(NOT AVAILABLE YET) Is the container capable of being expanded as an outline?",
+              "access": "r"
+            },
+            {
+              "name": "expanded",
+              "code": "pexp",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "(NOT AVAILABLE YET) Is the container opened as an outline? (can only be set for containers viewed as lists)",
+              "access": "rw"
+            },
+            {
+              "name": "completely expanded",
+              "code": "pexc",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "(NOT AVAILABLE YET) Are the container and all of its children opened as outlines? (can only be set for containers viewed as lists)",
+              "access": "rw"
+            },
+            {
+              "name": "container window",
+              "code": "cwnd",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the container window for this folder",
+              "access": "r"
+            }
+          ],
+          "elements": [
+            {
+              "type": "item",
+              "access": "r"
+            },
+            {
+              "type": "container",
+              "access": "r"
+            },
+            {
+              "type": "folder",
+              "access": "r"
+            },
+            {
+              "type": "file",
+              "access": "r"
+            },
+            {
+              "type": "alias file",
+              "access": "r"
+            },
+            {
+              "type": "application file",
+              "access": "r"
+            },
+            {
+              "type": "document file",
+              "access": "r"
+            },
+            {
+              "type": "internet location file",
+              "access": "r"
+            },
+            {
+              "type": "clipping",
+              "access": "r"
+            },
+            {
+              "type": "package",
+              "access": "r"
+            }
+          ]
+        },
+        {
+          "name": "computer-object",
+          "code": "ccmp",
+          "description": "the Computer location (as in Go > Computer)",
+          "properties": [],
+          "elements": []
+        },
+        {
+          "name": "disk",
+          "code": "cdis",
+          "description": "A disk",
+          "properties": [
+            {
+              "name": "id",
+              "code": "ID  ",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the unique id for this disk (unchanged while disk remains connected and Finder remains running)",
+              "access": "r"
+            },
+            {
+              "name": "capacity",
+              "code": "capa",
+              "type": {
+                "kind": "class",
+                "className": "double integer"
+              },
+              "description": "the total number of bytes (free or used) on the disk",
+              "access": "r"
+            },
+            {
+              "name": "free space",
+              "code": "frsp",
+              "type": {
+                "kind": "class",
+                "className": "double integer"
+              },
+              "description": "the number of free bytes left on the disk",
+              "access": "r"
+            },
+            {
+              "name": "ejectable",
+              "code": "isej",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Can the media be ejected (floppies, CDs, and so on)?",
+              "access": "r"
+            },
+            {
+              "name": "local volume",
+              "code": "isrv",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the media a local volume (as opposed to a file server)?",
+              "access": "r"
+            },
+            {
+              "name": "startup",
+              "code": "istd",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is this disk the boot disk?",
+              "access": "r"
+            },
+            {
+              "name": "format",
+              "code": "dfmt",
+              "type": {
+                "kind": "class",
+                "className": "edfm"
+              },
+              "description": "the filesystem format of this disk",
+              "access": "r"
+            },
+            {
+              "name": "journaling enabled",
+              "code": "Jrnl",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Does this disk do file system journaling?",
+              "access": "r"
+            },
+            {
+              "name": "ignore privileges",
+              "code": "igpr",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Ignore permissions on this disk?",
+              "access": "rw"
+            }
+          ],
+          "elements": [
+            {
+              "type": "item",
+              "access": "r"
+            },
+            {
+              "type": "container",
+              "access": "r"
+            },
+            {
+              "type": "folder",
+              "access": "r"
+            },
+            {
+              "type": "file",
+              "access": "r"
+            },
+            {
+              "type": "alias file",
+              "access": "r"
+            },
+            {
+              "type": "application file",
+              "access": "r"
+            },
+            {
+              "type": "document file",
+              "access": "r"
+            },
+            {
+              "type": "internet location file",
+              "access": "r"
+            },
+            {
+              "type": "clipping",
+              "access": "r"
+            },
+            {
+              "type": "package",
+              "access": "r"
+            }
+          ]
+        },
+        {
+          "name": "folder",
+          "code": "cfol",
+          "description": "A folder",
+          "properties": [],
+          "elements": [
+            {
+              "type": "item",
+              "access": "r"
+            },
+            {
+              "type": "container",
+              "access": "r"
+            },
+            {
+              "type": "folder",
+              "access": "r"
+            },
+            {
+              "type": "file",
+              "access": "r"
+            },
+            {
+              "type": "alias file",
+              "access": "r"
+            },
+            {
+              "type": "application file",
+              "access": "r"
+            },
+            {
+              "type": "document file",
+              "access": "r"
+            },
+            {
+              "type": "internet location file",
+              "access": "r"
+            },
+            {
+              "type": "clipping",
+              "access": "r"
+            },
+            {
+              "type": "package",
+              "access": "r"
+            }
+          ]
+        },
+        {
+          "name": "desktop-object",
+          "code": "cdsk",
+          "description": "Desktop-object is the class of the “desktop” object",
+          "properties": [],
+          "elements": [
+            {
+              "type": "item",
+              "access": "r"
+            },
+            {
+              "type": "container",
+              "access": "r"
+            },
+            {
+              "type": "disk",
+              "access": "r"
+            },
+            {
+              "type": "folder",
+              "access": "r"
+            },
+            {
+              "type": "file",
+              "access": "r"
+            },
+            {
+              "type": "alias file",
+              "access": "r"
+            },
+            {
+              "type": "application file",
+              "access": "r"
+            },
+            {
+              "type": "document file",
+              "access": "r"
+            },
+            {
+              "type": "internet location file",
+              "access": "r"
+            },
+            {
+              "type": "clipping",
+              "access": "r"
+            },
+            {
+              "type": "package",
+              "access": "r"
+            }
+          ]
+        },
+        {
+          "name": "trash-object",
+          "code": "ctrs",
+          "description": "Trash-object is the class of the “trash” object",
+          "properties": [
+            {
+              "name": "warns before emptying",
+              "code": "warn",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Display a dialog when emptying the trash?",
+              "access": "rw"
+            }
+          ],
+          "elements": [
+            {
+              "type": "item",
+              "access": "r"
+            },
+            {
+              "type": "container",
+              "access": "r"
+            },
+            {
+              "type": "folder",
+              "access": "r"
+            },
+            {
+              "type": "file",
+              "access": "r"
+            },
+            {
+              "type": "alias file",
+              "access": "r"
+            },
+            {
+              "type": "application file",
+              "access": "r"
+            },
+            {
+              "type": "document file",
+              "access": "r"
+            },
+            {
+              "type": "internet location file",
+              "access": "r"
+            },
+            {
+              "type": "clipping",
+              "access": "r"
+            },
+            {
+              "type": "package",
+              "access": "r"
+            }
+          ]
+        }
+      ],
+      "enumerations": [
+        {
+          "name": "edfm",
+          "code": "edfm",
+          "enumerators": [
+            {
+              "name": "Mac OS format",
+              "code": "dfhf"
+            },
+            {
+              "name": "Mac OS Extended format",
+              "code": "dfh+"
+            },
+            {
+              "name": "UFS format",
+              "code": "dfuf"
+            },
+            {
+              "name": "NFS format",
+              "code": "dfnf"
+            },
+            {
+              "name": "audio format",
+              "code": "dfau"
+            },
+            {
+              "name": "ProDOS format",
+              "code": "dfpr"
+            },
+            {
+              "name": "MSDOS format",
+              "code": "dfms"
+            },
+            {
+              "name": "NTFS format",
+              "code": "dfnt"
+            },
+            {
+              "name": "ISO 9660 format",
+              "code": "df96"
+            },
+            {
+              "name": "High Sierra format",
+              "code": "dfhs"
+            },
+            {
+              "name": "QuickTake format",
+              "code": "dfqt"
+            },
+            {
+              "name": "Apple Photo format",
+              "code": "dfph"
+            },
+            {
+              "name": "AppleShare format",
+              "code": "dfas"
+            },
+            {
+              "name": "UDF format",
+              "code": "dfud"
+            },
+            {
+              "name": "WebDAV format",
+              "code": "dfwd"
+            },
+            {
+              "name": "FTP format",
+              "code": "dfft"
+            },
+            {
+              "name": "Packet written UDF format",
+              "code": "dfpu"
+            },
+            {
+              "name": "Xsan format",
+              "code": "dfac"
+            },
+            {
+              "name": "APFS format",
+              "code": "dfap"
+            },
+            {
+              "name": "ExFAT format",
+              "code": "dfxf"
+            },
+            {
+              "name": "SMB format",
+              "code": "dfsm"
+            },
+            {
+              "name": "unknown format",
+              "code": "df??"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Files",
+      "code": "fndr",
+      "description": "Classes representing files",
+      "commands": [],
+      "classes": [
+        {
+          "name": "file",
+          "code": "file",
+          "description": "A file",
+          "properties": [
+            {
+              "name": "file type",
+              "code": "asty",
+              "type": {
+                "kind": "class",
+                "className": "type"
+              },
+              "description": "the OSType identifying the type of data contained in the item",
+              "access": "rw"
+            },
+            {
+              "name": "creator type",
+              "code": "fcrt",
+              "type": {
+                "kind": "class",
+                "className": "type"
+              },
+              "description": "the OSType identifying the application that created the item",
+              "access": "rw"
+            },
+            {
+              "name": "stationery",
+              "code": "pspd",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the file a stationery pad?",
+              "access": "rw"
+            },
+            {
+              "name": "product version",
+              "code": "ver2",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the version of the product (visible at the top of the “Get Info” window)",
+              "access": "r"
+            },
+            {
+              "name": "version",
+              "code": "vers",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the version of the file (visible at the bottom of the “Get Info” window)",
+              "access": "r"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "alias file",
+          "code": "alia",
+          "description": "An alias file (created with “Make Alias”)",
+          "properties": [
+            {
+              "name": "original item",
+              "code": "orig",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the original item pointed to by the alias",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "application file",
+          "code": "appf",
+          "description": "An application's file on disk",
+          "properties": [
+            {
+              "name": "id",
+              "code": "ID  ",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the bundle identifier or creator type of the application",
+              "access": "r"
+            },
+            {
+              "name": "suggested size",
+              "code": "sprt",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "(AVAILABLE IN 10.1 TO 10.4) the memory size with which the developer recommends the application be launched",
+              "access": "r"
+            },
+            {
+              "name": "minimum size",
+              "code": "mprt",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "(AVAILABLE IN 10.1 TO 10.4) the smallest memory size with which the application can be launched",
+              "access": "rw"
+            },
+            {
+              "name": "preferred size",
+              "code": "appt",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "(AVAILABLE IN 10.1 TO 10.4) the memory size with which the application will be launched",
+              "access": "rw"
+            },
+            {
+              "name": "accepts high level events",
+              "code": "isab",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the application high-level event aware? (OBSOLETE: always returns true)",
+              "access": "r"
+            },
+            {
+              "name": "has scripting terminology",
+              "code": "hscr",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Does the process have a scripting terminology, i.e., can it be scripted?",
+              "access": "r"
+            },
+            {
+              "name": "opens in Classic",
+              "code": "Clsc",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "(AVAILABLE IN 10.1 TO 10.4) Should the application launch in the Classic environment?",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "document file",
+          "code": "docf",
+          "description": "A document file",
+          "properties": [],
+          "elements": []
+        },
+        {
+          "name": "internet location file",
+          "code": "inlf",
+          "description": "A file containing an internet location",
+          "properties": [
+            {
+              "name": "location",
+              "code": "iloc",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the internet location",
+              "access": "r"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "clipping",
+          "code": "clpf",
+          "description": "A clipping",
+          "properties": [
+            {
+              "name": "clipping window",
+              "code": "lwnd",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "(NOT AVAILABLE YET) the clipping window for this clipping",
+              "access": "r"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "package",
+          "code": "pack",
+          "description": "A package",
+          "properties": [],
+          "elements": []
+        }
+      ],
+      "enumerations": []
+    },
+    {
+      "name": "Window classes",
+      "code": "fndr",
+      "description": "Classes representing windows",
+      "commands": [],
+      "classes": [
+        {
+          "name": "window",
+          "code": "cwin",
+          "description": "A window",
+          "properties": [
+            {
+              "name": "id",
+              "code": "ID  ",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the unique id for this window",
+              "access": "r"
+            },
+            {
+              "name": "position",
+              "code": "posn",
+              "type": {
+                "kind": "class",
+                "className": "point"
+              },
+              "description": "the upper left position of the window",
+              "access": "rw"
+            },
+            {
+              "name": "bounds",
+              "code": "pbnd",
+              "type": {
+                "kind": "class",
+                "className": "rectangle"
+              },
+              "description": "the boundary rectangle for the window",
+              "access": "rw"
+            },
+            {
+              "name": "titled",
+              "code": "ptit",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Does the window have a title bar?",
+              "access": "r"
+            },
+            {
+              "name": "name",
+              "code": "pnam",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the name of the window",
+              "access": "r"
+            },
+            {
+              "name": "index",
+              "code": "pidx",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the number of the window in the front-to-back layer ordering",
+              "access": "rw"
+            },
+            {
+              "name": "closeable",
+              "code": "hclb",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Does the window have a close box?",
+              "access": "r"
+            },
+            {
+              "name": "floating",
+              "code": "isfl",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Does the window have a title bar?",
+              "access": "r"
+            },
+            {
+              "name": "modal",
+              "code": "pmod",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the window modal?",
+              "access": "r"
+            },
+            {
+              "name": "resizable",
+              "code": "prsz",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the window resizable?",
+              "access": "r"
+            },
+            {
+              "name": "zoomable",
+              "code": "iszm",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the window zoomable?",
+              "access": "r"
+            },
+            {
+              "name": "zoomed",
+              "code": "pzum",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the window zoomed?",
+              "access": "rw"
+            },
+            {
+              "name": "visible",
+              "code": "pvis",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the window visible (always true for open Finder windows)?",
+              "access": "r"
+            },
+            {
+              "name": "collapsed",
+              "code": "wshd",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the window collapsed",
+              "access": "rw"
+            },
+            {
+              "name": "properties",
+              "code": "pALL",
+              "type": {
+                "kind": "record",
+                "properties": {}
+              },
+              "description": "every property of a window",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "Finder window",
+          "code": "brow",
+          "description": "A file viewer window",
+          "properties": [
+            {
+              "name": "target",
+              "code": "fvtg",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the container at which this file viewer is targeted",
+              "access": "rw"
+            },
+            {
+              "name": "current view",
+              "code": "pvew",
+              "type": {
+                "kind": "class",
+                "className": "ecvw"
+              },
+              "description": "the current view for the container window",
+              "access": "rw"
+            },
+            {
+              "name": "icon view options",
+              "code": "icop",
+              "type": {
+                "kind": "class",
+                "className": "icon view options"
+              },
+              "description": "the icon view options for the container window",
+              "access": "r"
+            },
+            {
+              "name": "list view options",
+              "code": "lvop",
+              "type": {
+                "kind": "class",
+                "className": "list view options"
+              },
+              "description": "the list view options for the container window",
+              "access": "r"
+            },
+            {
+              "name": "column view options",
+              "code": "cvop",
+              "type": {
+                "kind": "class",
+                "className": "column view options"
+              },
+              "description": "the column view options for the container window",
+              "access": "r"
+            },
+            {
+              "name": "toolbar visible",
+              "code": "tbvi",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the window's toolbar visible?",
+              "access": "rw"
+            },
+            {
+              "name": "statusbar visible",
+              "code": "stvi",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the window's status bar visible?",
+              "access": "rw"
+            },
+            {
+              "name": "pathbar visible",
+              "code": "pbvi",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the window's path bar visible?",
+              "access": "rw"
+            },
+            {
+              "name": "sidebar width",
+              "code": "sbwi",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the width of the sidebar for the container window",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "desktop window",
+          "code": "dktw",
+          "description": "the desktop window",
+          "properties": [],
+          "elements": []
+        },
+        {
+          "name": "information window",
+          "code": "iwnd",
+          "description": "An inspector window (opened by “Show Info”)",
+          "properties": [
+            {
+              "name": "item",
+              "code": "cobj",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the item from which this window was opened",
+              "access": "r"
+            },
+            {
+              "name": "current panel",
+              "code": "panl",
+              "type": {
+                "kind": "class",
+                "className": "ipnl"
+              },
+              "description": "the current panel in the information window",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "preferences window",
+          "code": "pwnd",
+          "description": "The Finder Preferences window",
+          "properties": [
+            {
+              "name": "current panel",
+              "code": "panl",
+              "type": {
+                "kind": "class",
+                "className": "pple"
+              },
+              "description": "The current panel in the Finder preferences window",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "clipping window",
+          "code": "lwnd",
+          "description": "The window containing a clipping",
+          "properties": [],
+          "elements": []
+        }
+      ],
+      "enumerations": [
+        {
+          "name": "ipnl",
+          "code": "ipnl",
+          "enumerators": [
+            {
+              "name": "General Information panel",
+              "code": "gpnl"
+            },
+            {
+              "name": "Sharing panel",
+              "code": "spnl"
+            },
+            {
+              "name": "Memory panel",
+              "code": "mpnl"
+            },
+            {
+              "name": "Preview panel",
+              "code": "vpnl"
+            },
+            {
+              "name": "Application panel",
+              "code": "apnl"
+            },
+            {
+              "name": "Languages panel",
+              "code": "pklg"
+            },
+            {
+              "name": "Plugins panel",
+              "code": "pkpg"
+            },
+            {
+              "name": "Name & Extension panel",
+              "code": "npnl"
+            },
+            {
+              "name": "Comments panel",
+              "code": "cpnl"
+            },
+            {
+              "name": "Content Index panel",
+              "code": "cinl"
+            },
+            {
+              "name": "Burning panel",
+              "code": "bpnl"
+            },
+            {
+              "name": "More Info panel",
+              "code": "minl"
+            },
+            {
+              "name": "Simple Header panel",
+              "code": "shnl"
+            }
+          ]
+        },
+        {
+          "name": "pple",
+          "code": "pple",
+          "enumerators": [
+            {
+              "name": "General Preferences panel",
+              "code": "pgnp"
+            },
+            {
+              "name": "Label Preferences panel",
+              "code": "plbp"
+            },
+            {
+              "name": "Sidebar Preferences panel",
+              "code": "psid"
+            },
+            {
+              "name": "Advanced Preferences panel",
+              "code": "padv"
+            }
+          ]
+        },
+        {
+          "name": "ecvw",
+          "code": "ecvw",
+          "enumerators": [
+            {
+              "name": "icon view",
+              "code": "icnv"
+            },
+            {
+              "name": "list view",
+              "code": "lsvw"
+            },
+            {
+              "name": "column view",
+              "code": "clvw"
+            },
+            {
+              "name": "group view",
+              "code": "flvw"
+            },
+            {
+              "name": "flow view",
+              "code": "flvw"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Legacy suite",
+      "code": "fleg",
+      "description": "Operations formerly handled by the Finder, but now automatically delegated to other applications",
+      "commands": [
+        {
+          "name": "restart",
+          "code": "fndrrest",
+          "description": "Restart the computer",
+          "parameters": []
+        },
+        {
+          "name": "shut down",
+          "code": "fndrshut",
+          "description": "Shut Down the computer",
+          "parameters": []
+        },
+        {
+          "name": "sleep",
+          "code": "fndrslep",
+          "description": "Put the computer to sleep",
+          "parameters": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "process",
+          "code": "prcs",
+          "description": "A process running on this computer",
+          "properties": [
+            {
+              "name": "name",
+              "code": "pnam",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the name of the process",
+              "access": "r"
+            },
+            {
+              "name": "visible",
+              "code": "pvis",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the process' layer visible?",
+              "access": "rw"
+            },
+            {
+              "name": "frontmost",
+              "code": "pisf",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the process the frontmost process?",
+              "access": "rw"
+            },
+            {
+              "name": "file",
+              "code": "file",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the file from which the process was launched",
+              "access": "r"
+            },
+            {
+              "name": "file type",
+              "code": "asty",
+              "type": {
+                "kind": "class",
+                "className": "type"
+              },
+              "description": "the OSType of the file type of the process",
+              "access": "r"
+            },
+            {
+              "name": "creator type",
+              "code": "fcrt",
+              "type": {
+                "kind": "class",
+                "className": "type"
+              },
+              "description": "the OSType of the creator of the process (the signature)",
+              "access": "r"
+            },
+            {
+              "name": "accepts high level events",
+              "code": "isab",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Is the process high-level event aware (accepts open application, open document, print document, and quit)?",
+              "access": "r"
+            },
+            {
+              "name": "accepts remote events",
+              "code": "revt",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Does the process accept remote events?",
+              "access": "r"
+            },
+            {
+              "name": "has scripting terminology",
+              "code": "hscr",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Does the process have a scripting terminology, i.e., can it be scripted?",
+              "access": "r"
+            },
+            {
+              "name": "total partition size",
+              "code": "appt",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the size of the partition with which the process was launched",
+              "access": "r"
+            },
+            {
+              "name": "partition space used",
+              "code": "pusd",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the number of bytes currently used in the process' partition",
+              "access": "r"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "application process",
+          "code": "pcap",
+          "description": "A process launched from an application file",
+          "properties": [
+            {
+              "name": "application file",
+              "code": "appf",
+              "type": {
+                "kind": "class",
+                "className": "application file"
+              },
+              "description": "the application file from which this process was launched",
+              "access": "r"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "desk accessory process",
+          "code": "pcda",
+          "description": "A process launched from a desk accessory file",
+          "properties": [
+            {
+              "name": "desk accessory file",
+              "code": "dafi",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "the desk accessory file from which this process was launched",
+              "access": "r"
+            }
+          ],
+          "elements": []
+        }
+      ],
+      "enumerations": []
+    },
+    {
+      "name": "Type Definitions",
+      "code": "tpdf",
+      "description": "Definitions of records used in scripting the Finder",
+      "commands": [],
+      "classes": [
+        {
+          "name": "preferences",
+          "code": "cprf",
+          "description": "The Finder Preferences",
+          "properties": [
+            {
+              "name": "window",
+              "code": "cwin",
+              "type": {
+                "kind": "class",
+                "className": "preferences window"
+              },
+              "description": "the window that would open if Finder preferences was opened",
+              "access": "r"
+            },
+            {
+              "name": "icon view options",
+              "code": "icop",
+              "type": {
+                "kind": "class",
+                "className": "icon view options"
+              },
+              "description": "the default icon view options",
+              "access": "r"
+            },
+            {
+              "name": "list view options",
+              "code": "lvop",
+              "type": {
+                "kind": "class",
+                "className": "list view options"
+              },
+              "description": "the default list view options",
+              "access": "r"
+            },
+            {
+              "name": "column view options",
+              "code": "cvop",
+              "type": {
+                "kind": "class",
+                "className": "column view options"
+              },
+              "description": "the column view options for all windows",
+              "access": "r"
+            },
+            {
+              "name": "folders spring open",
+              "code": "sprg",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Spring open folders after the specified delay?",
+              "access": "rw"
+            },
+            {
+              "name": "delay before springing",
+              "code": "dela",
+              "type": {
+                "kind": "primitive",
+                "type": "real"
+              },
+              "description": "the delay before springing open a container in seconds (from 0.167 to 1.169)",
+              "access": "rw"
+            },
+            {
+              "name": "desktop shows hard disks",
+              "code": "pdhd",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Hard disks appear on the desktop?",
+              "access": "rw"
+            },
+            {
+              "name": "desktop shows external hard disks",
+              "code": "pehd",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "External hard disks appear on the desktop?",
+              "access": "rw"
+            },
+            {
+              "name": "desktop shows removable media",
+              "code": "pdrm",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "CDs, DVDs, and iPods appear on the desktop?",
+              "access": "rw"
+            },
+            {
+              "name": "desktop shows connected servers",
+              "code": "pdsv",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Connected servers appear on the desktop?",
+              "access": "rw"
+            },
+            {
+              "name": "new window target",
+              "code": "pnwt",
+              "type": {
+                "kind": "class",
+                "className": "specifier"
+              },
+              "description": "target location for a newly-opened Finder window",
+              "access": "rw"
+            },
+            {
+              "name": "folders open in new windows",
+              "code": "ponw",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Folders open into new windows?",
+              "access": "rw"
+            },
+            {
+              "name": "folders open in new tabs",
+              "code": "pont",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Folders open into new tabs?",
+              "access": "rw"
+            },
+            {
+              "name": "new windows open in column view",
+              "code": "pocv",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Open new windows in column view?",
+              "access": "rw"
+            },
+            {
+              "name": "all name extensions showing",
+              "code": "psnx",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Show name extensions, even for items whose “extension hidden” is true?",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "label",
+          "code": "clbl",
+          "description": "(NOT AVAILABLE YET) A Finder label (name and color)",
+          "properties": [
+            {
+              "name": "name",
+              "code": "pnam",
+              "type": {
+                "kind": "primitive",
+                "type": "text"
+              },
+              "description": "the name associated with the label",
+              "access": "rw"
+            },
+            {
+              "name": "index",
+              "code": "pidx",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the index in the front-to-back ordering within its container",
+              "access": "rw"
+            },
+            {
+              "name": "color",
+              "code": "colr",
+              "type": {
+                "kind": "class",
+                "className": "RGB color"
+              },
+              "description": "the color associated with the label",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "icon family",
+          "code": "ifam",
+          "description": "(NOT AVAILABLE YET) A family of icons",
+          "properties": [
+            {
+              "name": "large monochrome icon and mask",
+              "code": "ICN#",
+              "type": {
+                "kind": "class",
+                "className": "ICN#"
+              },
+              "description": "the large black-and-white icon and the mask for large icons",
+              "access": "r"
+            },
+            {
+              "name": "large 8 bit mask",
+              "code": "l8mk",
+              "type": {
+                "kind": "class",
+                "className": "l8mk"
+              },
+              "description": "the large 8-bit mask for large 32-bit icons",
+              "access": "r"
+            },
+            {
+              "name": "large 32 bit icon",
+              "code": "il32",
+              "type": {
+                "kind": "class",
+                "className": "il32"
+              },
+              "description": "the large 32-bit color icon",
+              "access": "r"
+            },
+            {
+              "name": "large 8 bit icon",
+              "code": "icl8",
+              "type": {
+                "kind": "class",
+                "className": "icl8"
+              },
+              "description": "the large 8-bit color icon",
+              "access": "r"
+            },
+            {
+              "name": "large 4 bit icon",
+              "code": "icl4",
+              "type": {
+                "kind": "class",
+                "className": "icl4"
+              },
+              "description": "the large 4-bit color icon",
+              "access": "r"
+            },
+            {
+              "name": "small monochrome icon and mask",
+              "code": "ics#",
+              "type": {
+                "kind": "class",
+                "className": "ics#"
+              },
+              "description": "the small black-and-white icon and the mask for small icons",
+              "access": "r"
+            },
+            {
+              "name": "small 8 bit mask",
+              "code": "ics8",
+              "type": {
+                "kind": "class",
+                "className": "s8mk"
+              },
+              "description": "the small 8-bit mask for small 32-bit icons",
+              "access": "r"
+            },
+            {
+              "name": "small 32 bit icon",
+              "code": "is32",
+              "type": {
+                "kind": "class",
+                "className": "is32"
+              },
+              "description": "the small 32-bit color icon",
+              "access": "r"
+            },
+            {
+              "name": "small 8 bit icon",
+              "code": "ics8",
+              "type": {
+                "kind": "class",
+                "className": "ics8"
+              },
+              "description": "the small 8-bit color icon",
+              "access": "r"
+            },
+            {
+              "name": "small 4 bit icon",
+              "code": "ics4",
+              "type": {
+                "kind": "class",
+                "className": "ics4"
+              },
+              "description": "the small 4-bit color icon",
+              "access": "r"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "icon view options",
+          "code": "icop",
+          "description": "the icon view options",
+          "properties": [
+            {
+              "name": "arrangement",
+              "code": "iarr",
+              "type": {
+                "kind": "class",
+                "className": "earr"
+              },
+              "description": "the property by which to keep icons arranged",
+              "access": "rw"
+            },
+            {
+              "name": "icon size",
+              "code": "lvis",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the size of icons displayed in the icon view",
+              "access": "rw"
+            },
+            {
+              "name": "shows item info",
+              "code": "mnfo",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "additional info about an item displayed in icon view",
+              "access": "rw"
+            },
+            {
+              "name": "shows icon preview",
+              "code": "prvw",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "displays a preview of the item in icon view",
+              "access": "rw"
+            },
+            {
+              "name": "text size",
+              "code": "fsiz",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the size of the text displayed in the icon view",
+              "access": "rw"
+            },
+            {
+              "name": "label position",
+              "code": "lpos",
+              "type": {
+                "kind": "class",
+                "className": "epos"
+              },
+              "description": "the location of the label in reference to the icon",
+              "access": "rw"
+            },
+            {
+              "name": "background picture",
+              "code": "ibkg",
+              "type": {
+                "kind": "file"
+              },
+              "description": "the background picture of the icon view",
+              "access": "rw"
+            },
+            {
+              "name": "background color",
+              "code": "colr",
+              "type": {
+                "kind": "class",
+                "className": "RGB color"
+              },
+              "description": "the background color of the icon view",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "column view options",
+          "code": "cvop",
+          "description": "the column view options",
+          "properties": [
+            {
+              "name": "text size",
+              "code": "fsiz",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the size of the text displayed in the column view",
+              "access": "rw"
+            },
+            {
+              "name": "shows icon",
+              "code": "shic",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "displays an icon next to the label in column view",
+              "access": "rw"
+            },
+            {
+              "name": "shows icon preview",
+              "code": "prvw",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "displays a preview of the item in column view",
+              "access": "rw"
+            },
+            {
+              "name": "shows preview column",
+              "code": "shpr",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "displays the preview column in column view",
+              "access": "rw"
+            },
+            {
+              "name": "discloses preview pane",
+              "code": "dspr",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "discloses the preview pane of the preview column in column view",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "list view options",
+          "code": "lvop",
+          "description": "the list view options",
+          "properties": [
+            {
+              "name": "calculates folder sizes",
+              "code": "sfsz",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Are folder sizes calculated and displayed in the window?",
+              "access": "rw"
+            },
+            {
+              "name": "shows icon preview",
+              "code": "prvw",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "displays a preview of the item in list view",
+              "access": "rw"
+            },
+            {
+              "name": "icon size",
+              "code": "lvis",
+              "type": {
+                "kind": "class",
+                "className": "lvic"
+              },
+              "description": "the size of icons displayed in the list view",
+              "access": "rw"
+            },
+            {
+              "name": "text size",
+              "code": "fsiz",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the size of the text displayed in the list view",
+              "access": "rw"
+            },
+            {
+              "name": "sort column",
+              "code": "srtc",
+              "type": {
+                "kind": "class",
+                "className": "column"
+              },
+              "description": "the column that the list view is sorted on",
+              "access": "rw"
+            },
+            {
+              "name": "uses relative dates",
+              "code": "urdt",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "Are relative dates (e.g., today, yesterday) shown in the list view?",
+              "access": "rw"
+            }
+          ],
+          "elements": [
+            {
+              "type": "column",
+              "access": "r"
+            }
+          ]
+        },
+        {
+          "name": "column",
+          "code": "lvcl",
+          "description": "a column of a list view",
+          "properties": [
+            {
+              "name": "index",
+              "code": "pidx",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the index in the front-to-back ordering within its container",
+              "access": "rw"
+            },
+            {
+              "name": "name",
+              "code": "pnam",
+              "type": {
+                "kind": "class",
+                "className": "elsv"
+              },
+              "description": "the column name",
+              "access": "r"
+            },
+            {
+              "name": "sort direction",
+              "code": "sord",
+              "type": {
+                "kind": "class",
+                "className": "sodr"
+              },
+              "description": "The direction in which the window is sorted",
+              "access": "rw"
+            },
+            {
+              "name": "width",
+              "code": "clwd",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the width of this column",
+              "access": "rw"
+            },
+            {
+              "name": "minimum width",
+              "code": "clwn",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the minimum allowed width of this column",
+              "access": "r"
+            },
+            {
+              "name": "maximum width",
+              "code": "clwm",
+              "type": {
+                "kind": "primitive",
+                "type": "integer"
+              },
+              "description": "the maximum allowed width of this column",
+              "access": "r"
+            },
+            {
+              "name": "visible",
+              "code": "pvis",
+              "type": {
+                "kind": "primitive",
+                "type": "boolean"
+              },
+              "description": "is this column visible",
+              "access": "rw"
+            }
+          ],
+          "elements": []
+        },
+        {
+          "name": "alias list",
+          "code": "alst",
+          "description": "A list of aliases. Use ‘as alias list’ when a list of aliases is needed (instead of a list of file system item references).",
+          "properties": [],
+          "elements": []
+        }
+      ],
+      "enumerations": [
+        {
+          "name": "earr",
+          "code": "earr",
+          "enumerators": [
+            {
+              "name": "not arranged",
+              "code": "narr"
+            },
+            {
+              "name": "snap to grid",
+              "code": "grda"
+            },
+            {
+              "name": "arranged by name",
+              "code": "nama"
+            },
+            {
+              "name": "arranged by modification date",
+              "code": "mdta"
+            },
+            {
+              "name": "arranged by creation date",
+              "code": "cdta"
+            },
+            {
+              "name": "arranged by size",
+              "code": "siza"
+            },
+            {
+              "name": "arranged by kind",
+              "code": "kina"
+            },
+            {
+              "name": "arranged by label",
+              "code": "laba"
+            }
+          ]
+        },
+        {
+          "name": "epos",
+          "code": "epos",
+          "enumerators": [
+            {
+              "name": "right",
+              "code": "lrgt"
+            },
+            {
+              "name": "bottom",
+              "code": "lbot"
+            }
+          ]
+        },
+        {
+          "name": "sodr",
+          "code": "sodr",
+          "enumerators": [
+            {
+              "name": "normal",
+              "code": "snrm"
+            },
+            {
+              "name": "reversed",
+              "code": "srvs"
+            }
+          ]
+        },
+        {
+          "name": "elsv",
+          "code": "elsv",
+          "enumerators": [
+            {
+              "name": "name column",
+              "code": "elsn"
+            },
+            {
+              "name": "modification date column",
+              "code": "elsm"
+            },
+            {
+              "name": "creation date column",
+              "code": "elsc"
+            },
+            {
+              "name": "size column",
+              "code": "elss"
+            },
+            {
+              "name": "kind column",
+              "code": "elsk"
+            },
+            {
+              "name": "label column",
+              "code": "elsl"
+            },
+            {
+              "name": "version column",
+              "code": "elsv"
+            },
+            {
+              "name": "comment column",
+              "code": "elsC"
+            }
+          ]
+        },
+        {
+          "name": "lvic",
+          "code": "lvic",
+          "enumerators": [
+            {
+              "name": "small icon",
+              "code": "smic"
+            },
+            {
+              "name": "large icon",
+              "code": "lgic"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Enumerations",
+      "code": "tpnm",
+      "description": "Enumerations for the Finder",
+      "commands": [],
+      "classes": [],
+      "enumerations": [
+        {
+          "name": "isiz",
+          "code": "isiz",
+          "enumerators": [
+            {
+              "name": "mini",
+              "code": "miic"
+            },
+            {
+              "name": "small",
+              "code": "smic"
+            },
+            {
+              "name": "large",
+              "code": "lgic"
+            }
+          ]
+        },
+        {
+          "name": "sort",
+          "code": "sort",
+          "enumerators": [
+            {
+              "name": "name",
+              "code": "pnam"
+            },
+            {
+              "name": "modification date",
+              "code": "asmo"
+            },
+            {
+              "name": "creation date",
+              "code": "ascd"
+            },
+            {
+              "name": "size",
+              "code": "phys"
+            },
+            {
+              "name": "kind",
+              "code": "kind"
+            },
+            {
+              "name": "label index",
+              "code": "labi"
+            },
+            {
+              "name": "comment",
+              "code": "comt"
+            },
+            {
+              "name": "version",
+              "code": "vers"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
