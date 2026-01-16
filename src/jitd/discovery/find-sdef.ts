@@ -17,6 +17,27 @@ import { join, basename } from 'path';
 import { homedir } from 'os';
 
 /**
+ * Simple logger interface for error reporting
+ */
+export interface Logger {
+  error(message: string, ...args: unknown[]): void;
+}
+
+/**
+ * Default no-op logger (silent)
+ */
+const noOpLogger: Logger = {
+  error: () => {}, // Silent by default
+};
+
+/**
+ * Console logger for development/debugging
+ */
+export const consoleLogger: Logger = {
+  error: console.error.bind(console),
+};
+
+/**
  * Interface representing an application with an SDEF file
  */
 export interface AppWithSDEF {
@@ -118,10 +139,14 @@ export function getSDEFPath(appBundlePath: string): string {
  * - Malformed app bundle structure
  *
  * @param appBundlePath - Absolute path to the .app bundle (e.g., '/Applications/Safari.app')
+ * @param logger - Optional logger for error reporting (default: silent)
  * @returns Path to SDEF file if found, null otherwise
  * @throws Error if path is invalid (null, undefined, empty string)
  */
-export async function findSDEFFile(appBundlePath: string): Promise<string | null> {
+export async function findSDEFFile(
+  appBundlePath: string,
+  logger: Logger = noOpLogger
+): Promise<string | null> {
   validatePath(appBundlePath);
 
   // Check if the app bundle exists and is a directory
@@ -171,7 +196,7 @@ export async function findSDEFFile(appBundlePath: string): Promise<string | null
     return null;
   } catch (error) {
     // Log error but don't crash
-    console.error(`Error finding SDEF file in ${appBundlePath}:`, error);
+    logger.error(`Error finding SDEF file in ${appBundlePath}:`, error);
     return null;
   }
 }
@@ -180,9 +205,10 @@ export async function findSDEFFile(appBundlePath: string): Promise<string | null
  * Scans a directory for .app bundles
  *
  * @param directory - Directory to scan
+ * @param logger - Optional logger for error reporting
  * @returns Array of absolute paths to .app bundles
  */
-async function findAppBundles(directory: string): Promise<string[]> {
+async function findAppBundles(directory: string, logger: Logger = noOpLogger): Promise<string[]> {
   try {
     // Check if directory is readable
     if (!(await isReadableDirectory(directory))) {
@@ -206,7 +232,7 @@ async function findAppBundles(directory: string): Promise<string[]> {
     return appBundles;
   } catch (error) {
     // Log error but continue with other directories
-    console.error(`Error scanning directory ${directory}:`, error);
+    logger.error(`Error scanning directory ${directory}:`, error);
     return [];
   }
 }
@@ -229,12 +255,13 @@ async function findAppBundles(directory: string): Promise<string[]> {
  *
  * @param options - Optional configuration
  * @param options.useCache - Whether to use cached results (default: true)
+ * @param options.logger - Optional logger for error reporting (default: silent)
  * @returns Array of applications with SDEF files
  */
 export async function findAllScriptableApps(
-  options: { useCache?: boolean } = {}
+  options: { useCache?: boolean; logger?: Logger } = {}
 ): Promise<AppWithSDEF[]> {
-  const { useCache = true } = options;
+  const { useCache = true, logger = noOpLogger } = options;
 
   // Check cache first
   if (useCache && sdefCache) {
@@ -251,11 +278,11 @@ export async function findAllScriptableApps(
     const directory = typeof dir === 'function' ? dir() : dir;
 
     try {
-      const appBundles = await findAppBundles(directory);
+      const appBundles = await findAppBundles(directory, logger);
 
       // Check each app bundle for SDEF file
       for (const bundlePath of appBundles) {
-        const sdefPath = await findSDEFFile(bundlePath);
+        const sdefPath = await findSDEFFile(bundlePath, logger);
 
         if (sdefPath) {
           const appName = basename(bundlePath, '.app');
@@ -268,7 +295,7 @@ export async function findAllScriptableApps(
       }
     } catch (error) {
       // Log but continue with other directories
-      console.error(`Error processing directory ${directory}:`, error);
+      logger.error(`Error processing directory ${directory}:`, error);
     }
   }
 
@@ -300,9 +327,13 @@ export function invalidateCache(): void {
  * declaration. Full XML parsing is done by the SDEF parser module.
  *
  * @param filePath - Path to potential SDEF file
+ * @param logger - Optional logger for error reporting (default: silent)
  * @returns true if file appears to be XML, false otherwise
  */
-export async function isValidSDEFFile(filePath: string): Promise<boolean> {
+export async function isValidSDEFFile(
+  filePath: string,
+  logger: Logger = noOpLogger
+): Promise<boolean> {
   try {
     validatePath(filePath);
 
@@ -329,7 +360,7 @@ export async function isValidSDEFFile(filePath: string): Promise<boolean> {
       await handle.close();
     }
   } catch (error) {
-    console.error(`Error validating SDEF file ${filePath}:`, error);
+    logger.error(`Error validating SDEF file ${filePath}:`, error);
     return false;
   }
 }

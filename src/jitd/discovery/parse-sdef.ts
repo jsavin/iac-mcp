@@ -47,8 +47,9 @@ export class SDEFParser {
    */
   async parse(sdefPath: string): Promise<SDEFDictionary> {
     // Check cache first
-    if (this.parseCache.has(sdefPath)) {
-      return this.parseCache.get(sdefPath)!;
+    const cached = this.parseCache.get(sdefPath);
+    if (cached) {
+      return cached;
     }
 
     try {

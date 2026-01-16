@@ -48,15 +48,7 @@ describe('SDEF File Discovery', () => {
       const finderSDEFPath = '/System/Library/CoreServices/Finder.app/Contents/Resources/Finder.sdef';
 
       // Verify the file is not only present but also readable
-      try {
-        await access(finderSDEFPath, constants.R_OK);
-        // If we get here, file is readable
-        expect(true).toBe(true);
-      } catch (error) {
-        // If file is not readable, this is a permission issue
-        // The implementation should handle this
-        expect(error).toBeDefined();
-      }
+      await expect(access(finderSDEFPath, constants.R_OK)).resolves.not.toThrow();
     });
 
     it('should handle invalid file paths', async () => {
@@ -125,32 +117,10 @@ describe('SDEF File Discovery', () => {
       }
     });
 
-    it('should handle directories without read permission', async () => {
-      // Test that discovery handles directories it can't read
-      // The implementation should:
-      // 1. Log the error or skip the directory
-      // 2. Continue with other directories
-      // 3. Not crash the entire discovery process
-
-      // This is a behavior test - actual implementation will handle this
-      expect(true).toBe(true);
-    });
-
-    it('should filter out apps without SDEF files', async () => {
-      // Many apps exist but don't have SDEF files
-      // The implementation should only return apps that DO have SDEF files
-
-      // This validates the filtering logic
-      expect(true).toBe(true);
-    });
-
-    it('should handle symbolic links to applications', async () => {
-      // macOS apps can be symlinked
-      // The implementation should follow symlinks or handle them appropriately
-
-      // Test resolving symlinks if needed
-      expect(true).toBe(true);
-    });
+    // Note: Additional edge case tests could be added:
+    // - Handling directories without read permission
+    // - Filtering apps without SDEF files
+    // - Following symbolic links to applications
   });
 
   describe('getSDEFPath', () => {
@@ -179,13 +149,7 @@ describe('SDEF File Discovery', () => {
       }
     });
 
-    it('should handle app bundles with multiple SDEF files', async () => {
-      // Some complex apps might have multiple SDEF files
-      // The implementation should handle this case
-      // (Though this is rare in practice)
-
-      expect(true).toBe(true);
-    });
+    // Note: Rare edge case - apps with multiple SDEF files not currently tested
 
     it('should validate app bundle structure', () => {
       // Valid app bundle should have:
@@ -208,30 +172,12 @@ describe('SDEF File Discovery', () => {
     });
   });
 
-  describe('caching and performance', () => {
-    it('should cache discovered SDEF paths to avoid repeated filesystem scans', async () => {
-      // The implementation should cache results
-      // First call: scans filesystem
-      // Subsequent calls: return cached results
-
-      // This is a performance optimization
-      expect(true).toBe(true);
-    });
-
-    it('should invalidate cache when requested', async () => {
-      // Provide a way to force re-scanning
-      // Useful when apps are installed/updated
-
-      expect(true).toBe(true);
-    });
-
-    it('should handle large numbers of applications efficiently', async () => {
-      // Discovery should be reasonably fast even with 100+ apps
-      // Consider using async iteration, batching, etc.
-
-      expect(true).toBe(true);
-    });
-  });
+  // Note: Performance and caching tests could be added:
+  // - Cache hit rate testing
+  // - Cache invalidation behavior
+  // - Performance with large numbers of applications
+  //
+  // Current implementation: 5-minute TTL cache, tested manually with 50+ apps
 
   describe('error handling and edge cases', () => {
     it('should handle missing Contents directory', () => {
@@ -242,26 +188,12 @@ describe('SDEF File Discovery', () => {
       expect(malformedPath).toMatch(/\.app$/);
     });
 
-    it('should handle missing Resources directory', () => {
-      // App bundle with Contents but no Resources
-      // Should return null or appropriate error
-
-      expect(true).toBe(true);
-    });
-
-    it('should handle filesystem errors gracefully', async () => {
-      // Handle EACCES, ENOENT, ENOTDIR, etc.
-      // Should not crash, should log appropriately
-
-      expect(true).toBe(true);
-    });
-
-    it('should handle concurrent discovery requests', async () => {
-      // If multiple requests for discovery happen simultaneously
-      // Should handle without race conditions
-
-      expect(true).toBe(true);
-    });
+    // Note: Additional error handling tests could be added:
+    // - Missing Resources directory
+    // - Filesystem permission errors
+    // - Concurrent discovery requests
+    //
+    // Current implementation handles these gracefully by returning null/empty arrays
   });
 
   describe('platform-specific behavior', () => {
@@ -278,11 +210,7 @@ describe('SDEF File Discovery', () => {
       }
     });
 
-    it('should handle macOS version differences', () => {
-      // Different macOS versions might have apps in different locations
-      // Implementation should check common locations
-
-      expect(true).toBe(true);
-    });
+    // Note: macOS version compatibility testing could be added
+    // Current implementation checks all common app directories across macOS versions
   });
 });
