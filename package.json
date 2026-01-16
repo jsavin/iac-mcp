@@ -18,7 +18,9 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "clean": "rm -rf dist",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "verify": "npm run verify:node && npm run build && echo '✓ Setup verified successfully!'",
+    "verify:node": "node -e \"const v=process.version.split('.')[0].slice(1);if(v<20){console.error('❌ Node.js 20+ required, found:',process.version);process.exit(1)}else{console.log('✓ Node.js version:',process.version)}\""
   },
   "keywords": [
     "mcp",
