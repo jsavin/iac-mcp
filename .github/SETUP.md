@@ -2,24 +2,34 @@
 
 This project uses Claude Code for automated code reviews and on-demand assistance.
 
-## Prerequisites
+## Setup Steps
 
-You need to configure the `CLAUDE_CODE_OAUTH_TOKEN` secret in your GitHub repository settings.
+There are **two required steps** to enable Claude Code on this repository:
 
-## Getting Your OAuth Token
+### Step 1: Install the Claude Code GitHub App
+
+1. Go to https://github.com/apps/claude
+2. Click "Install" or "Configure"
+3. Select repository access:
+   - Choose "Only select repositories"
+   - Select `jsavin/iac-mcp`
+4. Click "Install" or "Save"
+
+**This step grants Claude the permissions to access the repo and post comments.**
+
+### Step 2: Configure the OAuth Token
 
 1. Visit [Claude Code OAuth Setup](https://code.anthropic.com/oauth)
 2. Follow the instructions to generate an OAuth token for GitHub Actions
 3. Copy the token (you'll only see it once)
+4. Go to your repository on GitHub: `https://github.com/jsavin/iac-mcp`
+5. Navigate to **Settings** > **Secrets and variables** > **Actions**
+6. Click **New repository secret**
+7. Name: `CLAUDE_CODE_OAUTH_TOKEN`
+8. Value: Paste the OAuth token you copied
+9. Click **Add secret**
 
-## Adding the Secret to GitHub
-
-1. Go to your repository on GitHub: `https://github.com/jsavin/iac-mcp`
-2. Navigate to **Settings** > **Secrets and variables** > **Actions**
-3. Click **New repository secret**
-4. Name: `CLAUDE_CODE_OAUTH_TOKEN`
-5. Value: Paste the OAuth token you copied
-6. Click **Add secret**
+**This token authenticates Claude's actions in the workflows.**
 
 ## Workflows Enabled
 
