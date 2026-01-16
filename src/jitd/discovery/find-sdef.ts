@@ -123,7 +123,14 @@ function isPathWithinBoundary(targetPath: string, boundaryPath: string): boolean
   const normalizedTarget = normalize(resolve(targetPath));
   const normalizedBoundary = normalize(resolve(boundaryPath));
 
-  return normalizedTarget.startsWith(normalizedBoundary);
+  // Ensure boundary ends with separator for exact directory match
+  // This prevents '/Applications' from matching '/ApplicationsMalicious/'
+  const boundaryWithSep = normalizedBoundary.endsWith('/')
+    ? normalizedBoundary
+    : normalizedBoundary + '/';
+
+  return normalizedTarget === normalizedBoundary ||
+         normalizedTarget.startsWith(boundaryWithSep);
 }
 
 /**

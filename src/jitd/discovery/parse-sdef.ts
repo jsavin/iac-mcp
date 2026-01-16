@@ -71,6 +71,9 @@ export class SDEFParser {
     // Check cache first
     const cached = this.parseCache.get(sdefPath);
     if (cached) {
+      // Move to end for true LRU (most recently used)
+      this.parseCache.delete(sdefPath);
+      this.parseCache.set(sdefPath, cached);
       return cached;
     }
 
