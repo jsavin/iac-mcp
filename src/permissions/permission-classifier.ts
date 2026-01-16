@@ -84,14 +84,8 @@ export class PermissionClassifier {
    * @returns Classification result with level and reason
    */
   classify(tool: MCPTool, args: Record<string, any> = {}): ClassificationResult {
-    // Check custom rules first (sorted by priority, higher priority checked first)
-    const sortedRules = [...this.customRules].sort((a, b) => {
-      const priorityA = a.priority ?? 100;
-      const priorityB = b.priority ?? 100;
-      return priorityB - priorityA; // Higher priority first
-    });
-
-    for (const rule of sortedRules) {
+    // Check custom rules first (highest priority)
+    for (const rule of this.customRules) {
       if (rule.matcher(tool, args)) {
         return {
           level: rule.level,
@@ -122,11 +116,9 @@ export class PermissionClassifier {
   /**
    * Register a custom classification rule
    *
-   * Custom rules are checked first (before default classification) and can override default classification.
-   * Rules are evaluated in priority order (higher priority = checked first).
-   * If priority is not specified, defaults to 100.
+   * Custom rules are checked first and can override default classification.
    *
-   * @param rule - The custom rule to register (with optional priority field)
+   * @param rule - The custom rule to register
    */
   registerRule(rule: ClassificationRule): void {
     this.customRules.push(rule);

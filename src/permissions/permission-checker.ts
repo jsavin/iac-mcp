@@ -127,7 +127,7 @@ export class PermissionChecker {
       // Update the last audit log entry with this decision if possible
       if (this.auditLog.length > 0) {
         const lastEntry = this.auditLog[this.auditLog.length - 1];
-        if (lastEntry !== undefined && lastEntry.tool === this.lastCheckedTool?.name) {
+        if (lastEntry && lastEntry.tool === this.lastCheckedTool.name) {
           lastEntry.decision = decision;
         }
       }
@@ -173,7 +173,7 @@ export class PermissionChecker {
    * Make a permission decision based on safety level
    *
    * @param tool - MCP tool
-   * @param args - Command arguments
+   * @param _args - Command arguments (reserved for future use)
    * @param level - Safety level from classifier
    * @param reason - Reason from classifier
    * @returns Permission decision
