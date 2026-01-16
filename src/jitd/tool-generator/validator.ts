@@ -298,7 +298,7 @@ export class ToolValidator {
   private validateSchemaProperty(
     prop: JSONSchemaProperty,
     path: string,
-    visited: Set<any> = new Set()
+    visited: Set<object> = new Set()
   ): ValidationError[] {
     const errors: ValidationError[] = [];
 
@@ -375,8 +375,8 @@ export class ToolValidator {
    * @returns True if circular reference detected
    */
   private detectCircularReferences(
-    schema: any,
-    visited: Set<any> = new Set()
+    schema: JSONSchema | JSONSchemaProperty,
+    visited: Set<object> = new Set()
   ): boolean {
     // Primitives and null can't be circular
     if (typeof schema !== 'object' || schema === null) {

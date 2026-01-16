@@ -45,7 +45,7 @@ describe('Integration: End-to-End Tool Generation', () => {
       const dictionary = await parser.parseContent(sdef);
 
       const appInfo = createAppInfo('TestApp', 'com.test.app');
-      const generator = new ToolGenerator(appInfo);
+      const generator = new ToolGenerator();
 
       const tools = generator.generateTools(dictionary, appInfo);
 
@@ -85,7 +85,7 @@ describe('Integration: End-to-End Tool Generation', () => {
       const dictionary = await parser.parseContent(sdef);
 
       const appInfo = createAppInfo('MyApp', 'com.my.app');
-      const generator = new ToolGenerator(appInfo);
+      const generator = new ToolGenerator();
 
       const tools = generator.generateTools(dictionary, appInfo);
 
@@ -161,7 +161,7 @@ describe('Integration: End-to-End Tool Generation', () => {
       const dictionary = await parser.parseContent(sdef);
 
       const appInfo = createAppInfo('EditorApp', 'com.editor.app');
-      const generator = new ToolGenerator(appInfo);
+      const generator = new ToolGenerator();
 
       const tools = generator.generateTools(dictionary, appInfo);
 
@@ -205,7 +205,7 @@ describe('Integration: End-to-End Tool Generation', () => {
       const dictionary = await parser.parseContent(sdef);
 
       const appInfo = createAppInfo('CollisionApp', 'com.collision.app');
-      const generator = new ToolGenerator(appInfo);
+      const generator = new ToolGenerator();
 
       const tools = generator.generateTools(dictionary, appInfo);
 
@@ -241,7 +241,7 @@ describe('Integration: End-to-End Tool Generation', () => {
       const dictionary = await parser.parseContent(sdef);
 
       const appInfo = createAppInfo('WindowApp', 'com.window.app');
-      const generator = new ToolGenerator(appInfo);
+      const generator = new ToolGenerator();
 
       const tools = generator.generateTools(dictionary, appInfo);
 
@@ -307,7 +307,7 @@ describe('Integration: End-to-End Tool Generation', () => {
       const dictionary = await parser.parseContent(sdef);
 
       const appInfo = createAppInfo('EmptyApp', 'com.empty.app');
-      const generator = new ToolGenerator(appInfo);
+      const generator = new ToolGenerator();
 
       const tools = generator.generateTools(dictionary, appInfo);
 
@@ -358,7 +358,7 @@ describe('Integration: End-to-End Tool Generation', () => {
       const dictionary = await parser.parseContent(sdef);
 
       const appInfo = createAppInfo('CacheApp', 'com.cache.app');
-      const generator = new ToolGenerator(appInfo);
+      const generator = new ToolGenerator();
 
       // First generation
       const tools1 = generator.generateTools(dictionary, appInfo);
@@ -391,7 +391,7 @@ describe('Integration: End-to-End Tool Generation', () => {
       const dictionary = await parser.parseContent(sdef);
 
       const appInfo = createAppInfo('ClearApp', 'com.clear.app');
-      const generator = new ToolGenerator(appInfo);
+      const generator = new ToolGenerator();
 
       // Generate tools
       generator.generateTools(dictionary, appInfo);
@@ -495,7 +495,7 @@ describe('Integration: End-to-End Tool Generation', () => {
       const dictionary = await parser.parseContent(sdef);
 
       const appInfo = createAppInfo('RealApp', 'com.real.app');
-      const generator = new ToolGenerator(appInfo);
+      const generator = new ToolGenerator();
 
       const tools = generator.generateTools(dictionary, appInfo);
 

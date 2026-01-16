@@ -43,6 +43,8 @@ import { TypeMapper } from './type-mapper.js';
 import { NamingUtility } from './naming.js';
 import { SchemaBuilder } from './schema-builder.js';
 import { ToolValidator } from './validator.js';
+import { ValidationError, InvalidInputError } from './errors.js';
+import { DEFAULT_CACHE_SIZE, DEFAULT_MAX_DESCRIPTION_LENGTH } from './constants.js';
 
 /**
  * Simple LRU Cache implementation
@@ -76,7 +78,9 @@ class LRUCache<K, V> {
     // Evict oldest if at capacity
     else if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey);
+      }
     }
     this.cache.set(key, value);
   }
@@ -125,7 +129,7 @@ export class ToolGenerator {
     this.options = {
       namingStrategy: options?.namingStrategy ?? 'app_prefix',
       includeHiddenCommands: options?.includeHiddenCommands ?? false,
-      maxDescriptionLength: options?.maxDescriptionLength ?? 500,
+      maxDescriptionLength: options?.maxDescriptionLength ?? DEFAULT_MAX_DESCRIPTION_LENGTH,
       strictValidation: options?.strictValidation ?? false,
     };
 
@@ -144,8 +148,8 @@ export class ToolGenerator {
 
     this.validator = new ToolValidator();
 
-    // Initialize cache (max 1000 entries)
-    this.toolCache = new LRUCache<string, MCPTool[]>(1000);
+    // Initialize cache
+    this.toolCache = new LRUCache<string, MCPTool[]>(DEFAULT_CACHE_SIZE);
   }
 
   /**
@@ -165,14 +169,26 @@ export class ToolGenerator {
    * @throws Error if command has empty name and strictValidation is enabled
    */
   generateTool(command: SDEFCommand, appInfo: AppInfo, suiteName?: string): MCPTool {
+    // Validate appInfo
+    if (!appInfo.appName || appInfo.appName.trim() === '') {
+      throw new InvalidInputError('appInfo.appName cannot be empty', 'appName');
+    }
+    if (!appInfo.bundleId || appInfo.bundleId.trim() === '') {
+      throw new InvalidInputError('appInfo.bundleId cannot be empty', 'bundleId');
+    }
+
     // Always validate command code (required for execution)
     if (!command.code || command.code.trim() === '') {
-      throw new Error(`Command "${command.name}" has empty code`);
+      throw new ValidationError(
+        `Command "${command.name}" has empty code`,
+        'code',
+        'critical'
+      );
     }
 
     // Optionally validate command name
     if (this.options.strictValidation && (!command.name || command.name.trim() === '')) {
-      throw new Error('Command has empty name');
+      throw new ValidationError('Command has empty name', 'name', 'critical');
     }
 
     // Generate tool name - only pass suiteName if strategy needs it
@@ -206,7 +222,7 @@ export class ToolGenerator {
 
     // Determine direct parameter name if present
     const directParameterName = command.directParameter
-      ? this.schemaBuilder['directParameterName'] // Access the private field
+      ? this.schemaBuilder.getDirectParameterName()
       : undefined;
 
     // Create tool
@@ -259,10 +275,11 @@ export class ToolGenerator {
         const tool = this.generateTool(command, appInfo, suite.name);
         tools.push(tool);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-
-        // Critical errors always throw (empty code, etc.)
-        if (errorMessage.includes('empty code')) {
+        // Critical ValidationErrors and InvalidInputErrors always throw
+        if (error instanceof ValidationError && error.isCritical()) {
+          throw error;
+        }
+        if (error instanceof InvalidInputError) {
           throw error;
         }
 
@@ -270,6 +287,7 @@ export class ToolGenerator {
         if (this.options.strictValidation) {
           throw error;
         } else {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           console.warn(
             `Warning: Failed to generate tool for command "${command.name}" in suite "${suite.name}": ${errorMessage}`
           );

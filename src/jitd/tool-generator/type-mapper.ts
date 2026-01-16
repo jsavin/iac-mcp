@@ -9,6 +9,7 @@
 
 import type { SDEFType, SDEFEnumeration } from '../../types/sdef.js';
 import type { TypeMapperOptions } from '../../types/tool-generator.js';
+import { DEFAULT_MAX_NESTING_DEPTH } from './constants.js';
 
 /**
  * JSON Schema Property Definition
@@ -54,7 +55,7 @@ export class TypeMapper {
 
   constructor(options?: TypeMapperOptions) {
     this.strictTypeChecking = options?.strictTypeChecking ?? false;
-    this.maxNestingDepth = options?.maxNestingDepth ?? 3;
+    this.maxNestingDepth = options?.maxNestingDepth ?? DEFAULT_MAX_NESTING_DEPTH;
   }
 
   /**
@@ -214,7 +215,10 @@ export class TypeMapper {
     // Map each property recursively
     const mappedProperties: Record<string, JSONSchemaProperty> = {};
     for (const [key, value] of Object.entries(properties)) {
-      mappedProperties[key] = this.mapType(value, depth);
+      // Skip null/undefined values
+      if (value) {
+        mappedProperties[key] = this.mapType(value, depth);
+      }
     }
 
     return {

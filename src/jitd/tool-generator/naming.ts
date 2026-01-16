@@ -7,8 +7,15 @@
  * @module naming
  */
 
+import { createHash } from 'crypto';
 import type { SDEFCommand } from '../../types/sdef.js';
 import type { NamingOptions } from '../../types/tool-generator.js';
+import { CollisionResolutionError } from './errors.js';
+import {
+  DEFAULT_MAX_TOOL_NAME_LENGTH,
+  MAX_COLLISION_RESOLUTION_ATTEMPTS,
+  HASH_SUFFIX_LENGTH,
+} from './constants.js';
 
 /**
  * Utility class for generating and managing tool and parameter names
@@ -42,7 +49,7 @@ export class NamingUtility {
    */
   constructor(options?: NamingOptions) {
     this.strategy = options?.strategy ?? 'app_prefix';
-    this.maxLength = options?.maxLength ?? 64;
+    this.maxLength = options?.maxLength ?? DEFAULT_MAX_TOOL_NAME_LENGTH;
     this.useHashForTruncation = options?.useHashForTruncation ?? true;
   }
 
@@ -227,8 +234,16 @@ export class NamingUtility {
       counter++;
     } while (
       this.checkNameCollision(candidate, existingTools) &&
-      counter < 100
+      counter < MAX_COLLISION_RESOLUTION_ATTEMPTS
     );
+
+    // If we hit the limit, throw an error instead of returning a colliding name
+    if (counter >= MAX_COLLISION_RESOLUTION_ATTEMPTS) {
+      throw new CollisionResolutionError(
+        `Unable to resolve name collision for "${baseName}" after ${MAX_COLLISION_RESOLUTION_ATTEMPTS} attempts`,
+        baseName
+      );
+    }
 
     return this.truncate(candidate);
   }
@@ -295,21 +310,18 @@ export class NamingUtility {
   /**
    * Generate a hash for uniqueness in truncated names
    *
-   * Uses a simple non-cryptographic hash function that converts
-   * the string to a 32-bit integer and encodes in base-36.
-   * Returns up to 8 characters.
+   * Uses SHA-256 cryptographic hash to ensure collision resistance.
+   * Returns first 8 characters of the hex digest, providing 32 bits
+   * of entropy (much better than the previous 32-bit hash).
    *
    * @param text - Text to hash
-   * @returns Hash string (8 characters max, base-36)
+   * @returns Hash string (8 characters, hexadecimal)
    * @private
    */
   private generateHash(text: string): string {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return Math.abs(hash).toString(36).substring(0, 8);
+    return createHash('sha256')
+      .update(text)
+      .digest('hex')
+      .substring(0, HASH_SUFFIX_LENGTH);
   }
 }

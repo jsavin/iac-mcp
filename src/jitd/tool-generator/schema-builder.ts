@@ -97,6 +97,15 @@ export class SchemaBuilder {
   }
 
   /**
+   * Get the configured name for direct parameters
+   *
+   * @returns The property name used for direct parameters (default: 'target')
+   */
+  getDirectParameterName(): string {
+    return this.directParameterName;
+  }
+
+  /**
    * Build input schema from SDEF command
    *
    * Constructs a complete JSON Schema object from a command's parameters.
@@ -168,7 +177,7 @@ export class SchemaBuilder {
 
     // Add named parameters
     for (const param of parameters) {
-      const paramName = this.sanitizeParameterName(param.name);
+      const paramName = this.preserveParameterName(param.name);
       const schema = this.typeMapper.mapType(param.type);
 
       // Add description if available or if generation is enabled
@@ -207,7 +216,7 @@ export class SchemaBuilder {
     // Add required named parameters
     for (const param of parameters) {
       if (!param.optional) {
-        required.push(this.sanitizeParameterName(param.name));
+        required.push(this.preserveParameterName(param.name));
       }
     }
 
@@ -287,30 +296,30 @@ export class SchemaBuilder {
   }
 
   /**
-   * Sanitize parameter name
+   * Preserve parameter name as-is from SDEF
    *
-   * Cleans up parameter names to be valid JSON Schema property names.
-   * This implementation preserves spaces and special characters that appear
-   * in SDEF parameter names (like "routing suppressed" or "with-dashes")
-   * rather than converting them to underscores.
+   * JSON Schema allows spaces and special characters in property names,
+   * so we preserve the original SDEF parameter names without modification.
+   * This is intentional and based on test expectations.
    *
-   * Based on test expectations, parameter names should be preserved as-is
-   * from SDEF files, including spaces and dashes.
+   * Note: This differs from NamingUtility.sanitizeParameterName() which
+   * normalizes names for tool naming (lowercase, underscores, etc.).
+   * Schema property names preserve the original SDEF format.
    *
-   * @param name - Parameter name to sanitize
-   * @returns Sanitized parameter name
+   * @param name - Parameter name from SDEF
+   * @returns Unchanged parameter name
    *
    * @example
    * ```typescript
-   * sanitizeParameterName('routing suppressed')  // → 'routing suppressed'
-   * sanitizeParameterName('with-dashes')         // → 'with-dashes'
-   * sanitizeParameterName('simple')              // → 'simple'
+   * preserveParameterName('routing suppressed')  // → 'routing suppressed'
+   * preserveParameterName('with-dashes')         // → 'with-dashes'
+   * preserveParameterName('simple')              // → 'simple'
    * ```
+   * @private
    */
-  private sanitizeParameterName(name: string): string {
-    // Based on test expectations, we preserve the name as-is
-    // Tests show that names like "routing suppressed" and "with-dashes"
-    // should remain unchanged
+  private preserveParameterName(name: string): string {
+    // Preserve names as-is for JSON Schema property names
+    // JSON Schema spec allows spaces and special characters
     return name;
   }
 }
