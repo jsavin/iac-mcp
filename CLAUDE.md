@@ -10,6 +10,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Strategy:** Bootstrap (no VCs), sustainable growth, open source core + proprietary UI.
 
+**Platform Strategy:**
+- **Phase 1**: macOS (AppleScript/JXA, SDEF parsing)
+- **Phase 5+**: Multi-platform (Windows VBA/COM, Linux D-Bus, cross-platform)
+- JITD architecture designed for any platform's native automation
+
 **Read the complete vision:** `planning/VISION.md` and `planning/ideas/the-complete-vision.md`
 
 ---

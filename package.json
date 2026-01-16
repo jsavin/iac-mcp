@@ -1,7 +1,7 @@
 {
   "name": "iac-mcp",
   "version": "0.1.0",
-  "description": "Universal bridge between AI/LLMs and native macOS applications using Just-In-Time Discovery (JITD)",
+  "description": "Universal bridge between AI/LLMs and native applications using Just-In-Time Discovery (JITD)",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -23,11 +23,16 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "macos",
     "automation",
+    "dynamic-discovery",
+    "macos",
     "applescript",
     "jxa",
-    "sdef"
+    "sdef",
+    "windows",
+    "vba",
+    "com",
+    "cross-platform"
   ],
   "author": "Jake Savin",
   "license": "MIT",
