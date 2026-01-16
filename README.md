@@ -1,32 +1,47 @@
 # iac-mcp
 
-**Universal bridge between AI/LLMs and native macOS applications**
+**Universal bridge between AI/LLMs and native applications**
 
-iac-mcp is an MCP (Model Context Protocol) server that uses Just-In-Time Discovery (JITD) to dynamically discover and orchestrate any installed scriptable macOS application without pre-built integrations.
+iac-mcp is an MCP (Model Context Protocol) server that uses Just-In-Time Discovery (JITD) to dynamically discover and orchestrate any installed application without pre-built integrations.
+
+## Platform Support
+
+**Current (Phase 1):** macOS
+- AppleScript/JXA automation
+- SDEF (Scripting Definition) parsing
+- Scriptable apps (Finder, Mail, Safari, etc.)
+
+**Planned (Phase 5+):** Multi-platform
+- **Windows**: VBA, COM, Windows Messaging
+- **Linux**: D-Bus, command-line tools
+- **Cross-platform**: Electron apps, web automation
+
+The JITD architecture is designed to work with any platform's native automation capabilities.
 
 ## Features
 
-- 🔍 **Just-In-Time Discovery**: Automatically discovers installed scriptable apps
-- 📝 **SDEF Parsing**: Parses application Scripting Definitions dynamically
-- 🛠️ **Tool Generation**: Generates MCP tools from app capabilities
+- 🔍 **Just-In-Time Discovery**: Automatically discovers installed apps and their capabilities
+- 🛠️ **Dynamic Tool Generation**: Generates MCP tools from app automation interfaces
 - 🔐 **Permission System**: Safe execution with user-controlled permissions
-- 🚀 **Zero Configuration**: Works with apps immediately, no setup required
+- 🚀 **Zero Configuration**: Works with apps immediately, no pre-built integrations
+- 🌍 **Platform-Agnostic Design**: Extensible to any platform with native automation
 
 ## Status
 
-**Current Phase**: Phase 0 - Technical Validation
+**Current Phase**: Phase 0 - Technical Validation (macOS)
 
-This project is in early development. The goal of Phase 0 is to prove the JITD concept works by:
-1. Parsing one SDEF file (Finder)
+This project is in early development. The goal of Phase 0 is to prove the JITD concept works on macOS by:
+1. Parsing SDEF files (starting with Finder)
 2. Generating MCP tool definitions
 3. Executing commands via JXA
 4. Testing with Claude Desktop
 
-See [planning/ROADMAP.md](planning/ROADMAP.md) for the complete 18-month plan.
+See [planning/ROADMAP.md](planning/ROADMAP.md) for the complete 18-month plan including multi-platform expansion.
 
 ## Prerequisites
 
-- macOS (Monterey or later recommended)
+**For macOS (Phase 1):**
+- macOS Monterey or later
 - Node.js 20+ (LTS)
 - TypeScript 5+
 - Claude Desktop (for testing)
@@ -128,12 +143,16 @@ This project is in early development. Contributions welcome once Phase 0 is comp
 
 ## Roadmap
 
-- **Phase 0** (Month 1): Technical validation - prove JITD works
-- **Phase 1** (Months 2-5): Open source MCP bridge
-- **Phase 2** (Months 6-9): Native Swift UI
-- **Phase 3** (Months 10-12): Public launch
+- **Phase 0** (Month 1): Technical validation - prove JITD works on macOS
+- **Phase 1** (Months 2-5): Open source MCP bridge (macOS scriptable apps)
+- **Phase 2** (Months 6-9): Native Swift UI (macOS)
+- **Phase 3** (Months 10-12): Public launch (macOS)
 - **Phase 4** (Months 13-18): Grow to sustainability
-- **Phase 5** (18+ months): Windows, accessibility APIs, advanced features
+- **Phase 5** (18+ months): **Multi-platform expansion**
+  - Windows (VBA, COM, Windows Messaging) - 14x market opportunity
+  - Accessibility APIs (non-scriptable macOS apps)
+  - Linux/cross-platform support
+  - Vision AI integration
 
 See [planning/ROADMAP.md](planning/ROADMAP.md) for details.
 
