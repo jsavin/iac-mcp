@@ -261,7 +261,7 @@ describe('MacOSAdapter', () => {
 
     it('should execute commands with parameters', async () => {
       const tool = createMockTool();
-      const args = { target: '/Users/test/Desktop' };
+      const args = { target: '/tmp/test/Desktop' };
 
       mockJXAExecutor.execute.mockResolvedValueOnce({
         stdout: '{"success": true}',
@@ -377,7 +377,7 @@ describe('MacOSAdapter', () => {
 
     it('should compose JXA scripts from command and parameters', async () => {
       const tool = createMockTool();
-      const args = { target: '/Users/test/Desktop' };
+      const args = { target: '/tmp/test/Desktop' };
 
       mockJXAExecutor.execute.mockResolvedValueOnce({
         stdout: 'null',
@@ -658,7 +658,7 @@ describe('MacOSAdapter', () => {
 
     it('should handle commands with single parameter', () => {
       const tool = createMockTool();
-      const args = { target: '/Users/test/file.txt' };
+      const args = { target: '/tmp/test/file.txt' };
 
       const script = adapter.buildJXAScript(tool, args);
 
@@ -679,8 +679,8 @@ describe('MacOSAdapter', () => {
       });
 
       const args = {
-        from: '/Users/test/source.txt',
-        to: '/Users/test/dest.txt',
+        from: '/tmp/test/source.txt',
+        to: '/tmp/test/dest.txt',
         overwrite: true,
       };
 
@@ -751,7 +751,7 @@ describe('MacOSAdapter', () => {
           data: true,
         });
 
-        const result = await adapter.execute(tool, { target: '/Users/test/Desktop' });
+        const result = await adapter.execute(tool, { target: '/tmp/test/Desktop' });
 
         expect(result.success).toBe(true);
         expect(mockJXAExecutor.execute).toHaveBeenCalled();
@@ -776,7 +776,7 @@ describe('MacOSAdapter', () => {
           data: fileList,
         });
 
-        const result = await adapter.execute(tool, { target: '/Users/test' });
+        const result = await adapter.execute(tool, { target: '/tmp/test' });
 
         expect(result.success).toBe(true);
         expect(result.data).toEqual(fileList);
@@ -1206,7 +1206,7 @@ describe('MacOSAdapter', () => {
 
     it('should generate deterministic scripts for same inputs', () => {
       const tool = createMockTool();
-      const args = { target: '/Users/test' };
+      const args = { target: '/tmp/test' };
 
       const script1 = adapter.buildJXAScript(tool, args);
       const script2 = adapter.buildJXAScript(tool, args);

@@ -109,7 +109,7 @@ export async function setupHandlers(
    * 5. Error handling and formatting
    */
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name: toolName } = request.params;
+    const { name: toolName, arguments: args } = request.params;
 
     try {
       // In a real implementation, we would:
@@ -117,12 +117,13 @@ export async function setupHandlers(
       // 2. Validate arguments against inputSchema
       // 3. Check permissions via permissionChecker.check()
       // 4. If permission denied, return permission denied error
-      // 5. If permission allowed, execute via adapter.execute()
+      // 5. If permission allowed, execute via adapter.execute(toolName, args)
       // 6. Return result formatted as MCP TextContent
 
       // Placeholder: return tool not found error
       const errorResponse = formatErrorResponse('Tool not found', {
         toolName,
+        args,
       });
 
       return {

@@ -51,12 +51,6 @@ export interface ClassificationRule {
    * Reason for classification (optional)
    */
   reason: string;
-
-  /**
-   * Priority for rule evaluation (higher = checked first)
-   * Default: 100 if not specified
-   */
-  priority?: number;
 }
 
 /**

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync } from 'fs';
 import { access, constants } from 'fs/promises';
 import { join } from 'path';
+import { isMacOS } from '../utils/test-helpers';
 
 /**
  * Tests for SDEF file discovery
@@ -10,7 +11,7 @@ import { join } from 'path';
  * and handle various error cases appropriately.
  */
 
-describe('SDEF File Discovery', () => {
+describe.skipIf(!isMacOS())('SDEF File Discovery', () => {
   describe('findSDEFFile', () => {
     it('should find SDEF file at known Finder.app path', async () => {
       // The actual implementation should find the SDEF file
