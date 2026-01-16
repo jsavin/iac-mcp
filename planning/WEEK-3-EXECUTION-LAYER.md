@@ -17,11 +17,14 @@
 **Success Criteria:**
 - Can execute Finder commands via JXA
 - Can execute Safari commands via JXA
+- Can execute Chrome commands via JXA
+- Can execute Brave commands via JXA
 - Can execute Mail commands via JXA
 - Handles errors gracefully (no crashes)
 - Returns structured JSON results
 - Works with Claude Desktop end-to-end
 - 80%+ test coverage across all modules
+- Performance < 5 seconds for simple commands
 
 ---
 
@@ -1100,7 +1103,91 @@ describe('Mail Integration', () => {
 
 ---
 
-#### 4. End-to-End Tests
+#### 4. Chrome Execution Tests
+**File:** `tests/integration/chrome-execution.test.ts`
+
+**Test Cases:**
+```typescript
+describe('Chrome Integration', () => {
+  it('should get active tab URL', async () => {
+    // Application("Google Chrome").windows()[0].activeTab.url()
+    // Requires Chrome to be running with at least one tab
+  });
+
+  it('should get active tab title', async () => {
+    // Get the title of the current tab
+  });
+
+  it('should count open tabs', async () => {
+    // Count tabs across all windows
+  });
+
+  it('should reload current tab', async () => {
+    // Test reload command
+  });
+
+  it('should go back', async () => {
+    // Test navigation back
+  });
+
+  it('should execute JavaScript in tab', async () => {
+    // Test execute command with JS code
+  });
+
+  it('should handle Chrome not running', async () => {
+    // Test error handling when Chrome isn't open
+  });
+});
+```
+
+**Prerequisites:**
+- Chrome must be running for most tests
+- At least one tab should be open
+- Use `test.skipIf()` for conditional skipping
+
+---
+
+#### 5. Brave Execution Tests
+**File:** `tests/integration/brave-execution.test.ts`
+
+**Test Cases:**
+```typescript
+describe('Brave Integration', () => {
+  it('should get active tab URL', async () => {
+    // Application("Brave Browser").windows()[0].activeTab.url()
+    // Requires Brave to be running with at least one tab
+  });
+
+  it('should get active tab title', async () => {
+    // Get the title of the current tab
+  });
+
+  it('should count open tabs', async () => {
+    // Count tabs across all windows
+  });
+
+  it('should reload current tab', async () => {
+    // Test reload command
+  });
+
+  it('should open new tab with URL', async () => {
+    // Test opening a new tab
+  });
+
+  it('should handle Brave not running', async () => {
+    // Test error handling when Brave isn't open
+  });
+});
+```
+
+**Prerequisites:**
+- Brave must be running for most tests
+- At least one tab should be open
+- Use `test.skipIf()` for conditional skipping
+
+---
+
+#### 6. End-to-End Tests
 **File:** `tests/integration/end-to-end.test.ts`
 
 **Test Cases:**
@@ -1710,6 +1797,372 @@ I found 3 items on your desktop:
 
 ---
 
+## Browser Automation Examples
+
+### Chrome/Brave Common Workflows
+
+Both Chrome and Brave support the same commands since Brave is Chromium-based. Below are practical examples for common browser automation tasks.
+
+#### 1. Get Current Tab URL
+
+**Tool:** `chrome_get_url` or `brave_get_url`
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome"); // or "Brave Browser"
+  if (app.windows.length === 0) {
+    throw new Error("No Chrome windows open");
+  }
+  const activeTab = app.windows[0].activeTab;
+  return activeTab.url();
+})()
+```
+
+**MCP Tool Call:**
+```json
+{
+  "name": "chrome_get_url",
+  "arguments": {}
+}
+```
+
+**Result:**
+```json
+{
+  "success": true,
+  "data": "https://github.com/jsavin/iac-mcp"
+}
+```
+
+---
+
+#### 2. Get Current Tab Title
+
+**Tool:** `chrome_get_title` or `brave_get_title`
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome");
+  return app.windows[0].activeTab.title();
+})()
+```
+
+**Result:**
+```json
+{
+  "success": true,
+  "data": "jsavin/iac-mcp: Just-In-Time Discovery MCP Bridge"
+}
+```
+
+---
+
+#### 3. Count Open Tabs
+
+**Tool:** `chrome_count_tabs` or `brave_count_tabs`
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome");
+  let totalTabs = 0;
+  for (const window of app.windows()) {
+    totalTabs += window.tabs.length;
+  }
+  return totalTabs;
+})()
+```
+
+**Result:**
+```json
+{
+  "success": true,
+  "data": 12
+}
+```
+
+---
+
+#### 4. Reload Current Tab
+
+**Tool:** `chrome_reload` or `brave_reload`
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome");
+  app.windows[0].activeTab.reload();
+  return { success: true, message: "Tab reloaded" };
+})()
+```
+
+**Use Case:** Refresh a page after making changes
+- "Reload the current tab"
+- "Refresh the page"
+
+---
+
+#### 5. Navigate Back
+
+**Tool:** `chrome_go_back` or `brave_go_back`
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome");
+  app.goBack();
+  return { success: true, message: "Navigated back" };
+})()
+```
+
+**Use Case:** Go to previous page
+- "Go back one page"
+- "Navigate to the previous page"
+
+---
+
+#### 6. Navigate Forward
+
+**Tool:** `chrome_go_forward` or `brave_go_forward`
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome");
+  app.goForward();
+  return { success: true, message: "Navigated forward" };
+})()
+```
+
+---
+
+#### 7. Open New Tab with URL
+
+**Tool:** `chrome_open` or `brave_open`
+
+**Parameters:**
+- `url` (string): The URL to open
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome");
+  const url = "https://github.com";
+
+  // Create new tab in first window
+  const newTab = app.Tab({ url: url });
+  app.windows[0].tabs.push(newTab);
+
+  return { success: true, url: url };
+})()
+```
+
+**MCP Tool Call:**
+```json
+{
+  "name": "chrome_open",
+  "arguments": {
+    "url": "https://github.com"
+  }
+}
+```
+
+**Use Cases:**
+- "Open GitHub in a new tab"
+- "Open https://example.com in Chrome"
+
+---
+
+#### 8. Execute JavaScript in Tab
+
+**Tool:** `chrome_execute` or `brave_execute`
+
+**Parameters:**
+- `javascript` (string): JavaScript code to execute
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome");
+  const jsCode = "document.title";
+
+  // Execute JavaScript in active tab
+  const result = app.windows[0].activeTab.execute({ javascript: jsCode });
+  return result;
+})()
+```
+
+**MCP Tool Call:**
+```json
+{
+  "name": "chrome_execute",
+  "arguments": {
+    "javascript": "document.querySelector('h1').textContent"
+  }
+}
+```
+
+**Use Cases:**
+- "Get the main heading text from the page"
+- "Check if element exists: document.querySelector('.login-button')"
+- "Get all image URLs: [...document.querySelectorAll('img')].map(img => img.src)"
+
+**Security Note:** This is a powerful command. Consider classifying as `MODIFY` level permission since it can manipulate page content.
+
+---
+
+#### 9. Close Current Tab
+
+**Tool:** `chrome_close` or `brave_close`
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome");
+  app.windows[0].activeTab.close();
+  return { success: true, message: "Tab closed" };
+})()
+```
+
+**Use Case:** Clean up tabs
+- "Close this tab"
+- "Close the current tab"
+
+**Permission Level:** `MODIFY` (closes user content)
+
+---
+
+#### 10. Get All Tab URLs
+
+**Tool:** `chrome_list_tabs` or `brave_list_tabs`
+
+**JXA Script:**
+```javascript
+(() => {
+  const app = Application("Google Chrome");
+  const tabs = [];
+
+  for (const window of app.windows()) {
+    for (const tab of window.tabs()) {
+      tabs.push({
+        title: tab.title(),
+        url: tab.url()
+      });
+    }
+  }
+
+  return tabs;
+})()
+```
+
+**Result:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "title": "GitHub",
+      "url": "https://github.com"
+    },
+    {
+      "title": "Google",
+      "url": "https://google.com"
+    }
+  ]
+}
+```
+
+**Use Cases:**
+- "List all open tabs"
+- "Show me all my Chrome tabs"
+- "What tabs do I have open?"
+
+---
+
+### Browser Automation Use Cases
+
+#### Workflow 1: Web Development
+```
+User: "Reload the current page and get the page title"
+
+1. chrome_reload() → Refresh page
+2. Wait 2 seconds
+3. chrome_get_title() → Get updated title
+```
+
+#### Workflow 2: Research
+```
+User: "Open 5 research links in new tabs"
+
+1. chrome_open({ url: "https://paper1.com" })
+2. chrome_open({ url: "https://paper2.com" })
+3. chrome_open({ url: "https://paper3.com" })
+4. chrome_open({ url: "https://paper4.com" })
+5. chrome_open({ url: "https://paper5.com" })
+```
+
+#### Workflow 3: Content Extraction
+```
+User: "Get all article headings from the current page"
+
+1. chrome_execute({
+     javascript: "[...document.querySelectorAll('h2')].map(h => h.textContent)"
+   })
+```
+
+#### Workflow 4: Tab Management
+```
+User: "List all my tabs and close any with 'youtube' in the URL"
+
+1. chrome_list_tabs() → Get all tabs
+2. Filter tabs with 'youtube' in URL
+3. For each YouTube tab: chrome_close()
+```
+
+---
+
+### Browser Error Scenarios
+
+#### Chrome/Brave Not Running
+```typescript
+// Error: Application can't be found or isn't running
+{
+  "error": {
+    "type": "APP_NOT_RUNNING",
+    "message": "Google Chrome is not running. Please open Chrome and try again.",
+    "retryable": true
+  }
+}
+```
+
+#### No Windows Open
+```typescript
+// Error: Chrome is running but no windows
+{
+  "error": {
+    "type": "EXECUTION_ERROR",
+    "message": "Chrome has no open windows. Please open a window first.",
+    "retryable": true
+  }
+}
+```
+
+#### JavaScript Execution Error
+```typescript
+// Error: Invalid JavaScript syntax
+{
+  "error": {
+    "type": "EXECUTION_ERROR",
+    "message": "JavaScript execution failed: SyntaxError: Unexpected token",
+    "retryable": false
+  }
+}
+```
+
+---
+
 ## Testing Checklist
 
 ### Unit Test Coverage
@@ -1769,6 +2222,22 @@ I found 3 items on your desktop:
   - [ ] Get mailboxes works
   - [ ] Not configured error works
 
+- [ ] Chrome Integration (if available)
+  - [ ] Get active tab URL works
+  - [ ] Get tab title works
+  - [ ] Count tabs works
+  - [ ] Reload tab works
+  - [ ] Execute JavaScript works
+  - [ ] Not running error works
+
+- [ ] Brave Integration (if available)
+  - [ ] Get active tab URL works
+  - [ ] Get tab title works
+  - [ ] Count tabs works
+  - [ ] Reload tab works
+  - [ ] Open new tab works
+  - [ ] Not running error works
+
 - [ ] End-to-End
   - [ ] Full ListTools flow works
   - [ ] Full CallTool flow works
@@ -1781,6 +2250,8 @@ I found 3 items on your desktop:
   - [ ] Can discover tools
   - [ ] Can execute Finder commands
   - [ ] Can execute Safari commands (if Safari running)
+  - [ ] Can execute Chrome commands (if Chrome running)
+  - [ ] Can execute Brave commands (if Brave running)
   - [ ] Errors are clear
   - [ ] No crashes
   - [ ] Performance acceptable (< 5s response)
