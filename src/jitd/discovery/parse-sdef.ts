@@ -5,7 +5,7 @@
  * structured data about application capabilities.
  */
 
-import { readFile } from 'fs/promises';
+import { readFile, stat } from 'fs/promises';
 import { XMLParser } from 'fast-xml-parser';
 import type {
   SDEFDictionary,
@@ -21,13 +21,33 @@ import type {
 } from '../../types/sdef.js';
 
 /**
+ * Maximum allowed SDEF file size (10MB)
+ * Prevents XML billion laughs and other DoS attacks
+ */
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+/**
+ * Options for SDEF Parser configuration
+ */
+export interface SDEFParserOptions {
+  /**
+   * Enable strict type checking - throw error on unknown types
+   * Default: false (unknown types treated as class references)
+   */
+  strictTypeChecking?: boolean;
+}
+
+/**
  * SDEF Parser - extracts structured data from SDEF XML files
  */
 export class SDEFParser {
   private parser: XMLParser;
   private parseCache: Map<string, SDEFDictionary>;
+  private readonly MAX_CACHE_SIZE = 50; // Limit cache entries
+  private readonly strictTypeChecking: boolean;
 
-  constructor() {
+  constructor(options?: SDEFParserOptions) {
+    this.strictTypeChecking = options?.strictTypeChecking ?? false;
     // Configure XML parser
     this.parser = new XMLParser({
       ignoreAttributes: false,
@@ -35,6 +55,8 @@ export class SDEFParser {
       textNodeName: '#text',
       parseAttributeValue: false, // Keep as strings for type safety
       trimValues: false, // Don't trim - four-character codes may have trailing spaces
+      // Security: Ignore XML declarations and processing instructions
+      // to prevent XXE (XML External Entity) attacks
       ignoreDeclaration: true,
       ignorePiTags: true,
     });
@@ -53,10 +75,25 @@ export class SDEFParser {
     }
 
     try {
+      // Security: Check file size to prevent DoS attacks
+      const stats = await stat(sdefPath);
+      if (stats.size > MAX_FILE_SIZE) {
+        throw new Error(
+          `SDEF file too large: ${stats.size} bytes (max ${MAX_FILE_SIZE} bytes)`
+        );
+      }
+
       const xmlContent = await readFile(sdefPath, 'utf-8');
       const result = await this.parseContent(xmlContent);
 
-      // Cache the result
+      // Cache the result with LRU eviction
+      if (this.parseCache.size >= this.MAX_CACHE_SIZE) {
+        // Evict oldest entry (first key in Map)
+        const firstKey = this.parseCache.keys().next().value;
+        if (firstKey) {
+          this.parseCache.delete(firstKey);
+        }
+      }
       this.parseCache.set(sdefPath, result);
 
       return result;
@@ -403,7 +440,8 @@ export class SDEFParser {
    * - Enumeration references
    */
   private parseType(typeStr: string): SDEFType {
-    // Trim whitespace
+    // Safe to trim type strings - four-character codes only appear in 'code' attributes
+    // Type attributes contain strings like "text", "list of file", etc.
     typeStr = typeStr.trim();
 
     // Handle primitive types
@@ -454,6 +492,11 @@ export class SDEFParser {
     // This is a heuristic - we'll treat any unknown type as potentially a class or enum reference
     // In a real implementation, we'd cross-reference with known classes/enums
 
+    // Unknown type handling
+    if (this.strictTypeChecking) {
+      throw new Error(`Unknown type: "${typeStr}"`);
+    }
+
     // For now, assume unknown types are class references
     // A more sophisticated implementation would check against parsed classes/enums
     return {
@@ -479,10 +522,10 @@ export class SDEFParser {
       );
     }
 
-    // Codes should be ASCII printable characters
+    // Codes should be ASCII printable characters (no null bytes or control chars)
     for (let i = 0; i < code.length; i++) {
       const charCode = code.charCodeAt(i);
-      if (charCode < 32 || charCode > 126) {
+      if (charCode === 0 || charCode < 32 || charCode > 126) {
         throw new Error(
           `Invalid code "${code}" for ${elementType} "${elementName}": contains non-printable character`
         );

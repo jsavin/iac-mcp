@@ -13,7 +13,7 @@
 
 import { readdir, access, stat } from 'fs/promises';
 import { constants } from 'fs';
-import { join, basename } from 'path';
+import { join, basename, resolve, normalize } from 'path';
 import { homedir } from 'os';
 
 /**
@@ -112,6 +112,21 @@ async function isReadableDirectory(dirPath: string): Promise<boolean> {
 }
 
 /**
+ * Validates that a path is within the expected boundary directory
+ * Prevents path traversal attacks by ensuring resolved path stays within bounds
+ *
+ * @param targetPath - The path to validate
+ * @param boundaryPath - The directory that should contain the target
+ * @returns true if target is within boundary, false otherwise
+ */
+function isPathWithinBoundary(targetPath: string, boundaryPath: string): boolean {
+  const normalizedTarget = normalize(resolve(targetPath));
+  const normalizedBoundary = normalize(resolve(boundaryPath));
+
+  return normalizedTarget.startsWith(normalizedBoundary);
+}
+
+/**
  * Constructs the expected SDEF file path from an app bundle path
  *
  * macOS app bundles typically have the structure:
@@ -188,6 +203,12 @@ export async function findSDEFFile(
     }
     const sdefPath = join(resourcesPath, firstSdefFile);
 
+    // Security: Verify path is within expected boundary (prevent path traversal)
+    if (!isPathWithinBoundary(sdefPath, resourcesPath)) {
+      logger.error(`Path traversal attempt detected: ${firstSdefFile}`);
+      return null;
+    }
+
     // Verify it's readable before returning
     if (await isReadableFile(sdefPath)) {
       return sdefPath;
@@ -221,6 +242,12 @@ async function findAppBundles(directory: string, logger: Logger = noOpLogger): P
     for (const entry of entries) {
       if (entry.endsWith('.app')) {
         const fullPath = join(directory, entry);
+
+        // Security: Verify path is within expected boundary (prevent path traversal)
+        if (!isPathWithinBoundary(fullPath, directory)) {
+          logger.error(`Path traversal attempt detected in app discovery: ${entry}`);
+          continue;
+        }
 
         // Verify it's actually a directory (app bundle)
         if (await isReadableDirectory(fullPath)) {
@@ -267,7 +294,8 @@ export async function findAllScriptableApps(
   if (useCache && sdefCache) {
     const age = Date.now() - sdefCache.timestamp;
     if (age < CACHE_TTL_MS) {
-      return sdefCache.apps;
+      // Return shallow copy to prevent mutation of cached array
+      return [...sdefCache.apps];
     }
   }
 
@@ -280,17 +308,25 @@ export async function findAllScriptableApps(
     try {
       const appBundles = await findAppBundles(directory, logger);
 
-      // Check each app bundle for SDEF file
-      for (const bundlePath of appBundles) {
-        const sdefPath = await findSDEFFile(bundlePath, logger);
+      // Check each app bundle for SDEF file (parallelized for performance)
+      const sdefResults = await Promise.all(
+        appBundles.map(async (bundlePath) => {
+          const sdefPath = await findSDEFFile(bundlePath, logger);
+          if (sdefPath) {
+            return {
+              appName: basename(bundlePath, '.app'),
+              bundlePath,
+              sdefPath,
+            };
+          }
+          return null;
+        })
+      );
 
-        if (sdefPath) {
-          const appName = basename(bundlePath, '.app');
-          discoveredApps.push({
-            appName,
-            bundlePath,
-            sdefPath,
-          });
+      // Filter out null results and add to discovered apps
+      for (const result of sdefResults) {
+        if (result) {
+          discoveredApps.push(result);
         }
       }
     } catch (error) {

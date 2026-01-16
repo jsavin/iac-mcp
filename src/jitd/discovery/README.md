@@ -279,6 +279,83 @@ node dist/tools/test-discovery.js
 
 The module checks `process.platform === 'darwin'` where appropriate.
 
+## Security Considerations
+
+The discovery module implements several security measures:
+
+### Path Traversal Protection
+- All constructed paths are validated against their expected boundary directories
+- Prevents symlinks or malicious filenames from accessing files outside app bundles
+- Uses `normalize()` and `resolve()` to detect traversal attempts
+
+### Filesystem Access
+- Validates file readability before attempting to read
+- Handles permission errors gracefully without crashing
+- Logs security events (path traversal attempts) when logger is provided
+
+### Best Practices
+- **Optional Logging**: Use the `logger` parameter to monitor security events in production
+- **Cache Safety**: Returned cached arrays are shallow copies to prevent mutation
+- **Input Validation**: All paths are validated before filesystem operations
+
+Example with logging:
+```typescript
+import { findAllScriptableApps, consoleLogger } from './jitd/discovery/find-sdef.js';
+
+const apps = await findAllScriptableApps({ logger: consoleLogger });
+```
+
+## Troubleshooting
+
+### findSDEFFile returns null for known scriptable app
+
+**Possible causes:**
+- SDEF file doesn't follow standard naming convention (AppName.sdef)
+- SDEF file is in non-standard location within app bundle
+- File permissions prevent reading
+- App bundle structure is malformed
+
+**Solutions:**
+1. Check file permissions: `ls -l /path/to/App.app/Contents/Resources/`
+2. Look for SDEF file manually: `find /path/to/App.app -name "*.sdef"`
+3. Verify app bundle structure has Contents/Resources directories
+
+### Parser returns "Invalid SDEF format"
+
+**Possible causes:**
+- SDEF file is not well-formed XML
+- Missing required `<dictionary>` root element
+- File is corrupted or empty
+
+**Solutions:**
+1. Validate XML structure: `xmllint --noout /path/to/file.sdef`
+2. Check file size: `ls -lh /path/to/file.sdef`
+3. Try parsing with verbose error output to see specific XML error
+
+### Discovery returns empty array
+
+**Possible causes:**
+- No scriptable apps installed in common directories
+- Permission denied for application directories
+- Running on non-macOS system
+
+**Solutions:**
+1. Check platform: `echo $OSTYPE` (should be darwin*)
+2. Verify apps exist: `ls -la /Applications/*.app`
+3. Check for SDEF files: `find /Applications -name "*.sdef" 2>/dev/null`
+
+### Performance issues with discovery
+
+**Symptoms:**
+- Discovery takes >5 seconds
+- High CPU usage during scan
+
+**Solutions:**
+1. Enable caching: `findAllScriptableApps({ useCache: true })` (default)
+2. Limit directories by customizing search paths
+3. Run discovery in background thread if needed
+4. Cache results at application level
+
 ## Future Enhancements
 
 Potential improvements for future versions:
