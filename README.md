@@ -42,23 +42,66 @@ See [planning/ROADMAP.md](planning/ROADMAP.md) for the complete 18-month plan in
 
 **For macOS (Phase 1):**
 - macOS Monterey or later
-- Node.js 20+ (LTS)
-- TypeScript 5+
+- Node.js 20.11+ (LTS) - see [Node Version Management](#node-version-management)
 - Claude Desktop (for testing)
 
 ## Installation
 
+### Quick Start
+
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/iac-mcp.git
+git clone https://github.com/jsavin/iac-mcp.git
 cd iac-mcp
 
-# Install dependencies
-npm install
+# Install dependencies (uses package-lock.json for exact versions)
+npm ci
 
 # Build the project
 npm run build
+
+# Verify installation
+npm run verify
 ```
+
+### Node Version Management
+
+This project uses **Node.js 20.11.0** (LTS). We provide `.nvmrc` and `.node-version` files for automatic version management.
+
+**Option 1: Using nvm (recommended)**
+```bash
+# Install nvm if you don't have it
+# See: https://github.com/nvm-sh/nvm
+
+# Use the correct Node version (reads .nvmrc automatically)
+nvm use
+
+# Or install if you don't have Node 20.11.0
+nvm install
+```
+
+**Option 2: Using Volta**
+```bash
+# Volta automatically detects .node-version
+# See: https://volta.sh/
+
+# Just cd into the directory and Volta handles it
+cd iac-mcp
+```
+
+**Option 3: Manual installation**
+- Download Node.js 20.11.0 from https://nodejs.org/
+- Verify: `node --version` should show `v20.11.0`
+
+### Dependency Management
+
+We use `package-lock.json` to ensure **everyone gets identical dependencies**:
+
+- **For fresh install:** `npm ci` (faster, stricter, uses lock file)
+- **For development:** `npm install` (updates lock file if needed)
+- **Never delete** `package-lock.json` - it's committed to git
+
+This prevents "works on my machine" issues from dependency version drift.
 
 ## Development
 
