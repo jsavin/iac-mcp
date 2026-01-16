@@ -59,12 +59,18 @@ export class JXAExecutor {
    * - While JXA has a limited sandbox, certain patterns can escape to shell
    * - `do shell script` executes arbitrary shell commands
    * - `system.run()` spawns new processes
+   * - eval() and Function() can execute arbitrary code
+   * - Template literals can hide dynamic code execution
+   * - Encoded strings can bypass pattern matching
+   * - Control characters can hide or manipulate script behavior
    * - Other patterns can bypass intended application control flow
    *
    * This validation provides defense-in-depth against:
    * - Malicious scripts from untrusted sources
    * - Script injection via template/parameter manipulation
    * - Unintended privilege escalation
+   * - Encoded payload attacks
+   * - Control character injection
    *
    * @param script - JXA script to validate
    * @throws Error if dangerous patterns are detected
@@ -95,6 +101,96 @@ export class JXAExecutor {
       {
         pattern: /@import\s+['"]AppKit['"]/i,
         description: 'AppKit import (potential UI/process manipulation)',
+      },
+      // NEW: eval() and Function() constructor (arbitrary code execution)
+      {
+        pattern: /\beval\s*\(/i,
+        description: 'Dynamic code execution via eval()',
+      },
+      {
+        pattern: /\bFunction\s*\(/i,
+        description: 'Dynamic code execution via Function constructor',
+      },
+      // NEW: Template literals with expressions (can execute arbitrary code)
+      {
+        pattern: /`[^`]*\$\{[^}]*\}/,
+        description: 'Template literal with expression (potential code execution)',
+      },
+      // NEW: Base64 encoded strings (can hide malicious payloads)
+      {
+        pattern: /atob\s*\(/i,
+        description: 'Base64 decoding (potential encoded payload)',
+      },
+      {
+        pattern: /btoa\s*\(/i,
+        description: 'Base64 encoding (potential obfuscation)',
+      },
+      // NEW: Hex/octal/unicode escape sequences that could hide code
+      {
+        pattern: /\\x[0-9a-fA-F]{2}/,
+        description: 'Hex escape sequence (potential obfuscation)',
+      },
+      {
+        pattern: /\\u[0-9a-fA-F]{4}/,
+        description: 'Unicode escape sequence (potential obfuscation)',
+      },
+      {
+        pattern: /\\[0-7]{1,3}/,
+        description: 'Octal escape sequence (potential obfuscation)',
+      },
+      // NEW: Control characters (null bytes, newlines in strings, etc.)
+      {
+        pattern: /\x00/,
+        description: 'Null byte (control character injection)',
+      },
+      {
+        pattern: /[\x01-\x08\x0B\x0C\x0E-\x1F]/,
+        description: 'Control character (potential injection)',
+      },
+      // NEW: Comment sequences that could hide code execution
+      // We intentionally flag suspicious patterns even in comments as a security-first approach
+      {
+        pattern: /\/\*[^*]*\beval\b[^*]*\*\//i,
+        description: 'Suspicious pattern in block comment (eval)',
+      },
+      {
+        pattern: /\/\*[^*]*\bFunction\b[^*]*\*\//i,
+        description: 'Suspicious pattern in block comment (Function)',
+      },
+      {
+        pattern: /\/\*[^*]*\bdo\s+shell\b[^*]*\*\//i,
+        description: 'Suspicious pattern in block comment (shell)',
+      },
+      {
+        pattern: /\/\/[^\n]*\beval\b/i,
+        description: 'Suspicious pattern in line comment (eval)',
+      },
+      {
+        pattern: /\/\/[^\n]*\bFunction\b/i,
+        description: 'Suspicious pattern in line comment (Function)',
+      },
+      {
+        pattern: /\/\/[^\n]*\bdo\s+shell\b/i,
+        description: 'Suspicious pattern in line comment (shell)',
+      },
+      // NEW: String concatenation that could build dangerous commands
+      // Detect common obfuscation patterns: "do " + "shell", "ev" + "al", etc.
+      {
+        pattern: /["']do\s*["']\s*\+\s*["']shell/i,
+        description: 'String concatenation building "do shell" command',
+      },
+      {
+        pattern: /["']ev["']\s*\+\s*["']al["']/i,
+        description: 'String concatenation building "eval" function name',
+      },
+      {
+        pattern: /["']Func["']\s*\+\s*["']tion["']/i,
+        description: 'String concatenation building "Function" constructor name',
+      },
+      // NEW: Dynamic property access that could hide method calls
+      {
+        pattern: /\[["'](?:eval|Function|exec)["']\]/i,
+        description: 'Dynamic property access to dangerous function',
       },
     ];
 

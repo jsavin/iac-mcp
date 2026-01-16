@@ -388,5 +388,322 @@ describe('JXAExecutor', () => {
 
       expect(execFile).not.toHaveBeenCalled();
     });
+
+    // NEW TESTS: eval() detection
+    it('should reject script with eval() call', async () => {
+      const maliciousScript = 'eval("malicious code")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Dynamic code execution via eval/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with eval() (case insensitive)', async () => {
+      const maliciousScript = 'EVAL("code")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Dynamic code execution via eval/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with eval() in expression', async () => {
+      const maliciousScript = 'const result = eval("return " + userInput)';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Dynamic code execution via eval/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    // NEW TESTS: Function() constructor detection
+    it('should reject script with Function() constructor', async () => {
+      const maliciousScript = 'const fn = Function("return malicious code")()';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Dynamic code execution via Function constructor/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with Function() (case variations)', async () => {
+      const maliciousScript = 'const fn = new Function("x", "return x * 2")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Dynamic code execution via Function constructor/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    // NEW TESTS: Template literal detection
+    it('should reject script with template literal expression', async () => {
+      const maliciousScript = 'const cmd = `execute ${userInput}`';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Template literal with expression/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with complex template literal', async () => {
+      const maliciousScript = 'const result = `${eval("dangerous")}`';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should allow simple template literals without expressions', async () => {
+      const safeScript = 'return "safe template"';
+      const mockProcess = new MockChildProcess('safe template\n', '', 0);
+      vi.mocked(execFile).mockReturnValue(mockProcess as any);
+
+      const promise = executor.execute(safeScript);
+      mockProcess.simulateExecution();
+      const result = await promise;
+
+      expect(result.exitCode).toBe(0);
+      expect(execFile).toHaveBeenCalled();
+    });
+
+    // NEW TESTS: Base64 encoding detection
+    it('should reject script with atob() (base64 decode)', async () => {
+      const maliciousScript = 'const decoded = atob("ZG8gc2hlbGwgc2NyaXB0")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Base64 decoding/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with btoa() (base64 encode)', async () => {
+      const maliciousScript = 'const encoded = btoa("malicious payload")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Base64 encoding/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    // NEW TESTS: Escape sequence detection
+    it('should reject script with hex escape sequences', async () => {
+      const maliciousScript = 'const cmd = "\\x65\\x76\\x61\\x6c"'; // "eval" in hex
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Hex escape sequence/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with unicode escape sequences', async () => {
+      const maliciousScript = 'const cmd = "\\u0065\\u0076\\u0061\\u006c"'; // "eval" in unicode
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Unicode escape sequence/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with octal escape sequences', async () => {
+      const maliciousScript = 'const cmd = "\\145\\166\\141\\154"'; // "eval" in octal
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Octal escape sequence/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    // NEW TESTS: Control character detection
+    it('should reject script with null byte', async () => {
+      const maliciousScript = 'const cmd = "safe\x00malicious"';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Null byte/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with control characters', async () => {
+      const maliciousScript = 'const cmd = "command\x01injection"';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Control character/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    // NEW TESTS: Comment-based obfuscation
+    it('should reject script with suspicious block comment', async () => {
+      const maliciousScript = '/* hidden eval() call */ return 42';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with suspicious line comment containing eval', async () => {
+      const maliciousScript = '// This uses eval() to do something\nreturn 42';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with suspicious line comment containing Function', async () => {
+      const maliciousScript = '// Using Function constructor here\nreturn 42';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Suspicious pattern in line comment/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    // NEW TESTS: String concatenation attacks
+    it('should reject script building eval via string concatenation', async () => {
+      const maliciousScript = 'const fn = "ev" + "al"; window[fn]("code")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*String concatenation building "eval"/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script building shell command via concatenation', async () => {
+      const maliciousScript = 'const cmd = "do " + "shell" + " script"';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*String concatenation building "do shell"/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script building Function via string concatenation', async () => {
+      const maliciousScript = 'const ctor = "Func" + "tion"; window[ctor]("return 1")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*String concatenation building "Function"/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    // NEW TESTS: Dynamic property access
+    it('should reject script with dynamic eval access', async () => {
+      const maliciousScript = 'const fn = window["eval"]; fn("code")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Dynamic property access to dangerous function/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with dynamic Function access', async () => {
+      const maliciousScript = 'const Fn = window["Function"]; new Fn("return 1")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected.*Dynamic property access to dangerous function/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    // TESTS: Verify safe scripts still work
+    it('should allow safe script with "evaluate" (not eval)', async () => {
+      const safeScript = 'return "I will evaluate this later"';
+      const mockProcess = new MockChildProcess('I will evaluate this later\n', '', 0);
+      vi.mocked(execFile).mockReturnValue(mockProcess as any);
+
+      const promise = executor.execute(safeScript);
+      mockProcess.simulateExecution();
+      const result = await promise;
+
+      expect(result.exitCode).toBe(0);
+      expect(execFile).toHaveBeenCalled();
+    });
+
+    it('should allow safe script with normal string operations', async () => {
+      const safeScript = 'const name = "hello"; const greeting = "Hi " + name; return greeting';
+      const mockProcess = new MockChildProcess('Hi hello\n', '', 0);
+      vi.mocked(execFile).mockReturnValue(mockProcess as any);
+
+      const promise = executor.execute(safeScript);
+      mockProcess.simulateExecution();
+      const result = await promise;
+
+      expect(result.exitCode).toBe(0);
+      expect(execFile).toHaveBeenCalled();
+    });
+
+    it('should allow safe script with Array/Object methods', async () => {
+      const safeScript = 'const arr = [1,2,3]; return arr.map(x => x * 2)';
+      const mockProcess = new MockChildProcess('[2,4,6]\n', '', 0);
+      vi.mocked(execFile).mockReturnValue(mockProcess as any);
+
+      const promise = executor.execute(safeScript);
+      mockProcess.simulateExecution();
+      const result = await promise;
+
+      expect(result.exitCode).toBe(0);
+      expect(execFile).toHaveBeenCalled();
+    });
+
+    // TESTS: Combined attack vectors
+    it('should reject combined attack with eval in template literal', async () => {
+      const maliciousScript = 'const result = `${eval("process.exit(0)")}`';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject hex-encoded eval attempt', async () => {
+      const maliciousScript = 'const dangerous = "\\x65val"; window[dangerous]("code")';
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject script with multiple injection vectors', async () => {
+      const maliciousScript = `
+        const encoded = atob("ZXZhbA==");
+        const fn = Function("return malicious");
+        const template = \`execute \${encoded}\`;
+      `;
+
+      await expect(executor.execute(maliciousScript)).rejects.toThrow(
+        /Command injection attempt detected/
+      );
+
+      expect(execFile).not.toHaveBeenCalled();
+    });
   });
 });

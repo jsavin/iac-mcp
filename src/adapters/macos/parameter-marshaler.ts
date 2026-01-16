@@ -6,6 +6,8 @@
  */
 
 import { resolve } from 'path';
+import { realpathSync } from 'fs';
+import { homedir } from 'os';
 import type { JSONSchema, JSONSchemaProperty, ToolMetadata } from '../../types/mcp-tool.js';
 
 /**
@@ -417,11 +419,10 @@ export class ParameterMarshaler {
     // - Resolve . and .. components
     // - Normalize multiple slashes
     // Note: For relative paths (./foo), this resolves from current working directory
-    // For paths starting with ~, expand them first (handled by JXA at runtime)
     let resolvedPath: string;
     if (normalizedPath.startsWith('~/')) {
-      // Home directory paths: can't resolve at validation time, but check structure
-      // Remove ~/ prefix and validate the rest
+      // Home directory paths: expand ~ to actual home directory and resolve symlinks
+      // This prevents attacks like: ln -s /System/Library ~/my_symlink
       const pathWithoutHome = normalizedPath.slice(2);
       if (pathWithoutHome.includes('../')) {
         throw new Error(
@@ -429,11 +430,27 @@ export class ParameterMarshaler {
           'Cannot access parent directories for security reasons.'
         );
       }
-      // For whitelist check, we'll validate it's a home directory path
-      resolvedPath = normalizedPath;
+
+      // Expand ~ to actual home directory
+      const expandedPath = normalizedPath.replace(/^~/, homedir());
+
+      // Resolve symlinks using fs.realpathSync to get the canonical path
+      try {
+        resolvedPath = realpathSync(expandedPath);
+      } catch {
+        // If path doesn't exist yet, resolve without following symlinks
+        // This allows creating new files, but we still validate the parent directory structure
+        resolvedPath = resolve(expandedPath);
+      }
     } else {
       // Absolute and relative paths: resolve to canonical form
-      resolvedPath = resolve(normalizedPath);
+      // Try to resolve symlinks if path exists
+      try {
+        resolvedPath = realpathSync(normalizedPath);
+      } catch {
+        // If path doesn't exist yet, resolve without following symlinks
+        resolvedPath = resolve(normalizedPath);
+      }
     }
 
     // 6. WHITELIST VALIDATION
