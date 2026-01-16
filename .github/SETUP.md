@@ -17,19 +17,18 @@ There are **two required steps** to enable Claude Code on this repository:
 
 **This step grants Claude the permissions to access the repo and post comments.**
 
-### Step 2: Configure the OAuth Token
+### Step 2: Configure the Anthropic API Key
 
-1. Visit [Claude Code OAuth Setup](https://code.anthropic.com/oauth)
-2. Follow the instructions to generate an OAuth token for GitHub Actions
-3. Copy the token (you'll only see it once)
-4. Go to your repository on GitHub: `https://github.com/jsavin/iac-mcp`
-5. Navigate to **Settings** > **Secrets and variables** > **Actions**
-6. Click **New repository secret**
-7. Name: `CLAUDE_CODE_OAUTH_TOKEN`
-8. Value: Paste the OAuth token you copied
-9. Click **Add secret**
+1. Get your Anthropic API key from https://console.anthropic.com/settings/keys
+2. Copy the API key (starts with `sk-ant-`)
+3. Go to your repository on GitHub: `https://github.com/jsavin/iac-mcp`
+4. Navigate to **Settings** > **Secrets and variables** > **Actions**
+5. Click **New repository secret**
+6. Name: `ANTHROPIC_API_KEY`
+7. Value: Paste your Anthropic API key
+8. Click **Add secret**
 
-**This token authenticates Claude's actions in the workflows.**
+**This API key authenticates Claude's actions in the workflows.**
 
 ## Workflows Enabled
 
@@ -67,10 +66,11 @@ You can check workflow runs in the **Actions** tab of your repository.
 
 ## Security Notes
 
-- The OAuth token has limited permissions (read-only access to code, ability to comment)
-- Claude cannot push code changes directly
+- The API key is stored securely as a GitHub secret (encrypted at rest)
+- Claude has read-only access to code and can only comment on PRs/issues
+- Claude cannot push code changes directly (unless you modify the allowed tools)
 - All Claude actions are visible in the Actions tab
-- You can revoke the token at any time from the Claude Code dashboard
+- You can revoke the API key at any time from the Anthropic Console
 
 ## Documentation
 
