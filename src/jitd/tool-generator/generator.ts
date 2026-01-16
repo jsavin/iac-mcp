@@ -201,15 +201,16 @@ export class ToolGenerator {
     );
 
     // Generate or use description
-    let description = command.description;
+    let description: string = command.description || '';
     if (!description || description.trim() === '') {
       // Generate description from command name
       description = `Execute ${command.name} command`;
     }
 
     // Truncate description if needed
-    if (description.length > this.options.maxDescriptionLength) {
-      description = description.substring(0, this.options.maxDescriptionLength - 3) + '...';
+    const maxLen = this.options.maxDescriptionLength;
+    if (maxLen && description.length > maxLen) {
+      description = description.substring(0, maxLen - 3) + '...';
     }
 
     // Build input schema
