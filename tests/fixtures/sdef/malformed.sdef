@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+
+<dictionary title="Malformed SDEF">
+	<suite name="Broken Suite" code="BROK">
+		<command name="broken command" code="brok">
+			<parameter name="unclosed parameter" type="text"
+		</command>
+	</suite>
+	<!-- Missing closing dictionary tag -->
