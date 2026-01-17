@@ -195,6 +195,11 @@ export class EntityResolver {
     depth: number = 0,
     currentFile?: string
   ): Promise<string> {
+    // SECURITY: Reset resource tracking at top level
+    if (depth === 0) {
+      this.totalBytesRead = 0;
+    }
+
     // SECURITY: Validate against XXE/DTD entity attacks BEFORE processing
     this.validateNoExternalEntities(content);
 
@@ -234,9 +239,12 @@ export class EntityResolver {
       let match;
       while ((match = includePattern.exec(content)) !== null) {
         const attributes = match[1];
+        if (!attributes) {
+          continue;
+        }
         const hrefMatch = /href="([^"]*)"/.exec(attributes);
 
-        if (hrefMatch) {
+        if (hrefMatch && hrefMatch[1]) {
           includes.push({
             match: match[0],
             href: hrefMatch[1],
@@ -355,7 +363,7 @@ export class EntityResolver {
     const doctypeWithInternalSubset = /<!DOCTYPE[^>]*\[([\s\S]*?)\]/;
     const match = doctypeWithInternalSubset.exec(content);
 
-    if (match) {
+    if (match && match[1]) {
       const internalSubset = match[1];
 
       // Reject if internal subset contains ENTITY declarations
@@ -379,7 +387,7 @@ export class EntityResolver {
     const doctypeSystem = /<!DOCTYPE\s+\w+\s+SYSTEM\s+"([^"]+)"/i;
     const systemMatch = doctypeSystem.exec(content);
 
-    if (systemMatch) {
+    if (systemMatch && systemMatch[1]) {
       const systemId = systemMatch[1];
 
       // Reject SYSTEM references to sensitive files (even if no internal subset)
@@ -642,20 +650,21 @@ export class EntityResolver {
   /**
    * Convert glob pattern to RegExp
    *
-   * SECURITY: Implements proper glob pattern matching for whitelist
-   * Supports: *, **, ?, [abc], {a,b}
+   * SECURITY: Implements basic glob pattern matching for whitelist
+   * Supports: * (any characters), ? (single character)
+   * Note: [abc] and {a,b} patterns are escaped (treated as literals)
    *
-   * @param pattern - Glob pattern
+   * @param pattern - Glob pattern (e.g., "/System/Library/*.sdef")
    * @returns Regular expression
    */
   private globToRegex(pattern: string): RegExp {
-    // Escape special regex characters except glob wildcards
+    // Escape all special regex characters except * and ?
     let regexPattern = pattern
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // Escape regex special chars
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // Escape regex special chars including [, ]
       .replace(/\*/g, '.*') // * matches any characters
       .replace(/\?/g, '.'); // ? matches single character
 
-    // Make case-insensitive for macOS
+    // Make case-insensitive for macOS filesystem
     return new RegExp(`^${regexPattern}`, 'i');
   }
 
