@@ -180,15 +180,77 @@ export class MacOSAdapter {
     );
 
     // Build script as IIFE
+    // Use command name, but check if we have parameters
+    // For commands with no required parameters, don't pass params object
+    const hasRequiredParams = tool.inputSchema?.required && tool.inputSchema.required.length > 0;
+    const methodCall = this.buildMethodCall(commandName);
+
+    // Only pass params if there are required parameters
+    const methodCall2 = hasRequiredParams ? `${methodCall}(${marshaledParams})` : `${methodCall}()`;
+
     const script = `(() => {
   const app = Application("${appName}");
   app.includeStandardAdditions = true;
-  const params = ${marshaledParams};
-  const result = app.${commandName}(params);
+  const result = app${methodCall2};
   return result;
 })()`;
 
     return script;
+  }
+
+  /**
+   * Build method call syntax for JXA
+   *
+   * Converts AppleScript command names to JXA-compatible format:
+   * - "end session" → endSession (camelCase)
+   * - "start new session" → startNewSession (camelCase)
+   * - Already camelCase → use as-is
+   *
+   * JXA requires command names to be valid JavaScript identifiers,
+   * so spaces and special characters must be converted to camelCase.
+   *
+   * @param commandName - The command name from tool metadata (may have spaces)
+   * @returns Method call syntax for JXA (e.g., ".endSession")
+   */
+  private buildMethodCall(commandName: string): string {
+    // Convert spaces and hyphens to camelCase
+    // "end session" → "endSession"
+    // "start-new-session" → "startNewSession"
+    // "getVolume" → "getVolume" (preserve if already valid)
+
+    // If it's already a valid identifier with no spaces/hyphens, preserve it
+    const hasDelimiters = /[\s-]/.test(commandName);
+
+    let camelCase: string;
+    if (!hasDelimiters) {
+      // Single word or already camelCase - preserve as-is
+      camelCase = commandName;
+    } else {
+      // Multiple words - convert to camelCase
+      camelCase = commandName
+        .split(/[\s-]+/) // Split on whitespace or hyphens
+        .map((word, index) => {
+          if (index === 0) {
+            // First word is lowercase
+            return word.toLowerCase();
+          }
+          // Subsequent words: capitalize first letter
+          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        })
+        .join('');
+    }
+
+    // Check if the result is a valid JavaScript identifier
+    const isValidIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(camelCase);
+
+    if (isValidIdentifier) {
+      // Use dot notation for valid identifiers
+      return `.${camelCase}`;
+    }
+
+    // Fallback: use bracket notation if something went wrong
+    const escaped = camelCase.replace(/"/g, '\\"');
+    return `["${escaped}"]`;
   }
 
   /**

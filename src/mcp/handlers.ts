@@ -281,25 +281,30 @@ export async function setupHandlers(
         };
       }
 
-      // 3. Check permissions
-      const permissionDecision = await permissionChecker.check(tool, args || {});
+      // 3. Check permissions (skip if DISABLE_PERMISSIONS is set)
+      const permissionsDisabled = process.env.DISABLE_PERMISSIONS === 'true';
+      if (!permissionsDisabled) {
+        const permissionDecision = await permissionChecker.check(tool, args || {});
 
-      if (!permissionDecision.allowed) {
-        console.error(`[CallTool] Permission denied: ${permissionDecision.reason}`);
-        const errorResponse = formatPermissionDeniedResponse(permissionDecision);
+        if (!permissionDecision.allowed) {
+          console.error(`[CallTool] Permission denied: ${permissionDecision.reason}`);
+          const errorResponse = formatPermissionDeniedResponse(permissionDecision);
 
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify(errorResponse),
-            },
-          ],
-          isError: true,
-        };
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify(errorResponse),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        console.error(`[CallTool] Permission granted, executing via adapter`);
+      } else {
+        console.error(`[CallTool] Permissions disabled (DISABLE_PERMISSIONS=true), executing via adapter`);
       }
-
-      console.error(`[CallTool] Permission granted, executing via adapter`);
 
       // 4. Execute via MacOSAdapter
       const executionResult = await adapter.execute(tool, args || {});
