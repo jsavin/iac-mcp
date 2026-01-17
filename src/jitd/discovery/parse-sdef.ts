@@ -27,15 +27,81 @@ import type {
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 /**
+ * Warning emitted during parsing when type inference occurs
+ */
+export interface ParseWarning {
+  /** Warning code (e.g., 'MISSING_TYPE', 'UNION_TYPE_SIMPLIFIED') */
+  code: string;
+  /** Human-readable description */
+  message: string;
+  /** Location context for the warning */
+  location: {
+    /** Element type (e.g., 'parameter', 'property', 'direct-parameter', 'result') */
+    element: string;
+    /** Element name */
+    name: string;
+    /** Parent suite name (if applicable) */
+    suite?: string;
+    /** Parent command name (if applicable) */
+    command?: string;
+  };
+  /** Value that was inferred (if applicable) */
+  inferredValue?: string;
+}
+
+/**
  * Options for SDEF Parser configuration
  */
 export interface SDEFParserOptions {
   /**
+   * Parsing mode - strict or lenient
+   * - strict: Throw error on missing types
+   * - lenient: Infer types and emit warnings
+   * Default: 'lenient'
+   */
+  mode?: 'strict' | 'lenient';
+
+  /**
+   * @deprecated Use mode: 'strict' instead
    * Enable strict type checking - throw error on unknown types
-   * Default: false (unknown types treated as class references)
    */
   strictTypeChecking?: boolean;
+
+  /**
+   * Callback for warnings during parsing
+   */
+  onWarning?: (warning: ParseWarning) => void;
 }
+
+/**
+ * Mapping from four-character codes to type strings
+ * Based on Apple Event Manager constants
+ */
+const CODE_TO_TYPE_MAP: Record<string, string> = {
+  kfil: 'file', // File parameter
+  insh: 'location specifier', // Insertion location
+  savo: 'save options', // Save options enum
+  kocl: 'type', // Class/type reference
+  prdt: 'record', // Properties record
+  usin: 'specifier', // Using parameter
+  rtyp: 'type', // Return type
+  faal: 'list', // Modifier flags list
+  data: 'any', // Generic data
+};
+
+/**
+ * Mapping from standard parameter names to types
+ */
+const STANDARD_PARAM_TYPES: Record<string, string> = {
+  in: 'file',
+  to: 'location specifier',
+  using: 'specifier',
+  'with properties': 'record',
+  each: 'type',
+  as: 'type',
+  saving: 'save options',
+  by: 'property',
+};
 
 /**
  * SDEF Parser - extracts structured data from SDEF XML files
@@ -44,10 +110,19 @@ export class SDEFParser {
   private parser: XMLParser;
   private parseCache: Map<string, SDEFDictionary>;
   private readonly MAX_CACHE_SIZE = 50; // Limit cache entries
-  private readonly strictTypeChecking: boolean;
+  private readonly mode: 'strict' | 'lenient';
+  private readonly onWarning?: (warning: ParseWarning) => void;
+  private currentSuite?: string;
+  private currentCommand?: string;
 
   constructor(options?: SDEFParserOptions) {
-    this.strictTypeChecking = options?.strictTypeChecking ?? false;
+    // Support deprecated strictTypeChecking option
+    if (options?.strictTypeChecking !== undefined) {
+      this.mode = options.strictTypeChecking ? 'strict' : 'lenient';
+    } else {
+      this.mode = options?.mode ?? 'lenient';
+    }
+    this.onWarning = options?.onWarning;
     // Configure XML parser
     this.parser = new XMLParser({
       ignoreAttributes: false,
@@ -164,6 +239,9 @@ export class SDEFParser {
 
     this.validateFourCharCode(code, 'suite', name);
 
+    // Track current suite for warning context
+    this.currentSuite = name;
+
     // Parse commands
     const commands: SDEFCommand[] = [];
     const commandElements = this.ensureArray(suite.command);
@@ -214,6 +292,9 @@ export class SDEFParser {
 
     this.validateFourCharCode(code, 'command', name);
 
+    // Track current command for warning context
+    this.currentCommand = name;
+
     // Parse parameters
     const parameters: SDEFParameter[] = [];
     const paramElements = this.ensureArray(cmd.parameter);
@@ -225,16 +306,27 @@ export class SDEFParser {
 
     // Parse direct parameter (if present)
     let directParameter: SDEFParameter | undefined;
-    if (cmd['direct-parameter']) {
-      directParameter = this.parseParameter(cmd['direct-parameter'], true);
+    if ('direct-parameter' in cmd) {
+      // Empty elements parse as empty strings, so create empty object if needed
+      const directParamEl = cmd['direct-parameter'] || {};
+      directParameter = this.parseParameter(directParamEl, true);
     }
 
     // Parse result type (if present)
     let result: SDEFType | undefined;
-    if (cmd.result) {
-      const typeAttr = cmd.result['@_type'];
+    if ('result' in cmd) {
+      // Empty elements parse as empty strings, so create empty object if needed
+      const resultEl = cmd.result || {};
+      const typeAttr = resultEl['@_type'];
+      const childTypes = resultEl.type;
+
       if (typeAttr) {
         result = this.parseType(typeAttr);
+      } else if (childTypes) {
+        result = this.inferTypeFromElement(resultEl, 'result', 'result');
+      } else if (this.mode === 'lenient') {
+        // Infer type for result (will emit MISSING_TYPE warning)
+        result = this.inferType(resultEl, 'result', undefined, 'result');
       }
     }
 
@@ -257,23 +349,46 @@ export class SDEFParser {
     const name = param['@_name'] || (isDirectParameter ? 'direct-parameter' : '');
     const code = param['@_code'] || (isDirectParameter ? '----' : ''); // Direct params use '----' code
     const typeAttr = param['@_type'];
+    const childTypes = param.type;
 
-    if (!isDirectParameter && (!name || !code)) {
-      throw new Error('Parameter missing required "name" or "code" attribute');
+    // Only validate non-empty names and codes (lenient mode allows empty names in edge cases)
+    if (!isDirectParameter && !code) {
+      throw new Error('Parameter missing required "code" attribute');
     }
 
-    if (!typeAttr) {
+    if (!isDirectParameter && code) {
+      this.validateFourCharCode(code, 'parameter', name || 'unnamed');
+    }
+
+    // Determine parameter type with priority order:
+    // 1. Child <type> elements (PRIORITY 1 - EXPLICIT)
+    // 2. type attribute (PRIORITY 1 - EXPLICIT)
+    // 3. Inference in lenient mode
+    let type: SDEFType;
+
+    if (childTypes) {
+      // Child type elements take priority
+      type = this.inferTypeFromElement(
+        param,
+        isDirectParameter ? 'direct-parameter' : 'parameter',
+        name
+      );
+    } else if (typeAttr) {
+      // Explicit type attribute
+      type = this.parseType(typeAttr);
+    } else if (this.mode === 'strict') {
+      // Strict mode - throw error
       throw new Error(`Parameter "${name}" missing required "type" attribute`);
-    }
-
-    if (!isDirectParameter) {
-      this.validateFourCharCode(code, 'parameter', name);
+    } else {
+      // Lenient mode - infer type
+      const context = isDirectParameter ? 'direct-parameter' : 'parameter';
+      type = this.inferType(param, name, code, context);
     }
 
     return {
       name,
       code,
-      type: this.parseType(typeAttr),
+      type,
       description: param['@_description'],
       optional: param['@_optional'] === 'yes',
     };
@@ -326,16 +441,27 @@ export class SDEFParser {
     const name = prop['@_name'];
     const code = prop['@_code'];
     const typeAttr = prop['@_type'];
+    const childTypes = prop.type;
 
     if (!name || !code) {
       throw new Error('Property missing required "name" or "code" attribute');
     }
 
-    if (!typeAttr) {
-      throw new Error(`Property "${name}" missing required "type" attribute`);
-    }
-
     this.validateFourCharCode(code, 'property', name);
+
+    // Determine property type
+    let type: SDEFType;
+
+    if (childTypes) {
+      type = this.inferTypeFromElement(prop, 'property', name);
+    } else if (typeAttr) {
+      type = this.parseType(typeAttr);
+    } else if (this.mode === 'strict') {
+      throw new Error(`Property "${name}" missing required "type" attribute`);
+    } else {
+      // Lenient mode - infer type
+      type = this.inferType(prop, name, code, 'property');
+    }
 
     // Parse access (default to read-write if not specified)
     let access: 'r' | 'w' | 'rw' = 'rw';
@@ -351,7 +477,7 @@ export class SDEFParser {
     return {
       name,
       code,
-      type: this.parseType(typeAttr),
+      type,
       description: prop['@_description'],
       access,
     };
@@ -432,6 +558,242 @@ export class SDEFParser {
   }
 
   /**
+   * Emit a warning during parsing
+   */
+  private warn(warning: ParseWarning): void {
+    if (this.onWarning) {
+      this.onWarning(warning);
+    }
+  }
+
+  /**
+   * Infer type from child <type> elements
+   */
+  private inferTypeFromElement(
+    element: any,
+    elementType: string,
+    elementName: string
+  ): SDEFType {
+    const types = this.ensureArray(element.type);
+
+    if (types.length === 0) {
+      // No child types - fall back to inference
+      return this.inferType(element, elementName, element['@_code'], elementType as any);
+    }
+
+    if (types.length === 1) {
+      // Single type - parse it
+      const typeAttr = types[0]['@_type'];
+      if (typeAttr) {
+        return this.parseType(typeAttr);
+      }
+    }
+
+    // Multiple types - union type (not fully supported yet)
+    // Use first type and warn
+    const firstType = types[0]['@_type'];
+    if (firstType) {
+      this.warn({
+        code: 'UNION_TYPE_SIMPLIFIED',
+        message: `Element has multiple type options, using first type: ${firstType}`,
+        location: {
+          element: elementType,
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: firstType,
+      });
+      return this.parseType(firstType);
+    }
+
+    // Fallback
+    return { kind: 'any' };
+  }
+
+  /**
+   * Infer type when explicit type is missing
+   *
+   * Priority order:
+   * 1. Four-character code mapping (PRIORITY 2)
+   * 2. Standard parameter name patterns (PRIORITY 3)
+   * 3. Substring patterns (PRIORITY 4)
+   * 4. Context-aware defaults (PRIORITY 5)
+   */
+  private inferType(
+    element: any,
+    elementName: string,
+    elementCode?: string,
+    context?: 'parameter' | 'property' | 'direct-parameter' | 'result'
+  ): SDEFType {
+    let inferredType: SDEFType | null = null;
+    let inferenceSource: string | null = null;
+
+    // Always emit MISSING_TYPE warning first
+    this.warn({
+      code: 'MISSING_TYPE',
+      message: 'Type attribute missing, inferring from context',
+      location: {
+        element: context || 'unknown',
+        name: elementName,
+        suite: this.currentSuite,
+        command: this.currentCommand,
+      },
+    });
+
+    // PRIORITY 2: Four-character code mapping
+    if (elementCode) {
+      const trimmedCode = elementCode.trim();
+      const mappedType = CODE_TO_TYPE_MAP[trimmedCode];
+      if (mappedType) {
+        inferredType = this.parseType(mappedType);
+        inferenceSource = 'code';
+
+        this.warn({
+          code: 'TYPE_INFERRED_FROM_CODE',
+          message: `Type inferred from four-character code "${trimmedCode}": ${mappedType}`,
+          location: {
+            element: context || 'unknown',
+            name: elementName,
+            suite: this.currentSuite,
+            command: this.currentCommand,
+          },
+          inferredValue: mappedType,
+        });
+
+        return inferredType;
+      }
+    }
+
+    // PRIORITY 3: Standard parameter name patterns
+    const trimmedName = elementName.trim();
+    const standardType = STANDARD_PARAM_TYPES[trimmedName];
+    if (standardType) {
+      inferredType = this.parseType(standardType);
+      inferenceSource = 'name';
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_NAME',
+        message: `Type inferred from parameter name "${elementName}": ${standardType}`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: standardType,
+      });
+
+      return inferredType;
+    }
+
+    // PRIORITY 4: Substring patterns (heuristics)
+    const lowerName = elementName.toLowerCase();
+
+    // File-related
+    if (
+      lowerName.includes('path') ||
+      lowerName.includes('file') ||
+      lowerName.includes('folder') ||
+      lowerName.includes('directory')
+    ) {
+      inferredType = { kind: 'file' };
+      inferenceSource = 'pattern';
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_PATTERN',
+        message: `Type inferred from name pattern "${elementName}": file`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: 'file',
+      });
+
+      return inferredType;
+    }
+
+    // Integer-related
+    if (
+      lowerName.includes('count') ||
+      lowerName.includes('index') ||
+      lowerName.includes('number') ||
+      lowerName.includes('size')
+    ) {
+      inferredType = { kind: 'primitive', type: 'integer' };
+      inferenceSource = 'pattern';
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_PATTERN',
+        message: `Type inferred from name pattern "${elementName}": integer`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: 'integer',
+      });
+
+      return inferredType;
+    }
+
+    // Boolean-related
+    if (
+      lowerName.includes('enabled') ||
+      lowerName.includes('disabled') ||
+      lowerName.includes('visible') ||
+      lowerName.includes('is')
+    ) {
+      inferredType = { kind: 'primitive', type: 'boolean' };
+      inferenceSource = 'pattern';
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_PATTERN',
+        message: `Type inferred from name pattern "${elementName}": boolean`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: 'boolean',
+      });
+
+      return inferredType;
+    }
+
+    // PRIORITY 5: Context-aware defaults
+    let defaultType: SDEFType;
+    let defaultTypeStr: string;
+
+    if (context === 'direct-parameter' || context === 'result') {
+      defaultType = { kind: 'any' };
+      defaultTypeStr = 'any';
+    } else {
+      defaultType = { kind: 'primitive', type: 'text' };
+      defaultTypeStr = 'text';
+    }
+
+    // Emit additional warning for default fallback
+    this.warn({
+      code: 'TYPE_INFERRED_DEFAULT',
+      message: `No specific type pattern matched, defaulting to "${defaultTypeStr}"`,
+      location: {
+        element: context || 'unknown',
+        name: elementName,
+        suite: this.currentSuite,
+        command: this.currentCommand,
+      },
+      inferredValue: defaultTypeStr,
+    });
+
+    return defaultType;
+  }
+
+  /**
    * Parse type string into SDEFType
    *
    * Handles:
@@ -441,6 +803,7 @@ export class SDEFParser {
    * - Record types: record
    * - Class references
    * - Enumeration references
+   * - macOS-specific types: missing value, type, location specifier, color, date
    */
   private parseType(typeStr: string): SDEFType {
     // Safe to trim type strings - four-character codes only appear in 'code' attributes
@@ -464,6 +827,32 @@ export class SDEFParser {
     // Handle file types
     if (typeStr === 'file' || typeStr === 'alias') {
       return { kind: 'file' };
+    }
+
+    // Handle macOS-specific types
+    if (typeStr === 'any') {
+      return { kind: 'any' };
+    }
+    if (typeStr === 'missing value') {
+      return { kind: 'missing_value' };
+    }
+    if (typeStr === 'type') {
+      return { kind: 'type_class' };
+    }
+    if (typeStr === 'location specifier' || typeStr === 'specifier') {
+      return { kind: 'location_specifier' };
+    }
+    if (typeStr === 'color') {
+      return { kind: 'color' };
+    }
+    if (typeStr === 'date') {
+      return { kind: 'date' };
+    }
+    if (typeStr === 'property') {
+      return { kind: 'property' };
+    }
+    if (typeStr === 'save options') {
+      return { kind: 'save_options' };
     }
 
     // Handle list types: "list of X"
@@ -496,7 +885,7 @@ export class SDEFParser {
     // In a real implementation, we'd cross-reference with known classes/enums
 
     // Unknown type handling
-    if (this.strictTypeChecking) {
+    if (this.mode === 'strict') {
       throw new Error(`Unknown type: "${typeStr}"`);
     }
 

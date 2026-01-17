@@ -127,6 +127,31 @@ export class TypeMapper {
       case 'enumeration':
         return this.mapEnumeration(sdefType.enumerationName, enumeration);
 
+      // macOS-specific types
+      case 'any':
+        return { type: 'string', description: 'Any value' };
+
+      case 'missing_value':
+        return { type: 'string', description: 'Missing value (null/undefined)' };
+
+      case 'type_class':
+        return { type: 'object', description: 'Type/class reference' };
+
+      case 'location_specifier':
+        return { type: 'object', description: 'Insertion location specifier' };
+
+      case 'color':
+        return { type: 'string', description: 'Color value' };
+
+      case 'date':
+        return { type: 'string', description: 'Date value' };
+
+      case 'property':
+        return { type: 'string', description: 'Property reference' };
+
+      case 'save_options':
+        return { type: 'object', description: 'Save options' };
+
       default:
         return this.handleUnknownType(sdefType);
     }
