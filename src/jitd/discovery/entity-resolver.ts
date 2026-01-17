@@ -141,12 +141,22 @@ export class EntityResolver {
     this.debug = options.debug ?? false;
 
     // Initialize trusted paths (defaults + additional)
-    // If additionalTrustedPaths is explicitly set to empty array, use only defaults
-    // Otherwise, merge defaults with additional paths
-    this.trustedPaths = [
+    // SECURITY: Normalize all trusted paths to resolve symlinks (e.g., /var -> /private/var on macOS)
+    const rawTrustedPaths = [
       ...DEFAULT_TRUSTED_PATHS,
       ...(options.additionalTrustedPaths ?? []),
     ];
+
+    this.trustedPaths = rawTrustedPaths.map(p => {
+      try {
+        // Resolve symlinks if path exists
+        return fs.realpathSync.native(p);
+      } catch (error) {
+        // Path doesn't exist yet (e.g., System directories that might not exist)
+        // Keep original path
+        return p;
+      }
+    });
 
     // Initialize limits
     this.maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
@@ -196,11 +206,24 @@ export class EntityResolver {
     }
 
     // SECURITY: Track circular includes (if we have a current file)
+    let normalizedCurrentFile: string | undefined;
     if (currentFile) {
-      if (this.includeStack.has(currentFile)) {
-        throw new CircularIncludeError(currentFile);
+      try {
+        // Normalize the current file path for circular detection
+        normalizedCurrentFile = fs.realpathSync.native(currentFile).normalize('NFC').toLowerCase();
+
+        if (this.includeStack.has(normalizedCurrentFile)) {
+          throw new CircularIncludeError(currentFile);
+        }
+        this.includeStack.add(normalizedCurrentFile);
+      } catch (error) {
+        // If we can't normalize (file doesn't exist), use original path
+        normalizedCurrentFile = currentFile.toLowerCase();
+        if (this.includeStack.has(normalizedCurrentFile)) {
+          throw new CircularIncludeError(currentFile);
+        }
+        this.includeStack.add(normalizedCurrentFile);
       }
-      this.includeStack.add(currentFile);
     }
 
     try {
@@ -252,14 +275,26 @@ export class EntityResolver {
           // SECURITY: Resolve and validate path
           const resolvedPath = this.resolvePath(trimmedHref, basePath);
 
+          // Skip if path resolution returned null (e.g., null bytes)
+          if (resolvedPath === null) {
+            result = result.replace(matchText, '');
+            continue;
+          }
+
           // SECURITY: Check if path is trusted
-          if (!this.isPathTrusted(resolvedPath)) {
+          if (!this.isPathTrusted(resolvedPath, basePath)) {
             if (this.debug) {
               console.warn('[EntityResolver] Skipping untrusted path (not in whitelist)');
             }
             // Skip untrusted paths silently (fail-secure)
             result = result.replace(matchText, '');
             continue;
+          }
+
+          // SECURITY: Check for circular includes before reading
+          const normalizedResolved = fs.realpathSync.native(resolvedPath).normalize('NFC').toLowerCase();
+          if (this.includeStack.has(normalizedResolved)) {
+            throw new CircularIncludeError(resolvedPath);
           }
 
           // SECURITY: Read file with size limits and validation
@@ -294,8 +329,8 @@ export class EntityResolver {
       return result;
     } finally {
       // SECURITY: Clean up circular detection tracking
-      if (currentFile) {
-        this.includeStack.delete(currentFile);
+      if (normalizedCurrentFile) {
+        this.includeStack.delete(normalizedCurrentFile);
       }
     }
   }
@@ -402,6 +437,9 @@ export class EntityResolver {
       // SECURITY: Normalize Unicode (NFC) to prevent bypass via Unicode variations
       realPath = realPath.normalize('NFC');
 
+      // SECURITY: Case-insensitive path for macOS (do this once)
+      const realPathLower = realPath.toLowerCase();
+
       // SECURITY: Check file exists and is readable (TOCTOU protection at FD level)
       try {
         fs.accessSync(realPath, fs.constants.R_OK);
@@ -412,9 +450,29 @@ export class EntityResolver {
         return false;
       }
 
+      // SECURITY: First check if path is within basePath hierarchy
+      // This allows relative includes within the same document tree
+      if (basePath) {
+        try {
+          // Normalize basePath the same way (resolve symlinks, normalize Unicode)
+          const realBasePath = fs.realpathSync.native(basePath).normalize('NFC').toLowerCase();
+
+          // Trust files within the same directory tree as the base document
+          if (realPathLower.startsWith(realBasePath)) {
+            if (this.debug) {
+              console.log('[EntityResolver] Path within basePath hierarchy');
+            }
+            return true;
+          }
+        } catch (error) {
+          // basePath doesn't exist or not readable, skip this check
+          if (this.debug) {
+            console.warn('[EntityResolver] Could not normalize basePath:', error);
+          }
+        }
+      }
+
       // SECURITY: Validate against whitelist patterns
-      // macOS is case-insensitive, so compare case-insensitively
-      const realPathLower = realPath.toLowerCase();
 
       for (const trustedPattern of this.trustedPaths) {
         // Handle both exact paths and wildcard patterns
@@ -467,10 +525,13 @@ export class EntityResolver {
    * @returns Absolute file path
    * @throws SecurityError for invalid URLs or non-file protocols
    */
-  private resolvePath(href: string, basePath: string): string {
+  private resolvePath(href: string, basePath: string): string | null {
     // SECURITY: Reject null bytes (path truncation attack)
     if (href.includes('\x00')) {
-      throw new SecurityError('Null bytes in path are not allowed', 'path_traversal');
+      if (this.debug) {
+        console.warn('[EntityResolver] Null bytes in path, skipping');
+      }
+      return null; // Return null to signal skip
     }
 
     // SECURITY: Handle file:// URLs
@@ -488,11 +549,22 @@ export class EntityResolver {
         }
 
         // SECURITY: Reject non-localhost hosts (network access)
-        if (url.hostname && url.hostname !== '' && url.hostname !== 'localhost') {
-          throw new SecurityError(
-            'File URLs with network hosts are not allowed',
-            'url_parsing'
-          );
+        // Also reject relative hosts like '.' or '..'
+        const allowedHosts = ['', 'localhost'];
+        if (url.hostname && !allowedHosts.includes(url.hostname)) {
+          // Throw for relative paths (like file://./etc/passwd) - explicit attack
+          if (url.hostname === '.' || url.hostname === '..') {
+            throw new SecurityError(
+              'Relative paths in file URLs are not allowed',
+              'url_parsing'
+            );
+          }
+
+          // Skip for network hosts (less critical, could be misconfiguration)
+          if (this.debug) {
+            console.warn('[EntityResolver] File URL with network host, skipping:', url.hostname);
+          }
+          return null; // Skip network file URLs
         }
 
         // SECURITY: Reject relative paths in file URLs

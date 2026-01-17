@@ -559,13 +559,14 @@ describe('EntityResolver', () => {
     });
 
     it('should support additional trusted paths', async () => {
-      const customApp = '/opt/custom-app/definitions.sdef';
-      fs.mkdirSync('/opt/custom-app', { recursive: true });
+      // Create a custom directory outside of tempDir
+      const customDir = fs.mkdtempSync(path.join(os.tmpdir(), 'custom-app-'));
+      const customApp = path.join(customDir, 'definitions.sdef');
       fs.writeFileSync(customApp, '<suite name="custom" code="cust" />');
 
       try {
         const resolver2 = new EntityResolver({
-          additionalTrustedPaths: ['/opt/custom-app/'],
+          additionalTrustedPaths: [customDir],
         });
 
         const mainContent = `<dictionary><xi:include href="${customApp}" /></dictionary>`;
@@ -573,7 +574,7 @@ describe('EntityResolver', () => {
         expect(result).toContain('custom');
       } finally {
         // Cleanup
-        fs.rmSync('/opt/custom-app', { recursive: true, force: true });
+        fs.rmSync(customDir, { recursive: true, force: true });
       }
     });
 
