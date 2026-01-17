@@ -338,6 +338,23 @@ EOF
 )"
 ```
 
+### Monitoring PR Reviews
+
+After creating the PR, start the background monitor:
+
+```bash
+# Start background monitor (auto-backgrounds itself, returns immediately)
+./tools/monitor_pr_review.sh <PR_NUMBER>
+
+# Watch the output asynchronously (Ctrl-C to stop tail)
+tail -f tests/tmp/pr_monitor_<PR_NUMBER>.log
+
+# Kill if needed
+kill <PID>  # PID shown when monitor starts
+```
+
+**Key Property**: The monitor script auto-backgrounds itself - it is **always non-blocking**, regardless of how it's invoked.
+
 ---
 
 ## Working with Agents
