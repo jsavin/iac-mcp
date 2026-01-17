@@ -326,7 +326,7 @@ export class SDEFParser {
         result = this.inferTypeFromElement(resultEl, 'result', 'result');
       } else if (this.mode === 'lenient') {
         // Infer type for result (will emit MISSING_TYPE warning)
-        result = this.inferType(resultEl, 'result', undefined, 'result');
+        result = this.inferType('result', undefined, 'result');
       }
     }
 
@@ -382,7 +382,7 @@ export class SDEFParser {
     } else {
       // Lenient mode - infer type
       const context = isDirectParameter ? 'direct-parameter' : 'parameter';
-      type = this.inferType(param, name, code, context);
+      type = this.inferType(name, code, context);
     }
 
     return {
@@ -460,7 +460,7 @@ export class SDEFParser {
       throw new Error(`Property "${name}" missing required "type" attribute`);
     } else {
       // Lenient mode - infer type
-      type = this.inferType(prop, name, code, 'property');
+      type = this.inferType(name, code, 'property');
     }
 
     // Parse access (default to read-write if not specified)
@@ -578,7 +578,7 @@ export class SDEFParser {
 
     if (types.length === 0) {
       // No child types - fall back to inference
-      return this.inferType(element, elementName, element['@_code'], elementType as any);
+      return this.inferType(elementName, element['@_code'], elementType as any);
     }
 
     if (types.length === 1) {
@@ -621,13 +621,11 @@ export class SDEFParser {
    * 4. Context-aware defaults (PRIORITY 5)
    */
   private inferType(
-    element: any,
     elementName: string,
     elementCode?: string,
     context?: 'parameter' | 'property' | 'direct-parameter' | 'result'
   ): SDEFType {
     let inferredType: SDEFType | null = null;
-    let inferenceSource: string | null = null;
 
     // Always emit MISSING_TYPE warning first
     this.warn({
@@ -647,7 +645,6 @@ export class SDEFParser {
       const mappedType = CODE_TO_TYPE_MAP[trimmedCode];
       if (mappedType) {
         inferredType = this.parseType(mappedType);
-        inferenceSource = 'code';
 
         this.warn({
           code: 'TYPE_INFERRED_FROM_CODE',
@@ -670,7 +667,6 @@ export class SDEFParser {
     const standardType = STANDARD_PARAM_TYPES[trimmedName];
     if (standardType) {
       inferredType = this.parseType(standardType);
-      inferenceSource = 'name';
 
       this.warn({
         code: 'TYPE_INFERRED_FROM_NAME',
@@ -698,7 +694,6 @@ export class SDEFParser {
       lowerName.includes('directory')
     ) {
       inferredType = { kind: 'file' };
-      inferenceSource = 'pattern';
 
       this.warn({
         code: 'TYPE_INFERRED_FROM_PATTERN',
@@ -723,7 +718,6 @@ export class SDEFParser {
       lowerName.includes('size')
     ) {
       inferredType = { kind: 'primitive', type: 'integer' };
-      inferenceSource = 'pattern';
 
       this.warn({
         code: 'TYPE_INFERRED_FROM_PATTERN',
@@ -748,7 +742,6 @@ export class SDEFParser {
       lowerName.includes('is')
     ) {
       inferredType = { kind: 'primitive', type: 'boolean' };
-      inferenceSource = 'pattern';
 
       this.warn({
         code: 'TYPE_INFERRED_FROM_PATTERN',
