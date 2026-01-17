@@ -5,16 +5,21 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "iac-mcp": "dist/index.js"
+    "iac-mcp": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
+    "cli": "node dist/cli.js",
+    "cli:discover": "node dist/cli.js discover-apps",
+    "cli:test": "node dist/cli.js test",
+    "cli:help": "node dist/cli.js help",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run --dir tests/unit",
     "test:integration": "vitest run --dir tests/integration",
+    "test:coverage": "vitest run --coverage",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "clean": "rm -rf dist",

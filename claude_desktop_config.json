@@ -1,0 +1,14 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema/config.json",
+  "mcpServers": {
+    "iac-mcp": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/iac-mcp/dist/index.js"
+      ],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
