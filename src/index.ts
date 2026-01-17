@@ -9,10 +9,12 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+import { setupHandlers } from './mcp/handlers.js';
+import { ToolGenerator } from './jitd/tool-generator/generator.js';
+import { MacOSAdapter } from './adapters/macos/macos-adapter.js';
+import { PermissionChecker } from './permissions/permission-checker.js';
+import { ErrorHandler } from './error-handler.js';
+import { ToolCache } from './jitd/cache/tool-cache.js';
 
 /**
  * Logging utility that writes to stderr (stdout is reserved for MCP protocol)
@@ -34,6 +36,7 @@ async function main(): Promise<void> {
   log('INFO', 'Node version: ' + process.version);
   log('INFO', 'Platform: ' + process.platform);
 
+  // Create server instance
   const server = new Server(
     {
       name: 'iac-mcp',
@@ -42,56 +45,33 @@ async function main(): Promise<void> {
     {
       capabilities: {
         tools: {},
+        resources: {},
       },
     }
   );
 
-  // List tools handler - will dynamically generate from discovered apps
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    log('INFO', 'ListTools request received');
-    // TODO: Implement JITD discovery and tool generation
-    const tools = [
-      {
-        name: 'example_tool',
-        description: 'Example tool - replace with JITD-generated tools',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            message: {
-              type: 'string',
-              description: 'Message to echo',
-            },
-          },
-          required: ['message'],
-        },
-      },
-    ];
-    log('INFO', `Returning ${tools.length} tool(s)`);
-    return { tools };
-  });
+  // Initialize JITD components
+  const toolGenerator = new ToolGenerator();
+  const adapter = new MacOSAdapter();
+  const permissionChecker = new PermissionChecker();
+  const errorHandler = new ErrorHandler();
+  const toolCache = new ToolCache();
 
-  // Call tool handler - route to execution layer
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-    log('INFO', `CallTool request: ${name}`, args);
-
-    // TODO: Implement tool execution with permissions
-    if (name === 'example_tool') {
-      const result = `Echo: ${(args as { message: string }).message}`;
-      log('INFO', `Tool execution successful: ${name}`);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: result,
-          },
-        ],
-      };
-    }
-
-    log('ERROR', `Unknown tool requested: ${name}`);
-    throw new Error(`Unknown tool: ${name}`);
-  });
+  // Setup all MCP handlers
+  try {
+    await setupHandlers(
+      server,
+      toolGenerator,
+      permissionChecker,
+      adapter,
+      errorHandler,
+      toolCache
+    );
+    log('INFO', 'MCP handlers setup complete');
+  } catch (error) {
+    log('ERROR', 'Failed to setup MCP handlers', error);
+    throw error;
+  }
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string): Promise<void> => {
@@ -110,12 +90,16 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
   // Start the server with stdio transport
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-
-  log('INFO', 'iac-mcp server started successfully');
-  log('INFO', 'Listening on stdio transport');
-  log('INFO', 'Server ready to accept requests');
+  try {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    log('INFO', 'iac-mcp server started successfully');
+    log('INFO', 'Listening on stdio transport');
+    log('INFO', 'Server ready to accept requests');
+  } catch (error) {
+    log('ERROR', 'Failed to connect to stdio transport', error);
+    throw error;
+  }
 }
 
 // Run the server

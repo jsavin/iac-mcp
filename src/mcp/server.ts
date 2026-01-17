@@ -427,9 +427,13 @@ export class IACMCPServer {
         };
       }
 
-      // Step 3: Check permissions
-      const permission = await this.permissionChecker.check(tool, args);
-      if (!permission.allowed) {
+      // Step 3: Check permissions (skip if DISABLE_PERMISSIONS is set)
+      const permissionsDisabled = process.env.DISABLE_PERMISSIONS === 'true';
+      let permission = permissionsDisabled
+        ? { allowed: true, level: 'ALWAYS_SAFE' as const, reason: 'Permissions disabled', requiresPrompt: false }
+        : await this.permissionChecker.check(tool, args);
+
+      if (!permissionsDisabled && !permission.allowed) {
         return {
           content: [
             {
@@ -449,13 +453,15 @@ export class IACMCPServer {
       // Step 4: Execute tool
       const result = await this.adapter.execute(tool, args);
 
-      // Step 5: Record in audit log
-      await this.permissionChecker.recordDecision({
-        allowed: true,
-        level: permission.level,
-        reason: permission.reason,
-        requiresPrompt: false,
-      });
+      // Step 5: Record in audit log (skip if permissions disabled)
+      if (!permissionsDisabled) {
+        await this.permissionChecker.recordDecision({
+          allowed: true,
+          level: permission.level,
+          reason: permission.reason,
+          requiresPrompt: false,
+        });
+      }
 
       // Return success response
       return {
