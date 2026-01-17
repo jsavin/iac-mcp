@@ -57,7 +57,15 @@ export type SDEFType =
   | { kind: 'list'; itemType: SDEFType }
   | { kind: 'record'; properties: Record<string, SDEFType> }
   | { kind: 'class'; className: string }
-  | { kind: 'enumeration'; enumerationName: string };
+  | { kind: 'enumeration'; enumerationName: string }
+  | { kind: 'any' } // Generic any type
+  | { kind: 'missing_value' } // macOS missing value type
+  | { kind: 'type_class' } // Type/class reference
+  | { kind: 'location_specifier' } // Insertion location
+  | { kind: 'color' } // Color type
+  | { kind: 'date' } // Date type
+  | { kind: 'property' } // Property reference
+  | { kind: 'save_options' }; // Save options enum
 
 /**
  * Class - object type in the app's object model
