@@ -130,22 +130,125 @@ npm run lint
 npm run lint:fix
 ```
 
+## Testing with MCP Inspector
+
+The MCP Inspector is a browser-based tool for testing MCP servers before integrating with Claude Desktop:
+
+```bash
+# Start the MCP Inspector
+npx @modelcontextprotocol/inspector node dist/index.js
+```
+
+This will open a browser window where you can:
+- View available tools
+- Test tool execution
+- Inspect request/response payloads
+- Debug server behavior
+
 ## Testing with Claude Desktop
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+### Step 1: Configure Claude Desktop
 
+1. Locate your Claude Desktop configuration file:
+   ```bash
+   ~/Library/Application Support/Claude/claude_desktop_config.json
+   ```
+
+2. Add the iac-mcp server configuration:
+   ```json
+   {
+     "mcpServers": {
+       "iac-mcp": {
+         "command": "node",
+         "args": ["/absolute/path/to/iac-mcp/dist/index.js"],
+         "env": {
+           "NODE_ENV": "production"
+         }
+       }
+     }
+   }
+   ```
+
+3. **Important:** Replace `/absolute/path/to/iac-mcp` with the actual absolute path to your iac-mcp directory.
+
+**Quick way to get the absolute path:**
+```bash
+cd /path/to/iac-mcp
+pwd
+# Copy the output and append /dist/index.js
+```
+
+**Example configuration:**
 ```json
 {
   "mcpServers": {
-    "iac-bridge": {
+    "iac-mcp": {
       "command": "node",
-      "args": ["/absolute/path/to/iac-mcp/dist/index.js"]
+      "args": ["/Users/yourusername/dev/iac-mcp/dist/index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
     }
   }
 }
 ```
 
-Then restart Claude Desktop.
+**Configuration Template:**
+A ready-to-use template is available in `claude_desktop_config.json` at the repository root.
+
+### Step 2: Restart Claude Desktop
+
+1. Completely quit Claude Desktop (Cmd+Q)
+2. Relaunch Claude Desktop
+3. The iac-mcp server will start automatically
+
+### Step 3: Verify Connection
+
+In a new Claude conversation, you can verify the server is working by asking Claude to list available tools or use the example tool:
+
+```
+Can you show me what tools are available from iac-mcp?
+```
+
+or
+
+```
+Use the example_tool to echo "Hello from Claude Desktop"
+```
+
+### Step 4: Monitor Server Logs
+
+Server logs are written to stderr and can be viewed in Claude Desktop's developer console (if available) or by running the server manually:
+
+```bash
+node dist/index.js
+# Then interact with Claude Desktop
+# Logs will appear in this terminal
+```
+
+### Troubleshooting Claude Desktop Integration
+
+**Problem: Server not appearing in Claude Desktop**
+
+1. Verify the config file path is correct
+2. Check that the absolute path to `dist/index.js` is correct
+3. Ensure the project is built: `npm run build`
+4. Check for syntax errors in the JSON config file
+5. Restart Claude Desktop completely
+
+**Problem: Tools not showing up**
+
+1. Test with MCP Inspector first to verify the server works
+2. Check Claude Desktop logs/console for errors
+3. Verify Node.js version: `node --version` (must be 20+)
+
+**Problem: Tool execution fails**
+
+1. Check server logs for error messages
+2. Verify the tool is being called with correct parameters
+3. Test the same tool call in MCP Inspector to isolate the issue
+
+For comprehensive testing procedures, see [docs/MANUAL-TESTING.md](docs/MANUAL-TESTING.md).
 
 ## Project Structure
 
