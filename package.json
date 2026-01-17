@@ -22,6 +22,9 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
+    "sdef:coverage": "npx tsx scripts/analyze-sdef-coverage.ts",
+    "sdef:coverage:json": "npx tsx scripts/analyze-sdef-coverage.ts --json",
+    "sdef:coverage:verbose": "npx tsx scripts/analyze-sdef-coverage.ts --verbose",
     "clean": "rm -rf dist",
     "prepare": "npm run build",
     "verify": "npm run verify:node && npm run build && echo '✓ Setup verified successfully!'",
@@ -48,7 +51,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
-    "fast-xml-parser": "^4.5.3"
+    "fast-xml-parser": "^4.5.3",
+    "glob": "^11.1.0",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
