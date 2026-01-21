@@ -1230,11 +1230,11 @@ describe('Type Inference - Lenient Mode', () => {
   });
 
   describe('substring heuristic false positives / edge cases', () => {
-    // TODO: Fix substring pattern matching to avoid false positives
-    // Current implementation uses .includes() which matches substrings anywhere
-    // Should use word boundary matching or more precise patterns
+    // Edge cases for substring pattern matching with word boundary enforcement
+    // These tests verify that word boundaries prevent false positives
+    // (e.g., "validate" should not match "date" pattern)
 
-    it('should infer date type for parameter named "validate" (FALSE POSITIVE: contains "date")', async () => {
+    it('should correctly handle "validate" without false date match', async () => {
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <dictionary title="Test">
   <suite name="Test" code="TEST">
@@ -1247,19 +1247,20 @@ describe('Type Inference - Lenient Mode', () => {
       const result = await parser.parseContent(xml);
       const parameter = result.suites[0].commands[0].parameters[0];
 
-      // TODO: This is a false positive - "validate" contains "date" as substring
-      // but it's not actually a date parameter. Should fall through to default text.
-      // Current behavior: INCORRECTLY infers date type
-      expect(parameter.type.kind).toBe('date');
+      // Word boundary matching prevents false positive
+      // "validate" contains "date" but not as a separate word
+      // Should fall through to default text type (no pattern match)
+      expect(parameter.type.kind).toBe('primitive');
+      expect(parameter.type.type).toBe('text');
 
-      // Verify date pattern warning is present (documenting false positive)
+      // Verify NO date pattern warning (word boundary prevents false match)
       const datePatternWarning = warnings.find(
         (w) => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'date'
       );
-      expect(datePatternWarning).toBeDefined();
+      expect(datePatternWarning).toBeUndefined();
     });
 
-    it('should infer date type for parameter named "validated" (FALSE POSITIVE: contains "date")', async () => {
+    it('should correctly handle "validated" without false date match', async () => {
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <dictionary title="Test">
   <suite name="Test" code="TEST">
@@ -1272,17 +1273,20 @@ describe('Type Inference - Lenient Mode', () => {
       const result = await parser.parseContent(xml);
       const parameter = result.suites[0].commands[0].parameters[0];
 
-      // TODO: False positive - "validated" contains "date" but isn't a date parameter
-      // Current behavior: INCORRECTLY infers date type
-      expect(parameter.type.kind).toBe('date');
+      // Word boundary matching prevents false positive
+      // "validated" contains "date" but not as a separate word
+      // Should fall through to default text type (no pattern match)
+      expect(parameter.type.kind).toBe('primitive');
+      expect(parameter.type.type).toBe('text');
 
+      // Verify NO date pattern warning (word boundary prevents false match)
       const datePatternWarning = warnings.find(
         (w) => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'date'
       );
-      expect(datePatternWarning).toBeDefined();
+      expect(datePatternWarning).toBeUndefined();
     });
 
-    it('should infer text/ID type for parameter named "video" (FALSE POSITIVE: contains "id")', async () => {
+    it('should correctly handle "video" without false ID match', async () => {
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <dictionary title="Test">
   <suite name="Test" code="TEST">
@@ -1295,18 +1299,19 @@ describe('Type Inference - Lenient Mode', () => {
       const result = await parser.parseContent(xml);
       const parameter = result.suites[0].commands[0].parameters[0];
 
-      // TODO: False positive - "video" contains "id" but isn't an identifier
-      // Current behavior: INCORRECTLY infers text via ID/identifier pattern
+      // Word boundary matching prevents false positive
+      // "video" contains "id" but not as a separate word
+      // Should fall through to default text type (no pattern match)
       expect(parameter.type.kind).toBe('primitive');
       expect(parameter.type.type).toBe('text');
 
-      // Verify ID pattern warning is present (documenting false positive)
+      // Verify NO ID pattern warning (word boundary prevents false match)
       const idPatternWarning = warnings.find(
         (w) =>
           w.code === 'TYPE_INFERRED_FROM_PATTERN' &&
           w.message.includes('ID/identifier')
       );
-      expect(idPatternWarning).toBeDefined();
+      expect(idPatternWarning).toBeUndefined();
     });
 
     it('should NOT infer date type for parameter named "coordinate" (contains "date" at word boundary)', async () => {
@@ -1333,7 +1338,7 @@ describe('Type Inference - Lenient Mode', () => {
       expect(datePatternWarning).toBeUndefined();
     });
 
-    it('should infer date type for parameter named "invalidate" (FALSE POSITIVE: contains "date")', async () => {
+    it('should correctly handle "invalidate" without false date/ID match', async () => {
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <dictionary title="Test">
   <suite name="Test" code="TEST">
@@ -1346,17 +1351,19 @@ describe('Type Inference - Lenient Mode', () => {
       const result = await parser.parseContent(xml);
       const parameter = result.suites[0].commands[0].parameters[0];
 
-      // TODO: False positive - "invalidate" contains both "id" and "date"
-      // Date pattern matches first, so it infers date (incorrect)
-      // Current behavior: INCORRECTLY infers date type
-      expect(parameter.type.kind).toBe('date');
+      // Word boundary matching prevents false positives
+      // "invalidate" contains both "id" and "date" but neither as separate words
+      // Should fall through to default text type (no pattern match)
+      expect(parameter.type.kind).toBe('primitive');
+      expect(parameter.type.type).toBe('text');
 
-      // Verify date pattern matched (not ID pattern)
+      // Verify NO date pattern warning (word boundary prevents false match)
       const datePatternWarning = warnings.find(
         (w) => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'date'
       );
-      expect(datePatternWarning).toBeDefined();
+      expect(datePatternWarning).toBeUndefined();
 
+      // Verify NO ID pattern warning (word boundary prevents false match)
       const idPatternWarning = warnings.find(
         (w) =>
           w.code === 'TYPE_INFERRED_FROM_PATTERN' &&

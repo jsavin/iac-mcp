@@ -437,7 +437,8 @@ export class SDEFParser {
       // Real SDEF files (Pages, Numbers, Keynote) use parameter entities WITHOUT SYSTEM:
       //   <!ENTITY % text "...">  ← Allowed (no SYSTEM reference)
       // These are NOT XXE vulnerabilities because they don't reference external files.
-      if (/<!ENTITY[^>]*SYSTEM/i.test(contentWithoutComments)) {
+      // Use [\s\S]*? to match newlines (prevents multi-line bypass)
+      if (/<!ENTITY[\s\S]*?SYSTEM/i.test(contentWithoutComments)) {
         throw new Error(
           'ENTITY declarations with SYSTEM references found - potential XXE vulnerability'
         );
@@ -451,8 +452,9 @@ export class SDEFParser {
       //
       // Since our XML parser is configured with ignoreDeclaration: true and never executes
       // DOCTYPE processing, stripping is safe and prevents any residual XXE risk.
+      // Use [\s\S]*? to handle nested brackets and newlines safely.
       const contentWithoutDoctype = contentWithoutComments.replace(
-        /<!DOCTYPE[^[>]*(?:\[[^\]]*\])?>/i,
+        /<!DOCTYPE[\s\S]*?>/i,
         ''
       );
 
@@ -921,14 +923,14 @@ export class SDEFParser {
 
     // PRIORITY 2: Four-character code mapping
     if (elementCode) {
-      const trimmedCode = elementCode.trim();
-      const mappedType = CODE_TO_TYPE_MAP[trimmedCode];
+      // Don't trim - four-character codes are exactly 4 chars (may have trailing spaces like 'obj ' and 'ldt ')
+      const mappedType = CODE_TO_TYPE_MAP[elementCode];
       if (mappedType) {
         inferredType = this.parseType(mappedType);
 
         this.warn({
           code: 'TYPE_INFERRED_FROM_CODE',
-          message: `Type inferred from four-character code "${trimmedCode}": ${mappedType}`,
+          message: `Type inferred from four-character code "${elementCode}": ${mappedType}`,
           location: {
             element: context || 'unknown',
             name: elementName,
@@ -990,13 +992,16 @@ export class SDEFParser {
       return inferredType;
     }
 
-    // Date/time-related
-    if (lowerName.includes('date') || lowerName.includes('time')) {
+    // Date/time-related - match at word boundaries or camelCase boundaries
+    // Matches: "createdDate", "modifiedTime", "timestamp", "created_date"
+    // Rejects: "validate", "validated", "invalidate" (date not at boundary)
+    // Pattern: lowercase keyword at word boundary OR capitalized keyword (camelCase)
+    if (/(^|[^a-zA-Z])(date|time|timestamp)($|[^a-zA-Z])|(Date|Time|Timestamp)/.test(elementName)) {
       inferredType = { kind: 'date' };
 
       this.warn({
         code: 'TYPE_INFERRED_FROM_PATTERN',
-        message: `Type inferred from name pattern "${elementName}": date`,
+        message: `Type inferred from name pattern "${elementName}": date (matched date/time word)`,
         location: {
           element: context || 'unknown',
           name: elementName,
@@ -1009,13 +1014,16 @@ export class SDEFParser {
       return inferredType;
     }
 
-    // URL/URI-related
-    if (lowerName.includes('url') || lowerName.includes('uri')) {
+    // URL/URI-related - match at word boundaries or camelCase boundaries
+    // Matches: "websiteUrl", "resourceUri", "url", "uri"
+    // Rejects: "curious" (uri not at boundary)
+    // Pattern: lowercase keyword at word boundary OR capitalized keyword (camelCase)
+    if (/(^|[^a-zA-Z])(url|uri)($|[^a-zA-Z])|(Url|Uri)/.test(elementName)) {
       inferredType = { kind: 'primitive', type: 'text' };
 
       this.warn({
         code: 'TYPE_INFERRED_FROM_PATTERN',
-        message: `Type inferred from name pattern "${elementName}": text (URL/URI)`,
+        message: `Type inferred from name pattern "${elementName}": text (matched URL/URI word)`,
         location: {
           element: context || 'unknown',
           name: elementName,
@@ -1028,13 +1036,16 @@ export class SDEFParser {
       return inferredType;
     }
 
-    // ID/Identifier-related
-    if (lowerName.includes('id') || lowerName.includes('identifier')) {
+    // ID/Identifier-related - match at word boundaries or camelCase boundaries
+    // Matches: "userId", "uniqueIdentifier", "recordId", "user_id", "id"
+    // Rejects: "video", "audio", "validated" (id not at boundary)
+    // Pattern: lowercase keyword at word boundary OR capitalized keyword (camelCase)
+    if (/(^|[^a-zA-Z])(id|identifier)($|[^a-zA-Z])|(Id|Identifier)/.test(elementName)) {
       inferredType = { kind: 'primitive', type: 'text' };
 
       this.warn({
         code: 'TYPE_INFERRED_FROM_PATTERN',
-        message: `Type inferred from name pattern "${elementName}": text (ID/identifier)`,
+        message: `Type inferred from name pattern "${elementName}": text (matched ID/identifier word)`,
         location: {
           element: context || 'unknown',
           name: elementName,

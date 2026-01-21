@@ -164,6 +164,26 @@ describe('SDEF Security Tests', () => {
     });
 
     /**
+     * Test that multi-line ENTITY SYSTEM declarations are rejected
+     * Attackers might use multi-line formatting to evade basic pattern matching
+     */
+    it('should reject multi-line ENTITY SYSTEM declarations', async () => {
+      const multilineXXE = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary [
+  <!ENTITY xxe
+    SYSTEM "file:///etc/passwd">
+]>
+<dictionary title="Test"></dictionary>`;
+
+      const parser = new SDEFParser();
+      // Security property: XXE protection - multi-line ENTITY declarations with SYSTEM URIs are also blocked
+      // Regex matches: "ENTITY declarations found" OR "DOCTYPE with ENTITY SYSTEM references" OR "Failed to parse SDEF XML"
+      await expect(() => parser.parseContent(multilineXXE)).rejects.toThrow(
+        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM references|Failed to parse SDEF XML/i
+      );
+    });
+
+    /**
      * Test that DOCTYPE without malicious ENTITY declarations is allowed
      * Valid DOCTYPE declarations for legitimate DTD references should pass
      */
