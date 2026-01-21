@@ -21,6 +21,12 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { findAllScriptableApps, findSDEFFile } from '../../src/jitd/discovery/find-sdef.js';
 import { SDEFParser } from '../../src/jitd/discovery/parse-sdef.js';
 import { isMacOS } from '../utils/test-helpers.js';
+import {
+  setupSDEFTest,
+  hasUnknownTypes,
+  getAllCommands,
+  type SDEFTestContext,
+} from '../utils/sdef-test-helpers.js';
 import type { SDEFDictionary } from '../../src/types/sdef.js';
 
 /**
@@ -72,60 +78,6 @@ if (!isMacOS()) {
   ];
 
   describe('Phase 3 Validation: Real SDEF Discovery & XInclude Resolution', () => {
-    /**
-     * Test helper: Flatten all commands from all suites
-     */
-    function getAllCommands(dictionary: SDEFDictionary) {
-      const commands: string[] = [];
-      for (const suite of dictionary.suites) {
-        for (const cmd of suite.commands) {
-          commands.push(cmd.name);
-        }
-      }
-      return commands;
-    }
-
-    /**
-     * Test helper: Check if any type is "unknown"
-     */
-    function hasUnknownTypes(dictionary: SDEFDictionary): boolean {
-      for (const suite of dictionary.suites) {
-        for (const cmd of suite.commands) {
-          // Check parameters
-          for (const param of cmd.parameters) {
-            if (param.type.kind === 'primitive' && param.type.type === 'unknown') {
-              return true;
-            }
-          }
-          // Check result
-          if (
-            cmd.result &&
-            cmd.result.kind === 'primitive' &&
-            cmd.result.type === 'unknown'
-          ) {
-            return true;
-          }
-          // Check direct parameter
-          if (
-            cmd.directParameter &&
-            cmd.directParameter.type.kind === 'primitive' &&
-            cmd.directParameter.type.type === 'unknown'
-          ) {
-            return true;
-          }
-        }
-
-        // Check classes
-        for (const cls of suite.classes) {
-          for (const prop of cls.properties) {
-            if (prop.type.kind === 'primitive' && prop.type.type === 'unknown') {
-              return true;
-            }
-          }
-        }
-      }
-      return false;
-    }
 
     // ========================================================================
     // Test 1: Discovery Tests
@@ -157,12 +109,12 @@ if (!isMacOS()) {
 
           if (sdefPath === null) {
             // App not installed on this system - that's OK
-            console.log(`ℹ ${targetApp.name} not installed on this system`);
-          } else {
-            expect(sdefPath).toBeTruthy();
-            expect(sdefPath).toContain('.sdef');
-            expect(sdefPath).toContain(targetApp.bundlePath);
+            return;
           }
+
+          expect(sdefPath).toBeTruthy();
+          expect(sdefPath).toContain('.sdef');
+          expect(sdefPath).toContain(targetApp.bundlePath);
         });
       }
     });
@@ -174,59 +126,30 @@ if (!isMacOS()) {
     describe('Parsing: Parse Target App SDEF Files', () => {
       for (const targetApp of TARGET_APPS) {
         describe(`${targetApp.name} SDEF Parsing`, () => {
-          let sdefPath: string | null;
-          let dictionary: SDEFDictionary | null;
+          let testContext: SDEFTestContext | null;
 
           beforeAll(async () => {
-            // Find SDEF file
-            sdefPath = await findSDEFFile(targetApp.bundlePath);
-            if (!sdefPath) {
-              console.log(
-                `⊘ ${targetApp.name} SDEF not found - skipping detailed tests`
-              );
-              return;
-            }
-
-            // Parse SDEF
-            const parser = new SDEFParser();
-            try {
-              dictionary = await parser.parse(sdefPath);
-            } catch (error) {
-              console.error(
-                `Failed to parse ${targetApp.name}: ${
-                  error instanceof Error ? error.message : String(error)
-                }`
-              );
-            }
+            testContext = await setupSDEFTest(targetApp.bundlePath);
           });
 
           it(`should parse ${targetApp.name} without errors`, async () => {
-            if (!sdefPath) {
-              console.log(`Skipping: ${targetApp.name} SDEF not found`);
-              return;
-            }
+            if (!testContext) return;
 
-            expect(dictionary).toBeTruthy();
-            expect(dictionary).toHaveProperty('suites');
-            expect(Array.isArray(dictionary!.suites)).toBe(true);
+            expect(testContext.dictionary).toBeTruthy();
+            expect(testContext.dictionary).toHaveProperty('suites');
+            expect(Array.isArray(testContext.dictionary.suites)).toBe(true);
           });
 
           it(`should extract suites from ${targetApp.name}`, () => {
-            if (!dictionary) {
-              console.log(`Skipping: ${targetApp.name} dictionary not parsed`);
-              return;
-            }
+            if (!testContext) return;
 
-            expect(dictionary.suites.length).toBeGreaterThan(0);
+            expect(testContext.dictionary.suites.length).toBeGreaterThan(0);
           });
 
           it(`should have resolved types in ${targetApp.name} (no "unknown")`, () => {
-            if (!dictionary) {
-              console.log(`Skipping: ${targetApp.name} dictionary not parsed`);
-              return;
-            }
+            if (!testContext) return;
 
-            const hasUnknown = hasUnknownTypes(dictionary);
+            const hasUnknown = hasUnknownTypes(testContext.dictionary);
             expect(hasUnknown).toBe(false);
           });
         });
@@ -240,66 +163,38 @@ if (!isMacOS()) {
     describe('Command Extraction: Verify Expected Commands', () => {
       for (const targetApp of TARGET_APPS) {
         describe(`${targetApp.name} Command Extraction`, () => {
-          let dictionary: SDEFDictionary | null;
-          let allCommands: string[] = [];
+          let testContext: SDEFTestContext | null;
 
           beforeAll(async () => {
-            const sdefPath = await findSDEFFile(targetApp.bundlePath);
-            if (!sdefPath) {
-              console.log(`Skipping: ${targetApp.name} SDEF not found`);
-              return;
-            }
-
-            const parser = new SDEFParser();
-            try {
-              dictionary = await parser.parse(sdefPath);
-              if (dictionary) {
-                allCommands = getAllCommands(dictionary);
-              }
-            } catch (error) {
-              console.error(
-                `Failed to parse ${targetApp.name}: ${
-                  error instanceof Error ? error.message : String(error)
-                }`
-              );
-            }
+            testContext = await setupSDEFTest(targetApp.bundlePath);
           });
 
           it(`should extract at least ${targetApp.minCommandCount} commands from ${targetApp.name}`, () => {
-            if (!dictionary) {
-              console.log(`Skipping: ${targetApp.name} dictionary not parsed`);
-              return;
-            }
+            if (!testContext) return;
 
-            expect(allCommands.length).toBeGreaterThanOrEqual(
+            expect(testContext.allCommands.length).toBeGreaterThanOrEqual(
               targetApp.minCommandCount
             );
           });
 
           it(`should have expected commands in ${targetApp.name}`, () => {
-            if (!dictionary) {
-              console.log(`Skipping: ${targetApp.name} dictionary not parsed`);
-              return;
-            }
+            if (!testContext) return;
 
             // Check for at least some expected commands
             const foundExpected = targetApp.expectedCommands.filter((cmd) =>
-              allCommands.some((c) => c.toLowerCase() === cmd.toLowerCase())
+              testContext!.allCommands.some((c) => c.toLowerCase() === cmd.toLowerCase())
             );
 
             expect(foundExpected.length).toBeGreaterThan(0);
           });
 
           it(`should have properly typed parameters in ${targetApp.name}`, () => {
-            if (!dictionary) {
-              console.log(`Skipping: ${targetApp.name} dictionary not parsed`);
-              return;
-            }
+            if (!testContext) return;
 
             let typedParameterCount = 0;
             let totalParameterCount = 0;
 
-            for (const suite of dictionary.suites) {
+            for (const suite of testContext.dictionary.suites) {
               for (const cmd of suite.commands) {
                 for (const param of cmd.parameters) {
                   totalParameterCount++;
@@ -324,20 +219,14 @@ if (!isMacOS()) {
     describe('XInclude Resolution: Verify Included Content', () => {
       for (const targetApp of TARGET_APPS.filter((app) => app.expectedIncludeFile)) {
         it(`should resolve includes for ${targetApp.name}`, async () => {
-          const sdefPath = await findSDEFFile(targetApp.bundlePath);
-          if (!sdefPath) {
-            console.log(`Skipping: ${targetApp.name} SDEF not found`);
-            return;
-          }
-
-          const parser = new SDEFParser();
-          const dictionary = await parser.parse(sdefPath);
+          const testContext = await setupSDEFTest(targetApp.bundlePath);
+          if (!testContext) return;
 
           // If we have expected include file, the parsing should have included it
           // We can verify this by checking that we have more commands than just
           // what would be in the main SDEF
-          expect(dictionary.suites.length).toBeGreaterThan(0);
-          expect(getAllCommands(dictionary).length).toBeGreaterThan(5);
+          expect(testContext.dictionary.suites.length).toBeGreaterThan(0);
+          expect(testContext.allCommands.length).toBeGreaterThan(5);
         });
       }
     });
@@ -351,45 +240,32 @@ if (!isMacOS()) {
         const metrics: Record<
           string,
           {
-            status: 'found' | 'not_found' | 'error';
+            status: 'found' | 'not_found';
             suiteCount?: number;
             commandCount?: number;
             classCount?: number;
-            error?: string;
           }
         > = {};
 
         for (const targetApp of TARGET_APPS) {
-          const sdefPath = await findSDEFFile(targetApp.bundlePath);
+          const testContext = await setupSDEFTest(targetApp.bundlePath);
 
-          if (!sdefPath) {
+          if (!testContext) {
             metrics[targetApp.name] = { status: 'not_found' };
             continue;
           }
 
-          try {
-            const parser = new SDEFParser();
-            const dictionary = await parser.parse(sdefPath);
-            const commands = getAllCommands(dictionary);
-            let classCount = 0;
-
-            for (const suite of dictionary.suites) {
-              classCount += suite.classes.length;
-            }
-
-            metrics[targetApp.name] = {
-              status: 'found',
-              suiteCount: dictionary.suites.length,
-              commandCount: commands.length,
-              classCount,
-            };
-          } catch (error) {
-            metrics[targetApp.name] = {
-              status: 'error',
-              error:
-                error instanceof Error ? error.message : String(error),
-            };
+          let classCount = 0;
+          for (const suite of testContext.dictionary.suites) {
+            classCount += suite.classes.length;
           }
+
+          metrics[targetApp.name] = {
+            status: 'found',
+            suiteCount: testContext.dictionary.suites.length,
+            commandCount: testContext.allCommands.length,
+            classCount,
+          };
         }
 
         // Log metrics
@@ -399,10 +275,8 @@ if (!isMacOS()) {
             console.log(
               `✓ ${appName}: ${data.suiteCount} suites, ${data.commandCount} commands, ${data.classCount} classes`
             );
-          } else if (data.status === 'not_found') {
-            console.log(`⊘ ${appName}: Not installed`);
           } else {
-            console.log(`✗ ${appName}: Error - ${data.error}`);
+            console.log(`⊘ ${appName}: Not installed`);
           }
         }
 
@@ -445,41 +319,27 @@ if (!isMacOS()) {
 
     describe('Baseline Comparison: Finder SDEF', () => {
       it('should parse Finder.sdef successfully', async () => {
-        const finderPath = await findSDEFFile('/System/Library/CoreServices/Finder.app');
+        const testContext = await setupSDEFTest('/System/Library/CoreServices/Finder.app');
+        if (!testContext) return;
 
-        if (!finderPath) {
-          console.log('Skipping: Finder.sdef not found');
-          return;
-        }
-
-        const parser = new SDEFParser();
-        const dictionary = await parser.parse(finderPath);
-
-        expect(dictionary.suites.length).toBeGreaterThan(0);
-        const commands = getAllCommands(dictionary);
-        expect(commands.length).toBeGreaterThan(20); // Finder has many commands
+        expect(testContext.dictionary.suites.length).toBeGreaterThan(0);
+        expect(testContext.allCommands.length).toBeGreaterThan(20); // Finder has many commands
       });
 
       it('should compare command counts: target apps vs Finder', async () => {
         const metrics: Record<string, number> = {};
 
         // Finder baseline
-        const finderPath = await findSDEFFile(
-          '/System/Library/CoreServices/Finder.app'
-        );
-        if (finderPath) {
-          const parser = new SDEFParser();
-          const dict = await parser.parse(finderPath);
-          metrics['Finder'] = getAllCommands(dict).length;
+        const finderContext = await setupSDEFTest('/System/Library/CoreServices/Finder.app');
+        if (finderContext) {
+          metrics['Finder'] = finderContext.allCommands.length;
         }
 
         // Target apps
         for (const targetApp of TARGET_APPS) {
-          const sdefPath = await findSDEFFile(targetApp.bundlePath);
-          if (sdefPath) {
-            const parser = new SDEFParser();
-            const dict = await parser.parse(sdefPath);
-            metrics[targetApp.name] = getAllCommands(dict).length;
+          const testContext = await setupSDEFTest(targetApp.bundlePath);
+          if (testContext) {
+            metrics[targetApp.name] = testContext.allCommands.length;
           }
         }
 
