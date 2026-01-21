@@ -52,6 +52,64 @@ git push origin feature/<name>  # Push feature branch (NEVER push to origin/mast
 
 ---
 
+## 🚀 LAUNCH STRATEGY (Critical Path for Bootstrapped Startup)
+
+**Core Vision:** Every scriptable Mac app available via an MCP tool.
+
+**Launch Definition:** MCP server that discovers all installed scriptable apps and exposes their commands as Claude-callable tools.
+
+### Coverage Prioritization for Launch
+
+**The vision lives or dies on MCP server quality.** Not on metrics, not on CLI, not on every line of code being tested.
+
+**CRITICAL PATH (100% coverage required before launch):**
+- `src/mcp/server.ts` - Server initialization, ListTools, CallTool handlers
+- `src/mcp/handlers.ts` - Tool execution, error handling, response formatting
+- `src/index.ts` - Entry point
+
+**Tests must verify:**
+- ✅ Every scriptable app is discovered (ListTools completeness)
+- ✅ Every app's commands become MCP tools
+- ✅ Tool execution works end-to-end (Claude → MCP → App → Result)
+- ✅ Error handling is graceful (app not found, permission denied, timeout)
+- ✅ Server is stable under load (no hangs/crashes)
+- ✅ Performance is acceptable (<5s for listing, <5s for execution)
+
+**NOT required before launch:**
+- Phase 4 metrics/coverage analysis (important for post-launch optimization)
+- CLI testing (library is the primary distribution, not CLI)
+- Type definition tests (can't meaningfully test runtime behavior of types)
+- Example code (not customer-facing)
+
+### Work Strategy for C-Suite
+
+**Your role:** Strategic decisions only
+- What gets shipped (you decide)
+- When to ship (you decide)
+- Go/no-go on launch (you decide)
+- Direction on test structure/approach (you decide)
+
+**Claude's role:** Execute to spec with transparency
+- Implement MCP tests autonomously
+- Fix coverage gaps without asking
+- Commit progress regularly
+- Keep you informed at every checkpoint
+- Report blockers immediately (none expected)
+- Deliver working code that passes all tests
+
+**Communication:** Decision gates + issues only
+- **Decision gates at phase boundaries:**
+  - "Phase A complete. Proceed to Phase B?" (requires your approval)
+  - Final: "Launch-ready. All tests passing. Your call on shipping?"
+- **Unexpected patterns/issues:** Report immediately if any arise
+  - Design decisions that affect architecture
+  - Coverage gaps that can't be closed
+  - Test failures that reveal deeper problems
+  - Anything blocking launch
+- Otherwise: Work autonomously, commit regularly, stay on track
+
+---
+
 ## ⚠️ MANDATORY: Code Quality Standards
 
 **READ THIS FIRST:** [CODE-QUALITY.md](CODE-QUALITY.md)
@@ -390,6 +448,39 @@ kill <PID>  # PID shown when monitor starts
 3. **Context**: Provide clear task description with constraints
 4. **Trust output**: Agent results are generally reliable
 5. **Update agents**: When you learn something an agent should know, update the agent definition
+
+### ⚠️⚠️⚠️ CRITICAL: Working Directory Context for Agents ⚠️⚠️⚠️
+
+**MANDATORY when working in feature branches/worktrees:**
+
+When launching ANY sub-agent that will make code changes during /doit workflow or worktree development, you MUST explicitly pass the working directory path in the agent's task prompt:
+
+```markdown
+WORKING DIRECTORY: /Users/jake/dev/jsavin/iac-mcp-<feature-name>
+BRANCH: feature/<feature-name>
+
+You MUST execute all commands and file operations in this working directory.
+Verify your location with 'pwd && git branch' before making any changes.
+
+[Rest of task description...]
+```
+
+**Why This is Critical**:
+- Agents don't automatically inherit working directory context
+- Without explicit path, agents may work in main iac-mcp directory on master
+- This introduces breaking changes to master instead of feature branch
+- Creates redundant work and violates worktree workflow discipline
+
+**When This Applies**:
+- ✅ During /doit workflow (all phases)
+- ✅ When working in any worktree for feature development
+- ✅ Any agent that will modify code, run tests, or commit changes
+- ❌ Not needed for pure research/exploration agents (read-only analysis)
+
+**Verification After Agent Completes**:
+```bash
+cd <worktree-path> && git status  # Verify changes are on correct branch
+```
 
 ---
 
