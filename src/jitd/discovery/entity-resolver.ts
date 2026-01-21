@@ -269,7 +269,7 @@ export class EntityResolver {
       // This ensures if two includes have identical text, both are replaced correctly
       let result = content;
       for (let i = includes.length - 1; i >= 0; i--) {
-        const include = includes[i];
+        const include = includes[i]!; // Non-null assertion: array index always exists in valid loop
         const { match: matchText, href } = include;
 
         // SECURITY: Validate href (reject empty, whitespace-only)

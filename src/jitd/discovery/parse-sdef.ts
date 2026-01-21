@@ -7,6 +7,7 @@
 
 import { readFile, stat } from 'fs/promises';
 import { XMLParser } from 'fast-xml-parser';
+import { EntityResolver } from './entity-resolver.js';
 import type {
   SDEFDictionary,
   SDEFSuite,
@@ -114,6 +115,7 @@ export class SDEFParser {
   private readonly onWarning?: (warning: ParseWarning) => void;
   private currentSuite?: string;
   private currentCommand?: string;
+  private entityResolver?: EntityResolver;
 
   constructor(options?: SDEFParserOptions) {
     // Support deprecated strictTypeChecking option
@@ -134,6 +136,21 @@ export class SDEFParser {
       // to prevent XXE (XML External Entity) attacks
       ignoreDeclaration: true,
       ignorePiTags: true,
+    });
+
+    // Initialize entity resolver for safe XInclude/external entity resolution
+    const additionalPaths: string[] = [];
+    if (process.env.HOME) {
+      additionalPaths.push(`${process.env.HOME}/Library/`);
+    }
+
+    this.entityResolver = new EntityResolver({
+      additionalTrustedPaths: additionalPaths,
+      maxDepth: 3,
+      maxFileSize: 1024 * 1024, // 1MB per file
+      maxTotalBytes: 10 * 1024 * 1024, // 10MB total
+      maxIncludesPerFile: 50,
+      debug: false,
     });
 
     this.parseCache = new Map();
@@ -161,7 +178,32 @@ export class SDEFParser {
         );
       }
 
-      const xmlContent = await readFile(sdefPath, 'utf-8');
+      let xmlContent = await readFile(sdefPath, 'utf-8');
+
+      // SECURITY: Resolve external entities (XInclude) before parsing
+      // This enables support for Pages, Numbers, Keynote, and System Events SDEF files
+      // that use xi:include to reference shared definitions
+      try {
+        if (this.entityResolver) {
+          xmlContent = await this.entityResolver.resolveIncludes(xmlContent, sdefPath);
+        }
+      } catch (resolverError) {
+        // Log entity resolution errors but continue parsing
+        // The parser will handle malformed XML or unresolved entities gracefully
+        if (this.onWarning) {
+          this.onWarning({
+            code: 'ENTITY_RESOLUTION_ERROR',
+            message: `Failed to resolve external entities: ${resolverError instanceof Error ? resolverError.message : String(resolverError)}`,
+            location: {
+              element: 'document',
+              name: sdefPath,
+              suite: undefined,
+              command: undefined,
+            },
+          });
+        }
+      }
+
       const result = await this.parseContent(xmlContent);
 
       // Cache the result with LRU eviction
