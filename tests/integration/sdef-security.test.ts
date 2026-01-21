@@ -1072,7 +1072,7 @@ describe('SDEF Security Tests', () => {
       const parser = new SDEFParser();
       // Should reject because of XXE protection (first layer)
       await expect(() => parser.parseContent(combinedAttack)).rejects.toThrow(
-        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM/i
+        /ENTITY declarations.*SYSTEM|XXE vulnerability/i
       );
     });
 

