@@ -1375,6 +1375,143 @@ describe('Type Inference - Lenient Mode', () => {
     });
   });
 
+  describe('substring heuristics with snake_case identifiers', () => {
+    it('should infer date type for snake_case parameter "created_date"', async () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="created_date" code="crdt" />
+    </command>
+  </suite>
+</dictionary>`;
+
+      const result = await parser.parseContent(xml);
+      const param = result.suites[0].commands[0].parameters[0];
+
+      // Pattern /(^|_)(date|time|timestamp)($|_)/i matches "created_date"
+      // because "_date$" (underscore before, end after) matches the pattern
+      expect(param.type.kind).toBe('date');
+    });
+
+    it('should infer text type for snake_case parameter "user_id" via ID pattern', async () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="user_id" code="usid" />
+    </command>
+  </suite>
+</dictionary>`;
+
+      const result = await parser.parseContent(xml);
+      const param = result.suites[0].commands[0].parameters[0];
+
+      // Pattern /(^|_)(id|identifier)($|_)/i matches "user_id"
+      // because "_id$" (underscore before, end after) matches the pattern
+      expect(param.type).toEqual({ kind: 'primitive', type: 'text' });
+    });
+
+    it('should infer text type for snake_case parameter "web_url" via URL pattern', async () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="web_url" code="wurl" />
+    </command>
+  </suite>
+</dictionary>`;
+
+      const result = await parser.parseContent(xml);
+      const param = result.suites[0].commands[0].parameters[0];
+
+      // Pattern /(^|_)(url|uri)($|_)/i matches "web_url"
+      // because "_url$" (underscore before, end after) matches the pattern
+      expect(param.type).toEqual({ kind: 'primitive', type: 'text' });
+    });
+  });
+
+  describe('substring heuristics with all-caps identifiers', () => {
+    it('should NOT match ID pattern for all-caps parameter "USERID" (no word boundary)', async () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="USERID" code="USID" />
+    </command>
+  </suite>
+</dictionary>`;
+
+      const result = await parser.parseContent(xml);
+      const param = result.suites[0].commands[0].parameters[0];
+
+      // "USERID" doesn't match \b(id|identifier)\b pattern (no word boundary)
+      // Also doesn't match (Id|Identifier) capitalized pattern
+      // Falls back to default text type
+      expect(param.type).toEqual({ kind: 'primitive', type: 'text' });
+    });
+
+    it('should infer date type for all-caps parameter "TIMESTAMP" (case-insensitive word boundary)', async () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="TIMESTAMP" code="TMSP" />
+    </command>
+  </suite>
+</dictionary>`;
+
+      const result = await parser.parseContent(xml);
+      const param = result.suites[0].commands[0].parameters[0];
+
+      // "TIMESTAMP" matches \b(date|time|timestamp)\b/i pattern (case-insensitive, standalone word)
+      expect(param.type.kind).toBe('date');
+    });
+
+    it('should NOT match URL pattern for all-caps parameter "WEBSITEURL" (no word boundary)', async () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="WEBSITEURL" code="WURL" />
+    </command>
+  </suite>
+</dictionary>`;
+
+      const result = await parser.parseContent(xml);
+      const param = result.suites[0].commands[0].parameters[0];
+
+      // "WEBSITEURL" doesn't match \b(url|uri)\b pattern (no word boundary between words)
+      // Falls back to default text type
+      expect(param.type).toEqual({ kind: 'primitive', type: 'text' });
+    });
+  });
+
+  describe('substring heuristics with very long parameter names', () => {
+    it('should handle very long parameter names without performance degradation', async () => {
+      // 1000-character parameter name ending with "Date"
+      const longName = 'a'.repeat(996) + 'Date';
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="${longName}" code="unkn" />
+    </command>
+  </suite>
+</dictionary>`;
+
+      const startTime = Date.now();
+      const result = await parser.parseContent(xml);
+      const duration = Date.now() - startTime;
+
+      const param = result.suites[0].commands[0].parameters[0];
+      // Should match /(Date|Time|Timestamp)/ pattern (capitalized Date at end)
+      // Code "unkn" has no mapping, so falls through to name-based inference
+      expect(param.type.kind).toBe('date');
+      expect(duration).toBeLessThan(1000); // Should complete in < 1 second
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle parameter with both type attribute and child element', async () => {
       const xml = `<?xml version="1.0" encoding="UTF-8"?>

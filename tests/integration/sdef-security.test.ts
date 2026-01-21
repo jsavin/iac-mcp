@@ -111,9 +111,9 @@ describe('SDEF Security Tests', () => {
 
       const parser = new SDEFParser();
       // Security property: XXE protection - parser must reject ENTITY declarations with SYSTEM URIs
-      // Regex matches: "ENTITY declarations found" OR "DOCTYPE with ENTITY SYSTEM references" OR "Failed to parse SDEF XML"
+      // Regex matches: "XXE vulnerability detected" OR "ENTITY declaration" OR "Failed to parse SDEF XML"
       await expect(() => parser.parseContent(maliciousXML)).rejects.toThrow(
-        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM references|Failed to parse SDEF XML/i
+        /XXE vulnerability detected|ENTITY declaration|Failed to parse SDEF XML/i
       );
     });
 
@@ -136,9 +136,9 @@ describe('SDEF Security Tests', () => {
 
       const parser = new SDEFParser();
       // Security property: XXE protection - multiple entities with SYSTEM URIs must all be rejected
-      // Regex matches: "ENTITY declarations found" OR "DOCTYPE with ENTITY SYSTEM references" OR "Failed to parse SDEF XML"
+      // Regex matches: "XXE vulnerability detected" OR "ENTITY declaration" OR "Failed to parse SDEF XML"
       await expect(() => parser.parseContent(maliciousXML)).rejects.toThrow(
-        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM references|Failed to parse SDEF XML/i
+        /XXE vulnerability detected|ENTITY declaration|Failed to parse SDEF XML/i
       );
     });
 
@@ -157,9 +157,9 @@ describe('SDEF Security Tests', () => {
 
       const parser = new SDEFParser();
       // Security property: XXE protection - parameter entities with SYSTEM URIs are also blocked
-      // Regex matches: "ENTITY declarations found" OR "DOCTYPE with ENTITY SYSTEM references" OR "Failed to parse SDEF XML"
+      // Regex matches: "XXE vulnerability detected" OR "ENTITY declaration" OR "Failed to parse SDEF XML"
       await expect(() => parser.parseContent(maliciousXML)).rejects.toThrow(
-        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM references|Failed to parse SDEF XML/i
+        /XXE vulnerability detected|ENTITY declaration|Failed to parse SDEF XML/i
       );
     });
 
@@ -177,9 +177,9 @@ describe('SDEF Security Tests', () => {
 
       const parser = new SDEFParser();
       // Security property: XXE protection - multi-line ENTITY declarations with SYSTEM URIs are also blocked
-      // Regex matches: "ENTITY declarations found" OR "DOCTYPE with ENTITY SYSTEM references" OR "Failed to parse SDEF XML"
+      // Regex matches: "XXE vulnerability detected" OR "ENTITY declaration" OR "Failed to parse SDEF XML"
       await expect(() => parser.parseContent(multilineXXE)).rejects.toThrow(
-        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM references|Failed to parse SDEF XML/i
+        /XXE vulnerability detected|ENTITY declaration|Failed to parse SDEF XML/i
       );
     });
 
@@ -1092,7 +1092,7 @@ describe('SDEF Security Tests', () => {
       const parser = new SDEFParser();
       // Should reject because of XXE protection (first layer)
       await expect(() => parser.parseContent(combinedAttack)).rejects.toThrow(
-        /ENTITY declarations.*SYSTEM|XXE vulnerability/i
+        /XXE vulnerability detected|ENTITY declaration.*SYSTEM/i
       );
     });
 

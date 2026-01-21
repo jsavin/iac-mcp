@@ -440,7 +440,7 @@ export class SDEFParser {
       // Use negated character class to prevent ReDoS
       if (/<!ENTITY[^>]*SYSTEM/i.test(contentWithoutComments)) {
         throw new Error(
-          'ENTITY declarations with SYSTEM references found - potential XXE vulnerability'
+          'XXE vulnerability detected: ENTITY declaration with SYSTEM reference found'
         );
       }
 
@@ -452,9 +452,9 @@ export class SDEFParser {
       //
       // Since our XML parser is configured with ignoreDeclaration: true and never executes
       // DOCTYPE processing, stripping is safe and prevents any residual XXE risk.
-      // Use negated character class to prevent ReDoS
+      // Fix: Match DOCTYPE with optional internal subset (handles multi-line DTD)
       const contentWithoutDoctype = contentWithoutComments.replace(
-        /<!DOCTYPE[^>]*>/i,
+        /<!DOCTYPE[^[]*(?:\[[^\]]*\])?\s*>/i,
         ''
       );
 
@@ -464,7 +464,7 @@ export class SDEFParser {
       // Pattern matches both: <!ENTITY name SYSTEM "..."> and <!ENTITY % name "...">
       if (/<!ENTITY/i.test(contentWithoutDoctype)) {
         throw new Error(
-          'ENTITY declarations found after DOCTYPE stripping - potential XXE vulnerability'
+          'XXE vulnerability detected: ENTITY declaration found after DOCTYPE stripping'
         );
       }
 
@@ -997,8 +997,9 @@ export class SDEFParser {
     // Date/time-related - match at word boundaries or camelCase boundaries
     // Matches: "createdDate", "modifiedTime", "timestamp", "created_date"
     // Rejects: "validate", "validated", "invalidate" (date not at boundary)
-    // Pattern: lowercase keyword at word boundary OR capitalized keyword (camelCase)
-    if (/(^|[^a-zA-Z])(date|time|timestamp)($|[^a-zA-Z])|(Date|Time|Timestamp)/.test(elementName)) {
+    // Pattern: Match keyword at start/end OR after underscore/before underscore OR capitalized (camelCase)
+    // Fix: Use alternation instead of negated character class to prevent ReDoS
+    if (/(^|_)(date|time|timestamp)($|_)/i.test(elementName) || /(Date|Time|Timestamp)/.test(elementName)) {
       inferredType = { kind: 'date' };
 
       this.warn({
@@ -1019,8 +1020,9 @@ export class SDEFParser {
     // URL/URI-related - match at word boundaries or camelCase boundaries
     // Matches: "websiteUrl", "resourceUri", "url", "uri"
     // Rejects: "curious" (uri not at boundary)
-    // Pattern: lowercase keyword at word boundary OR capitalized keyword (camelCase)
-    if (/(^|[^a-zA-Z])(url|uri)($|[^a-zA-Z])|(Url|Uri)/.test(elementName)) {
+    // Pattern: Match keyword at start/end OR after underscore/before underscore OR capitalized (camelCase)
+    // Fix: Use alternation instead of negated character class to prevent ReDoS
+    if (/(^|_)(url|uri)($|_)/i.test(elementName) || /(Url|Uri)/.test(elementName)) {
       inferredType = { kind: 'primitive', type: 'text' };
 
       this.warn({
@@ -1041,8 +1043,9 @@ export class SDEFParser {
     // ID/Identifier-related - match at word boundaries or camelCase boundaries
     // Matches: "userId", "uniqueIdentifier", "recordId", "user_id", "id"
     // Rejects: "video", "audio", "validated" (id not at boundary)
-    // Pattern: lowercase keyword at word boundary OR capitalized keyword (camelCase)
-    if (/(^|[^a-zA-Z])(id|identifier)($|[^a-zA-Z])|(Id|Identifier)/.test(elementName)) {
+    // Pattern: Match keyword at start/end OR after underscore/before underscore OR capitalized (camelCase)
+    // Fix: Use alternation instead of negated character class to prevent ReDoS
+    if (/(^|_)(id|identifier)($|_)/i.test(elementName) || /(Id|Identifier)/.test(elementName)) {
       inferredType = { kind: 'primitive', type: 'text' };
 
       this.warn({
