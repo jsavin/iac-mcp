@@ -408,12 +408,13 @@ describe('Type Inference - Lenient Mode', () => {
       const result = await parser.parseContent(xml);
       const parameter = result.suites[0].commands[0].parameters[0];
 
-      // Note: Due to code.trim() in implementation line 924, 'obj ' (with trailing space)
-      // doesn't match the CODE_TO_TYPE_MAP key after trimming.
-      // Falls through to default text type.
-      // TODO: Fix by not trimming codes before lookup (codes are exactly 4 chars)
-      expect(parameter.type.kind).toBe('primitive');
-      expect(parameter.type.type).toBe('text');
+      // Fixed: 'obj ' (with trailing space) now correctly matches CODE_TO_TYPE_MAP
+      // Maps to 'specifier' which parses to location_specifier type
+      expect(parameter.type.kind).toBe('location_specifier');
+      const codeInferenceWarning = warnings.find(
+        (w) => w.code === 'TYPE_INFERRED_FROM_CODE'
+      );
+      expect(codeInferenceWarning).toBeDefined();
     });
 
     it("should infer record type for 'reco' code", async () => {
@@ -593,12 +594,13 @@ describe('Type Inference - Lenient Mode', () => {
       const result = await parser.parseContent(xml);
       const parameter = result.suites[0].commands[0].parameters[0];
 
-      // Note: Due to code.trim() in implementation line 924, 'ldt ' (with trailing space)
-      // doesn't match the CODE_TO_TYPE_MAP key after trimming.
-      // Falls through to default text type.
-      // TODO: Fix by not trimming codes before lookup (codes are exactly 4 chars)
-      expect(parameter.type.kind).toBe('primitive');
-      expect(parameter.type.type).toBe('text');
+      // Fixed: 'ldt ' (with trailing space) now correctly matches CODE_TO_TYPE_MAP
+      // Maps to 'date' type
+      expect(parameter.type.kind).toBe('date');
+      const codeInferenceWarning = warnings.find(
+        (w) => w.code === 'TYPE_INFERRED_FROM_CODE'
+      );
+      expect(codeInferenceWarning).toBeDefined();
     });
   });
 
