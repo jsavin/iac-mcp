@@ -6,6 +6,7 @@
  */
 
 import { readFile, stat } from 'fs/promises';
+import { dirname, isAbsolute } from 'path';
 import { XMLParser } from 'fast-xml-parser';
 import { EntityResolver } from './entity-resolver.js';
 import type {
@@ -160,6 +161,13 @@ export class SDEFParser {
    * Parse SDEF file and return structured data
    */
   async parse(sdefPath: string): Promise<SDEFDictionary> {
+    // SECURITY: Verify SDEF path is absolute for secure XInclude resolution
+    if (!isAbsolute(sdefPath)) {
+      throw new Error(
+        `SDEF path must be an absolute path for secure resolution, got: "${sdefPath}"`
+      );
+    }
+
     // Check cache first
     const cached = this.parseCache.get(sdefPath);
     if (cached) {
@@ -185,7 +193,15 @@ export class SDEFParser {
       // that use xi:include to reference shared definitions
       try {
         if (this.entityResolver) {
-          xmlContent = await this.entityResolver.resolveIncludes(xmlContent, sdefPath);
+          // SECURITY: Extract SDEF directory for XInclude resolution
+          // EntityResolver trusts includes within this directory tree (basePath mechanism),
+          // even if the directory itself isn't in DEFAULT_TRUSTED_PATHS.
+          // This allows Pages/Numbers/Keynote and other apps in /Applications,
+          // /System/Library/CoreServices, /Library/ScriptingAdditions to be parsed safely.
+          // The basePath trust is secure because it prevents directory traversal while
+          // allowing legitimate includes from the same app bundle.
+          const sdefDirectory = dirname(sdefPath);
+          xmlContent = await this.entityResolver.resolveIncludes(xmlContent, sdefDirectory, 0, sdefPath);
         }
       } catch (resolverError) {
         // Log entity resolution errors but continue parsing
@@ -230,6 +246,13 @@ export class SDEFParser {
    */
   async parseContent(xmlContent: string): Promise<SDEFDictionary> {
     try {
+      // SECURITY: Verify no ENTITY declarations remain after DOCTYPE stripping
+      if (/<!ENTITY/i.test(xmlContent)) {
+        throw new Error(
+          'ENTITY declarations found after DOCTYPE stripping - potential XXE vulnerability'
+        );
+      }
+
       const parsed = this.parser.parse(xmlContent);
 
       if (!parsed.dictionary) {
