@@ -85,6 +85,12 @@ export async function setupSDEFTest(
  *
  * @param dictionary - Parsed SDEF dictionary
  * @returns true if any "unknown" types found, false otherwise
+ *
+ * @example
+ * ```typescript
+ * const hasUnknown = hasUnknownTypes(testContext.dictionary);
+ * expect(hasUnknown).toBe(false); // All types should be resolved
+ * ```
  */
 export function hasUnknownTypes(dictionary: SDEFDictionary): boolean {
   for (const suite of dictionary.suites) {
@@ -132,6 +138,14 @@ export function hasUnknownTypes(dictionary: SDEFDictionary): boolean {
  *
  * @param dictionary - Parsed SDEF dictionary
  * @returns Array of command names
+ *
+ * @example
+ * ```typescript
+ * const allCommands = getAllCommands(testContext.dictionary);
+ * expect(allCommands).toContain('get');
+ * expect(allCommands).toContain('set');
+ * expect(allCommands.length).toBeGreaterThan(10);
+ * ```
  */
 export function getAllCommands(dictionary: SDEFDictionary): string[] {
   const commands: string[] = [];

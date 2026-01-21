@@ -193,13 +193,29 @@ export class SDEFParser {
       // that use xi:include to reference shared definitions
       try {
         if (this.entityResolver) {
-          // SECURITY: Extract SDEF directory for XInclude resolution
-          // EntityResolver trusts includes within this directory tree (basePath mechanism),
-          // even if the directory itself isn't in DEFAULT_TRUSTED_PATHS.
-          // This allows Pages/Numbers/Keynote and other apps in /Applications,
-          // /System/Library/CoreServices, /Library/ScriptingAdditions to be parsed safely.
-          // The basePath trust is secure because it prevents directory traversal while
-          // allowing legitimate includes from the same app bundle.
+          // SECURITY: Extract SDEF directory for XInclude resolution (basePath mechanism)
+          // EntityResolver trusts includes within this directory tree, even if the directory
+          // itself isn't in DEFAULT_TRUSTED_PATHS. This allows Pages, Numbers, Keynote,
+          // System Events, and other apps in /Applications, /System/Library/CoreServices,
+          // and /Library/ScriptingAdditions to be parsed safely without pre-registration.
+          //
+          // WHY THIS IS SAFE:
+          // 1. Directory Traversal Prevention: Symlink resolution (fs.realpathSync.native())
+          //    and path normalization prevent escaping the app bundle via relative paths
+          //    like "../../evil.sdef". Path canonicalization happens BEFORE whitelist check.
+          // 2. Sealed App Bundles: macOS app bundles in /Applications are immutable at runtime.
+          //    An attacker can't modify app contents after installation.
+          // 3. System Permissions: /System/Library/CoreServices requires root to modify.
+          // 4. Include Depth Limit: Maximum recursion depth (default 3) prevents complex
+          //    attack chains through deeply nested includes.
+          //
+          // EXAMPLE - WHY WE ALLOW RELATIVE INCLUDES:
+          // - If parsing /Applications/Pages.app/Contents/Resources/Pages.sdef
+          // - And it has <xi:include href="Pages-sharedDefinitions.sdef"/>
+          // - We resolve this to /Applications/Pages.app/Contents/Resources/Pages-sharedDefinitions.sdef
+          // - This is safe because it's within the app bundle
+          // - Attempting ../../../etc/passwd would fail: realpath resolves symlinks,
+          //   then normalized path /Applications/etc/passwd is clearly outside the bundle
           const sdefDirectory = dirname(sdefPath);
           xmlContent = await this.entityResolver.resolveIncludes(xmlContent, sdefDirectory, 0, sdefPath);
         }
@@ -246,10 +262,17 @@ export class SDEFParser {
    */
   async parseContent(xmlContent: string): Promise<SDEFDictionary> {
     try {
-      // SECURITY: Verify no ENTITY declarations remain after DOCTYPE stripping
-      if (/<!ENTITY/i.test(xmlContent)) {
+      // SECURITY: Remove XML comments BEFORE checking for ENTITY declarations
+      // This prevents false positives from ENTITY references inside XML comments like:
+      // <!-- This refers to <!ENTITY foo> but shouldn't be treated as a threat -->
+      let contentWithoutComments = xmlContent.replace(/<!--[\s\S]*?-->/g, '');
+
+      // SECURITY: Verify no ENTITY declarations remain after comment removal
+      // We check for ENTITY only in actual XML, not in comments, to catch real XXE vulnerabilities
+      // Pattern matches both: <!ENTITY name SYSTEM "..."> and <!ENTITY % name "...">
+      if (/<!ENTITY/i.test(contentWithoutComments)) {
         throw new Error(
-          'ENTITY declarations found after DOCTYPE stripping - potential XXE vulnerability'
+          'ENTITY declarations found in SDEF file - potential XXE vulnerability'
         );
       }
 

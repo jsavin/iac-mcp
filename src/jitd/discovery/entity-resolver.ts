@@ -738,7 +738,27 @@ export class EntityResolver {
       const content = await this.readFile(resolvedPath);
 
       // SECURITY: Re-validate mtime after read to prevent TOCTOU race condition
-      // Only cache if file hasn't been modified since we started
+      // TOCTOU (Time-of-Check-Time-of-Use) is a file handling race condition where:
+      // 1. We stat() the file to check permissions/whitelist (time-of-check)
+      // 2. An attacker swaps the file with malicious content
+      // 3. We read() the swapped file (time-of-use)
+      //
+      // Accepting Residual Risk: A small TOCTOU window is inherent in file I/O.
+      // We mitigate but don't eliminate it because:
+      // - Closing TOCTOU completely requires locking (kills app responsiveness)
+      // - Real-world exploit is near-impossible: attacker needs root/bypass SIP + perfect timing
+      // - Cost/benefit: The security benefit of perfect TOCTOU closure doesn't justify
+      //   the performance/UX cost on a local system
+      //
+      // Mitigations Applied:
+      // 1. fs.realpathSync.native() resolves symlinks BEFORE the stat/read window,
+      //    eliminating symlink-swap attacks (most practical vector)
+      // 2. Re-validate file stat() after read to detect modifications
+      // 3. Only cache if mtime/size unchanged (our detection mechanism)
+      // 4. On macOS, System Integrity Protection (SIP) prevents /System modification
+      //
+      // If this code moves to a multi-user system or handles user-writable files,
+      // consider file descriptor locking or moving this to a secure enclave.
       const statsAfter = fs.statSync(resolvedPath);
       const mtimeAfter = statsAfter.mtimeMs;
       const sizeAfter = statsAfter.size;
