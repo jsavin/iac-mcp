@@ -127,11 +127,18 @@ export class MacOSAdapter {
         data: parsed.data,
       };
     } else {
+      // Defensive check: error should always exist when success is false
+      // If error is missing, provide a fallback error object
+      const error = parsed.error ?? {
+        type: 'EXECUTION_ERROR' as const,
+        message: 'Unknown execution error',
+      };
+
       return {
         success: false,
         error: {
-          type: parsed.error!.type,
-          message: parsed.error!.message,
+          type: error.type,
+          message: error.message,
           appName: tool._metadata.appName,
         },
       };
