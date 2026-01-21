@@ -146,6 +146,7 @@ export class IACMCPServer {
       {
         capabilities: {
           tools: {},
+          resources: {},
         },
       }
     );
@@ -290,11 +291,10 @@ export class IACMCPServer {
         throw new Error('Server must be initialized before starting');
       }
 
-      // Create and start stdio transport
+      // Create stdio transport (Server.connect() will start it automatically)
       this.transport = new StdioServerTransport();
-      await this.transport.start();
 
-      // Connect server to transport
+      // Connect server to transport (this automatically starts the transport)
       await this.server.connect(this.transport);
 
       // Mark as running and track start time
