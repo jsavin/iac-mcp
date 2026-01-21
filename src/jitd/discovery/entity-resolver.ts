@@ -388,11 +388,11 @@ export class EntityResolver {
    */
   private validateNoExternalEntities(content: string): void {
     // SECURITY: Prevent ReDoS by limiting the portion of content we apply regex to
-    // DOCTYPE declarations should appear at start of XML, so we only check first 64KB
+    // DOCTYPE declarations should appear at start of XML, so we only check first 8KB
     // This protects against catastrophic backtracking on maliciously crafted input
-    const maxDocTypeCheckLength = 65536; // 64KB - enough for any reasonable DOCTYPE
+    const maxDocTypeCheckLength = 8192; // 8KB - sufficient for all legitimate DOCTYPE declarations
     const contentToCheck = content.length > maxDocTypeCheckLength
-      ? content.substring(0, maxDocTypeCheckLength)
+      ? content.slice(0, maxDocTypeCheckLength)
       : content;
 
     // Check for ENTITY declarations in DOCTYPE internal subset
@@ -960,7 +960,9 @@ export class EntityResolver {
       }
 
       // SECURITY: Sanitize error messages (don't leak path details)
-      throw new Error('Failed to read included file');
+      // Include href context to help with debugging while protecting sensitive paths
+      const hrefDisplay = href.length > 50 ? href.slice(0, 47) + '...' : href;
+      throw new Error(`Failed to read included file: "${hrefDisplay}" (path traversal check or I/O error)`);
     }
   }
 }

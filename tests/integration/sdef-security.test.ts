@@ -9,9 +9,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SDEFParser } from '../../src/jitd/discovery/parse-sdef.js';
 import { EntityResolver, SecurityError, CircularIncludeError, ResourceLimitError } from '../../src/jitd/discovery/entity-resolver.js';
-import { writeFile, mkdir, rm } from 'fs/promises';
+import { writeFile, mkdir, rm, symlink } from 'fs/promises';
 import { join, resolve } from 'path';
 import { tmpdir } from 'os';
+import { realpathSync } from 'fs';
 
 /**
  * Test fixture helper for creating temporary test files
@@ -42,6 +43,19 @@ class TempFileManager {
     await writeFile(fullPath, content, 'utf-8');
     this.filesCreated.add(fullPath);
     return fullPath;
+  }
+
+  /**
+   * Create a symbolic link at the specified path pointing to target
+   */
+  async createSymlink(linkRelativePath: string, targetPath: string): Promise<string> {
+    await mkdir(this.tempDir, { recursive: true });
+    const fullLinkPath = join(this.tempDir, linkRelativePath);
+    const dir = fullLinkPath.substring(0, fullLinkPath.lastIndexOf('/'));
+    await mkdir(dir, { recursive: true });
+    await symlink(targetPath, fullLinkPath);
+    this.filesCreated.add(fullLinkPath);
+    return fullLinkPath;
   }
 
   /**
@@ -376,6 +390,100 @@ describe('SDEF Security Tests', () => {
       expect(result).not.toContain('attacker wants this');
       // The include element should be stripped (fail-secure)
       expect(result).not.toContain('href=');
+    });
+
+    /**
+     * Test that actual symlinks cannot escape basePath containment
+     *
+     * ATTACK VECTOR: Symlink Escape (Real Symlinks)
+     * An attacker could place a symlink inside an app bundle that points outside it:
+     * 1. Create symlink: /Applications/Test.app/Contents/Resources/secret_link -> /etc/passwd
+     * 2. Include it: <xi:include href="secret_link"/>
+     * 3. Without symlink resolution: the path appears to be within app bundle (trust it?)
+     * 4. With symlink resolution: we resolve to /etc/passwd and correctly reject it
+     *
+     * SECURITY PROPERTY: Symlink Escape Prevention via Canonical Path Resolution
+     * The security model:
+     * 1. Create a directory structure with real symlinks
+     * 2. Create a symlink that points to a parent directory (e.g., link -> ../../..)
+     * 3. Place this symlink inside the app bundle
+     * 4. Attempt to include it via XInclude
+     * 5. EntityResolver must:
+     *    a) Resolve the symlink using fs.realpathSync.native() (canonical path)
+     *    b) Check if the resolved path is within basePath
+     *    c) Reject the include if resolved path is outside basePath
+     * 6. Verify no security regression: legitimate includes still work
+     *
+     * This test creates REAL symlinks (not just path strings) to fully validate
+     * the symlink resolution security implementation.
+     */
+    it('should detect and block symlink escape attempts', async () => {
+      const baseDir = tempFileManager.getDir();
+      const appDir = join(baseDir, 'app', 'Contents', 'Resources');
+      const secretDir = join(baseDir, 'secret');
+
+      // Create a secret directory outside the app bundle
+      await tempFileManager.createFile('secret/confidential.xml',
+        '<secret>highly sensitive data that should not be accessible</secret>');
+
+      // Create the app directory structure
+      await tempFileManager.createFile('app/Contents/Resources/main.sdef', '<root/>');
+
+      // Create a legitimate shared file within the app bundle (for positive test)
+      await tempFileManager.createFile('app/Contents/Resources/shared.sdef',
+        '<shared><data>legitimate app data</data></shared>');
+
+      // Create a symlink INSIDE the app bundle pointing OUTSIDE to secret data
+      // This is the attack: symlink_to_secret.xml -> ../../secret/confidential.xml
+      const secretAbsPath = join(secretDir, 'confidential.xml');
+      const symlinkPath = await tempFileManager.createSymlink(
+        'app/Contents/Resources/symlink_to_secret.xml',
+        secretAbsPath
+      );
+
+      // Verify the symlink was created correctly and points to the target
+      // Note: On macOS, realpathSync resolves /var to /private/var, so we need to
+      // resolve both paths for comparison
+      const resolvedSymlink = realpathSync(symlinkPath);
+      const resolvedSecret = realpathSync(secretAbsPath);
+      expect(resolvedSymlink).toBe(resolvedSecret);
+      expect(resolvedSymlink).not.toContain('/app/Contents/Resources');
+
+      // Create SDEF content that attempts to include via the symlink
+      const xmlWithSymlinkInclude = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary xmlns:xi="http://www.w3.org/2001/XInclude">
+  <!-- Legitimate include within app bundle (should work) -->
+  <xi:include href="shared.sdef"/>
+  <!-- Attack: include via symlink that escapes app bundle -->
+  <xi:include href="symlink_to_secret.xml"/>
+</dictionary>`;
+
+      const mainPath = join(appDir, 'main.sdef');
+
+      const resolver = new EntityResolver({
+        additionalTrustedPaths: [], // No extra trusted paths
+        maxDepth: 3,
+        maxIncludesPerFile: 50,
+      });
+
+      // Resolve includes
+      const result = await resolver.resolveIncludes(xmlWithSymlinkInclude, appDir, 0, mainPath);
+
+      // Verify legitimate content was included (positive control)
+      expect(result).toContain('legitimate app data');
+
+      // Verify malicious symlink content was NOT included (security check)
+      // This is the critical security validation: symlink escape was blocked
+      expect(result).not.toContain('highly sensitive data');
+      expect(result).not.toContain('confidential');
+
+      // Verify the structure is still valid XML
+      expect(result).toContain('<dictionary');
+      expect(result).toContain('xmlns:xi');
+
+      // Verify the symlink include element was stripped (fail-secure)
+      // The symlink href should not appear in the output
+      expect(result).not.toContain('symlink_to_secret.xml');
     });
 
     /**

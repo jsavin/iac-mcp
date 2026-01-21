@@ -48,7 +48,7 @@ function removeXMLComments(content: string): string {
 
   while (i < content.length) {
     // Check for comment start
-    if (content.substr(i, 4) === '<!--') {
+    if (content.slice(i, i + 4) === '<!--') {
       // Skip to end of comment
       const endIndex = content.indexOf('-->', i + 4);
       if (endIndex === -1) {
