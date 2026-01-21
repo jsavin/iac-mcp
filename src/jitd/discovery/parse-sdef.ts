@@ -437,8 +437,8 @@ export class SDEFParser {
       // Real SDEF files (Pages, Numbers, Keynote) use parameter entities WITHOUT SYSTEM:
       //   <!ENTITY % text "...">  ← Allowed (no SYSTEM reference)
       // These are NOT XXE vulnerabilities because they don't reference external files.
-      // Use [\s\S]*? to match newlines (prevents multi-line bypass)
-      if (/<!ENTITY[\s\S]*?SYSTEM/i.test(contentWithoutComments)) {
+      // Use negated character class to prevent ReDoS
+      if (/<!ENTITY[^>]*SYSTEM/i.test(contentWithoutComments)) {
         throw new Error(
           'ENTITY declarations with SYSTEM references found - potential XXE vulnerability'
         );
@@ -452,9 +452,9 @@ export class SDEFParser {
       //
       // Since our XML parser is configured with ignoreDeclaration: true and never executes
       // DOCTYPE processing, stripping is safe and prevents any residual XXE risk.
-      // Use [\s\S]*? to handle nested brackets and newlines safely.
+      // Use negated character class to prevent ReDoS
       const contentWithoutDoctype = contentWithoutComments.replace(
-        /<!DOCTYPE[\s\S]*?>/i,
+        /<!DOCTYPE[^>]*>/i,
         ''
       );
 
@@ -923,8 +923,10 @@ export class SDEFParser {
 
     // PRIORITY 2: Four-character code mapping
     if (elementCode) {
-      // Don't trim - four-character codes are exactly 4 chars (may have trailing spaces like 'obj ' and 'ldt ')
-      const mappedType = CODE_TO_TYPE_MAP[elementCode];
+      // Normalize to exactly 4 characters (trim then pad to 4 chars)
+      // This handles codes with extra whitespace while preserving trailing spaces like 'obj ' and 'ldt '
+      const normalizedCode = elementCode.trim().padEnd(4, ' ');
+      const mappedType = CODE_TO_TYPE_MAP[normalizedCode];
       if (mappedType) {
         inferredType = this.parseType(mappedType);
 
@@ -1058,11 +1060,12 @@ export class SDEFParser {
       return inferredType;
     }
 
-    // Integer-related
+    // Integer-related patterns - use word boundaries to avoid phoneNumber, accountNumber, etc.
+    // Match: itemCount, pageNumber (at end), number (standalone)
+    // Don't match: phoneNumber, accountNumber, serialNumber (number at end of compound word should be text)
     if (
-      lowerName.includes('count') ||
-      lowerName.includes('index') ||
-      lowerName.includes('number') ||
+      /(^|[^a-zA-Z])(count|index)($|[^a-zA-Z])|(Count|Index)/.test(elementName) ||
+      /^number$/i.test(lowerName) || // Only match "number" as standalone word
       lowerName.includes('size')
     ) {
       inferredType = { kind: 'primitive', type: 'integer' };
@@ -1082,12 +1085,15 @@ export class SDEFParser {
       return inferredType;
     }
 
-    // Boolean-related
+    // Boolean-related patterns - use prefix matching for camelCase conventions
+    // Match: isEnabled, hasPermission, canEdit
+    // Don't match: list, this, exists, dismiss
     if (
+      /^(is|has|can|should|will)[A-Z]/.test(elementName) || // camelCase: isEnabled, hasValue
+      /^(is|has|can|should|will)$/i.test(elementName) || // standalone: is, has, can
       lowerName.includes('enabled') ||
       lowerName.includes('disabled') ||
-      lowerName.includes('visible') ||
-      lowerName.includes('is')
+      lowerName.includes('visible')
     ) {
       inferredType = { kind: 'primitive', type: 'boolean' };
 
