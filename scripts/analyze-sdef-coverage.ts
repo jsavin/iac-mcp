@@ -297,7 +297,7 @@ async function parseSdef(
     }
 
     // Generate tools
-    const tools = toolGenerator.generateFromDictionary(dictionary, {
+    const tools = toolGenerator.generateTools(dictionary, {
       appName,
       bundleId: bundleId || undefined,
       sdefPath,

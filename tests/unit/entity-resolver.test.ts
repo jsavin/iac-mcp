@@ -169,7 +169,8 @@ describe('EntityResolver', () => {
       }).rejects.toThrow();
     });
 
-    it('should reject parameter entities', async () => {
+    it('should reject parameter entities with SYSTEM references', async () => {
+      // Parameter entities with SYSTEM are XXE attack vectors
       const paramEntityContent = `<!DOCTYPE foo [
         <!ENTITY % file SYSTEM "file:///etc/passwd">
         %file;
@@ -179,6 +180,26 @@ describe('EntityResolver', () => {
       await expect(async () => {
         await resolver.resolveIncludes(paramEntityContent, tempDir);
       }).rejects.toThrow();
+    });
+
+    it('should allow safe parameter entities without SYSTEM (schema definition)', async () => {
+      // Parameter entities without SYSTEM are safe and used by Pages/Numbers/Keynote
+      // Example: <!ENTITY % common.attrib "xmlns:xi CDATA #FIXED 'http://...'">
+      const safeParamEntity = `<?xml version="1.0" encoding="utf-8"?>
+      <!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd" [
+        <!ENTITY % common.attrib
+            "xmlns:xi   CDATA   #FIXED 'http://www.w3.org/2003/XInclude'
+             xml:base   CDATA   #IMPLIED">
+      ]>
+      <dictionary xmlns:xi="http://www.w3.org/2003/XInclude">
+        <title>Safe with Parameter Entities</title>
+        <suite name="test" code="test" />
+      </dictionary>`;
+
+      // Should not throw (safe parameter entities are allowed)
+      const result = await resolver.resolveIncludes(safeParamEntity, tempDir);
+      expect(result).toContain('Safe with Parameter Entities');
+      expect(result).toContain('test');
     });
 
     it('should allow DOCTYPE without internal subset', async () => {
