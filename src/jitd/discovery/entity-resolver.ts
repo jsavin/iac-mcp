@@ -198,6 +198,8 @@ export class EntityResolver {
     // SECURITY: Reset resource tracking at top level
     if (depth === 0) {
       this.totalBytesRead = 0;
+      // SECURITY: Clear includeStack to prevent false circular include errors from previous calls
+      this.includeStack.clear();
     }
 
     // SECURITY: Validate against XXE/DTD entity attacks BEFORE processing
@@ -263,9 +265,11 @@ export class EntityResolver {
         console.log(`[EntityResolver] Found ${includes.length} includes at depth ${depth}`);
       }
 
-      // Process each include
+      // Process each include in reverse order to preserve indices during replacement
+      // This ensures if two includes have identical text, both are replaced correctly
       let result = content;
-      for (const include of includes) {
+      for (let i = includes.length - 1; i >= 0; i--) {
+        const include = includes[i];
         const { match: matchText, href } = include;
 
         // SECURITY: Validate href (reject empty, whitespace-only)
@@ -274,8 +278,8 @@ export class EntityResolver {
           if (this.debug) {
             console.warn('[EntityResolver] Skipping empty href');
           }
-          // Skip empty href safely
-          result = result.replace(matchText, '');
+          // Skip empty href safely - use replaceAll to handle duplicates
+          result = result.split(matchText).join('');
           continue;
         }
 
@@ -285,7 +289,7 @@ export class EntityResolver {
 
           // Skip if path resolution returned null (e.g., null bytes)
           if (resolvedPath === null) {
-            result = result.replace(matchText, '');
+            result = result.split(matchText).join('');
             continue;
           }
 
@@ -295,7 +299,7 @@ export class EntityResolver {
               console.warn('[EntityResolver] Skipping untrusted path (not in whitelist)');
             }
             // Skip untrusted paths silently (fail-secure)
-            result = result.replace(matchText, '');
+            result = result.split(matchText).join('');
             continue;
           }
 
@@ -316,8 +320,8 @@ export class EntityResolver {
             resolvedPath
           );
 
-          // Replace include with resolved content
-          result = result.replace(matchText, resolvedContent);
+          // Replace include with resolved content - use split/join to replace all occurrences
+          result = result.split(matchText).join(resolvedContent);
         } catch (error) {
           if (error instanceof SecurityError) {
             // Re-throw security errors
@@ -330,7 +334,7 @@ export class EntityResolver {
           }
 
           // Skip failed includes silently (fail-secure)
-          result = result.replace(matchText, '');
+          result = result.split(matchText).join('');
         }
       }
 
@@ -358,10 +362,18 @@ export class EntityResolver {
    * @throws SecurityError if malicious entities detected
    */
   private validateNoExternalEntities(content: string): void {
+    // SECURITY: Prevent ReDoS by limiting the portion of content we apply regex to
+    // DOCTYPE declarations should appear at start of XML, so we only check first 64KB
+    // This protects against catastrophic backtracking on maliciously crafted input
+    const maxDocTypeCheckLength = 65536; // 64KB - enough for any reasonable DOCTYPE
+    const contentToCheck = content.length > maxDocTypeCheckLength
+      ? content.substring(0, maxDocTypeCheckLength)
+      : content;
+
     // Check for ENTITY declarations in DOCTYPE internal subset
     // Note: Using [\s\S] instead of 's' flag for ES2017 compatibility
     const doctypeWithInternalSubset = /<!DOCTYPE[^>]*\[([\s\S]*?)\]/;
-    const match = doctypeWithInternalSubset.exec(content);
+    const match = doctypeWithInternalSubset.exec(contentToCheck);
 
     if (match && match[1]) {
       const internalSubset = match[1];
@@ -385,7 +397,7 @@ export class EntityResolver {
 
     // Reject DOCTYPE with SYSTEM that references suspicious files
     const doctypeSystem = /<!DOCTYPE\s+\w+\s+SYSTEM\s+"([^"]+)"/i;
-    const systemMatch = doctypeSystem.exec(content);
+    const systemMatch = doctypeSystem.exec(contentToCheck);
 
     if (systemMatch && systemMatch[1]) {
       const systemId = systemMatch[1];
@@ -685,10 +697,10 @@ export class EntityResolver {
     }
 
     try {
-      // SECURITY: Stat file to check for modifications
-      const stats = fs.statSync(resolvedPath);
-      const currentMtime = stats.mtimeMs;
-      const currentSize = stats.size;
+      // SECURITY: Stat file to check for modifications (before read)
+      const statsBefore = fs.statSync(resolvedPath);
+      const mtimeBefore = statsBefore.mtimeMs;
+      const sizeBefore = statsBefore.size;
 
       // Check cache validity
       const cached = this.cache.get(resolvedPath);
@@ -696,7 +708,7 @@ export class EntityResolver {
 
       if (cached && metadata) {
         // SECURITY: Invalidate if file changed (mtime or size)
-        if (metadata.mtime === currentMtime && metadata.size === currentSize) {
+        if (metadata.mtime === mtimeBefore && metadata.size === sizeBefore) {
           if (this.debug) {
             console.log('[EntityResolver] Cache hit:', resolvedPath);
           }
@@ -711,12 +723,22 @@ export class EntityResolver {
       // Cache miss or invalid - read file
       const content = await this.readFile(resolvedPath);
 
-      // Update cache
-      this.cache.set(resolvedPath, content);
-      this.cacheMetadata.set(resolvedPath, {
-        mtime: currentMtime,
-        size: currentSize,
-      });
+      // SECURITY: Re-validate mtime after read to prevent TOCTOU race condition
+      // Only cache if file hasn't been modified since we started
+      const statsAfter = fs.statSync(resolvedPath);
+      const mtimeAfter = statsAfter.mtimeMs;
+      const sizeAfter = statsAfter.size;
+
+      if (mtimeBefore === mtimeAfter && sizeBefore === sizeAfter) {
+        // File didn't change during read, safe to cache
+        this.cache.set(resolvedPath, content);
+        this.cacheMetadata.set(resolvedPath, {
+          mtime: mtimeAfter,
+          size: sizeAfter,
+        });
+      } else if (this.debug) {
+        console.log('[EntityResolver] File changed during read, not caching:', resolvedPath);
+      }
 
       return content;
     } catch (error) {
