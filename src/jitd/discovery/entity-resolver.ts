@@ -960,9 +960,9 @@ export class EntityResolver {
       }
 
       // SECURITY: Sanitize error messages (don't leak path details)
-      // Include href context to help with debugging while protecting sensitive paths
-      const hrefDisplay = href.length > 50 ? href.slice(0, 47) + '...' : href;
-      throw new Error(`Failed to read included file: "${hrefDisplay}" (path traversal check or I/O error)`);
+      // Include file path context to help with debugging while protecting sensitive system paths
+      const pathDisplay = filePath.length > 50 ? filePath.slice(0, 47) + '...' : filePath;
+      throw new Error(`Failed to read included file: "${pathDisplay}" (permission denied or not found)`);
     }
   }
 }
