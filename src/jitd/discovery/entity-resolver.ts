@@ -350,13 +350,23 @@ export class EntityResolver {
   /**
    * Validate that content does not contain malicious external entities
    *
-   * SECURITY: Prevents XXE attacks by rejecting DOCTYPE with:
-   * - ENTITY declarations (<!ENTITY name SYSTEM "...">)
-   * - Parameter entities (<!ENTITY % name ...>)
-   * - Internal subset with ENTITY declarations
+   * SECURITY: Prevents XXE attacks by distinguishing safe vs dangerous entity types:
    *
-   * ALLOWED: <!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
-   * REJECTED: <!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+   * ALLOWED - Parameter entities for XML schema definition (no SYSTEM reference):
+   * - <!ENTITY % common.attrib "attribute definitions">
+   * - Used by Pages/Numbers/Keynote for schema
+   * - Cannot read files (purely for schema)
+   *
+   * REJECTED - General entities with SYSTEM (XXE attack vector):
+   * - <!ENTITY xxe SYSTEM "file:///etc/passwd">
+   * - <!ENTITY % file SYSTEM "file:///etc/passwd">
+   * - Can read arbitrary files via entity expansion
+   *
+   * REJECTED - Sensitive file references:
+   * - /etc/passwd, /etc/shadow, /etc/hosts
+   *
+   * ALLOWED - DOCTYPE without internal subset (legitimate DTD references):
+   * - <!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
    *
    * @param content - XML content to validate
    * @throws SecurityError if malicious entities detected
@@ -378,21 +388,25 @@ export class EntityResolver {
     if (match && match[1]) {
       const internalSubset = match[1];
 
-      // Reject if internal subset contains ENTITY declarations
-      if (/<!ENTITY/i.test(internalSubset)) {
+      // SECURITY: Distinguish between safe parameter entities and dangerous general entities
+      // Parameter entities (<!ENTITY % name ...>) are safe for schema definition
+      // General entities (<!ENTITY name ...>) with SYSTEM are XXE attack vectors
+
+      // SECURITY: Check for ALL ENTITY declarations with SYSTEM references
+      // This catches both:
+      // - <!ENTITY name SYSTEM "file:///etc/passwd"> (general entity XXE)
+      // - <!ENTITY % name SYSTEM "file:///etc/passwd"> (parameter entity XXE)
+      if (/<!ENTITY\s+(?:%\s+)?\w+\s+SYSTEM\s+/i.test(internalSubset)) {
         throw new SecurityError(
-          'DOCTYPE with ENTITY declarations is not allowed (XXE protection)',
+          'DOCTYPE with ENTITY SYSTEM references is not allowed (XXE protection)',
           'xxe'
         );
       }
 
-      // Reject parameter entities
-      if (/%\w+;/.test(internalSubset)) {
-        throw new SecurityError(
-          'Parameter entities are not allowed (XXE protection)',
-          'xxe'
-        );
-      }
+      // SECURITY: Parameter entities without SYSTEM are allowed (schema definition)
+      // They're used by Pages/Numbers/Keynote for XML schema attributes
+      // Example: <!ENTITY % common.attrib "xmlns:xi CDATA #FIXED 'http://...'">
+      // These are safe because they can't read files
     }
 
     // Reject DOCTYPE with SYSTEM that references suspicious files
