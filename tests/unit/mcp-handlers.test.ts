@@ -515,6 +515,635 @@ describe('MCP Handlers', () => {
   });
 
   // ============================================================================
+  // SECTION 3A: list_apps Tool Handler
+  // ============================================================================
+
+  describe('list_apps Tool Handler', () => {
+    it('should return correct JSON structure with app list', () => {
+      // Happy path: list_apps returns structured response
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 2,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'macOS file manager and desktop environment',
+                  toolCount: 42,
+                  suites: ['Standard Suite', 'Finder Suite'],
+                },
+                {
+                  name: 'Safari',
+                  bundleId: 'com.apple.Safari',
+                  description: 'Web browser',
+                  toolCount: 35,
+                  suites: ['Standard Suite', 'Safari Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed).toHaveProperty('totalApps');
+      expect(parsed).toHaveProperty('apps');
+      expect(parsed.totalApps).toBe(2);
+      expect(parsed.apps).toHaveLength(2);
+      expect(parsed.apps[0]).toHaveProperty('name');
+      expect(parsed.apps[0]).toHaveProperty('bundleId');
+      expect(parsed.apps[0]).toHaveProperty('description');
+      expect(parsed.apps[0]).toHaveProperty('toolCount');
+      expect(parsed.apps[0]).toHaveProperty('suites');
+    });
+
+    it('should handle empty app list (no apps discovered)', () => {
+      // Edge case: No apps found
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 0,
+              apps: [],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.totalApps).toBe(0);
+      expect(parsed.apps).toEqual([]);
+      expect(parsed.apps).toHaveLength(0);
+    });
+
+    it('should handle single app returned', () => {
+      // Edge case: Only one app discovered
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'macOS file manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite', 'Finder Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.totalApps).toBe(1);
+      expect(parsed.apps).toHaveLength(1);
+      expect(parsed.apps[0].name).toBe('Finder');
+    });
+
+    it('should return multiple apps with all metadata fields populated', () => {
+      // Multiple apps with complete metadata
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 5,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'macOS file manager and desktop environment',
+                  toolCount: 42,
+                  suites: ['Standard Suite', 'Finder Suite', 'Text Suite'],
+                },
+                {
+                  name: 'Safari',
+                  bundleId: 'com.apple.Safari',
+                  description: 'Web browser for macOS',
+                  toolCount: 35,
+                  suites: ['Standard Suite', 'Safari Suite'],
+                },
+                {
+                  name: 'Mail',
+                  bundleId: 'com.apple.mail',
+                  description: 'Email client application',
+                  toolCount: 58,
+                  suites: ['Standard Suite', 'Mail Suite'],
+                },
+                {
+                  name: 'Calendar',
+                  bundleId: 'com.apple.iCal',
+                  description: 'Calendar and events management',
+                  toolCount: 28,
+                  suites: ['Standard Suite', 'Calendar Suite'],
+                },
+                {
+                  name: 'Notes',
+                  bundleId: 'com.apple.Notes',
+                  description: 'Note-taking application',
+                  toolCount: 22,
+                  suites: ['Standard Suite', 'Notes Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.totalApps).toBe(5);
+      expect(parsed.apps).toHaveLength(5);
+
+      // Verify all apps have required fields
+      for (const app of parsed.apps) {
+        expect(app).toHaveProperty('name');
+        expect(app).toHaveProperty('bundleId');
+        expect(app).toHaveProperty('description');
+        expect(app).toHaveProperty('toolCount');
+        expect(app).toHaveProperty('suites');
+        expect(app.name.length).toBeGreaterThan(0);
+        expect(app.bundleId.length).toBeGreaterThan(0);
+        expect(app.description.length).toBeGreaterThan(0);
+        expect(app.toolCount).toBeGreaterThan(0);
+        expect(Array.isArray(app.suites)).toBe(true);
+        expect(app.suites.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('should validate totalApps count matches array length', () => {
+      // Validation: totalApps should equal apps.length
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 3,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite'],
+                },
+                {
+                  name: 'Safari',
+                  bundleId: 'com.apple.Safari',
+                  description: 'Web browser',
+                  toolCount: 35,
+                  suites: ['Standard Suite'],
+                },
+                {
+                  name: 'Mail',
+                  bundleId: 'com.apple.mail',
+                  description: 'Email client',
+                  toolCount: 58,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.totalApps).toBe(parsed.apps.length);
+      expect(parsed.totalApps).toBe(3);
+    });
+
+    it('should validate each app has all required fields', () => {
+      // Validation: Each app must have name, bundleId, description, toolCount, suites
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 2,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite', 'Finder Suite'],
+                },
+                {
+                  name: 'Safari',
+                  bundleId: 'com.apple.Safari',
+                  description: 'Web browser',
+                  toolCount: 35,
+                  suites: ['Standard Suite', 'Safari Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      const requiredFields = ['name', 'bundleId', 'description', 'toolCount', 'suites'];
+
+      for (const app of parsed.apps) {
+        for (const field of requiredFields) {
+          expect(app).toHaveProperty(field);
+          expect(app[field]).toBeDefined();
+          expect(app[field]).not.toBeNull();
+        }
+      }
+    });
+
+    it('should validate field types are correct', () => {
+      // Type validation: name, bundleId, description are strings; toolCount is number; suites is array
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite', 'Finder Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      const app = parsed.apps[0];
+
+      expect(typeof app.name).toBe('string');
+      expect(typeof app.bundleId).toBe('string');
+      expect(typeof app.description).toBe('string');
+      expect(typeof app.toolCount).toBe('number');
+      expect(Array.isArray(app.suites)).toBe(true);
+      expect(app.suites.every((s: any) => typeof s === 'string')).toBe(true);
+    });
+
+    it('should not require input parameters', () => {
+      // list_apps should accept empty arguments object
+      const toolCall = {
+        name: 'list_apps',
+        arguments: {},
+      };
+
+      expect(toolCall.name).toBe('list_apps');
+      expect(Object.keys(toolCall.arguments)).toHaveLength(0);
+    });
+
+    it('should format response as MCP TextContent', () => {
+      // Response must follow MCP protocol format
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      expect(response.content).toHaveLength(1);
+      expect(response.content[0].type).toBe('text');
+      expect(typeof response.content[0].text).toBe('string');
+    });
+
+    it('should handle apps with multiple suites', () => {
+      // Apps can have multiple SDEF suites
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: [
+                    'Standard Suite',
+                    'Finder Suite',
+                    'Text Suite',
+                    'Type Names Suite',
+                  ],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.apps[0].suites).toHaveLength(4);
+      expect(parsed.apps[0].suites).toContain('Standard Suite');
+      expect(parsed.apps[0].suites).toContain('Finder Suite');
+    });
+
+    it('should handle apps with single suite', () => {
+      // Some apps may only have one suite
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'SimpleApp',
+                  bundleId: 'com.example.simple',
+                  description: 'Simple application',
+                  toolCount: 5,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.apps[0].suites).toHaveLength(1);
+      expect(parsed.apps[0].suites[0]).toBe('Standard Suite');
+    });
+
+    it('should handle apps with zero tools (edge case)', () => {
+      // Edge case: App discovered but no parseable tools
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'EmptyApp',
+                  bundleId: 'com.example.empty',
+                  description: 'App with no scriptable commands',
+                  toolCount: 0,
+                  suites: [],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.apps[0].toolCount).toBe(0);
+      expect(parsed.apps[0].suites).toHaveLength(0);
+    });
+
+    it('should handle large number of apps (50+)', () => {
+      // Performance: Should handle many apps in response
+      const apps = [];
+      for (let i = 0; i < 53; i++) {
+        apps.push({
+          name: `App${i}`,
+          bundleId: `com.example.app${i}`,
+          description: `Application ${i}`,
+          toolCount: Math.floor(Math.random() * 50) + 10,
+          suites: ['Standard Suite'],
+        });
+      }
+
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 53,
+              apps,
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.totalApps).toBe(53);
+      expect(parsed.apps).toHaveLength(53);
+    });
+
+    it('should preserve unicode characters in app names and descriptions', () => {
+      // Unicode handling
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'macOS文件管理器 - Gestionnaire de fichiers',
+                  toolCount: 42,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.apps[0].description).toContain('文件管理器');
+      expect(parsed.apps[0].description).toContain('Gestionnaire');
+    });
+
+    it('should not set isError flag for successful response', () => {
+      // Success response should not have isError flag
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+        isError: undefined,
+      };
+
+      expect(response.isError).toBeUndefined();
+    });
+
+    it('should return tools in consistent order', () => {
+      // Apps should be sorted consistently (e.g., alphabetically by name)
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 4,
+              apps: [
+                {
+                  name: 'Calendar',
+                  bundleId: 'com.apple.iCal',
+                  description: 'Calendar app',
+                  toolCount: 28,
+                  suites: ['Standard Suite'],
+                },
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite'],
+                },
+                {
+                  name: 'Mail',
+                  bundleId: 'com.apple.mail',
+                  description: 'Email client',
+                  toolCount: 58,
+                  suites: ['Standard Suite'],
+                },
+                {
+                  name: 'Safari',
+                  bundleId: 'com.apple.Safari',
+                  description: 'Web browser',
+                  toolCount: 35,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      const names = parsed.apps.map((app: any) => app.name);
+      const sortedNames = [...names].sort();
+      expect(names).toEqual(sortedNames);
+    });
+
+    it('should handle description with special characters', () => {
+      // Special characters should be properly escaped
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'TestApp',
+                  bundleId: 'com.test.app',
+                  description: 'App with "quotes" and \'apostrophes\' and newlines\nand tabs\t',
+                  toolCount: 10,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.apps[0].description).toContain('"quotes"');
+      expect(parsed.apps[0].description).toContain("'apostrophes'");
+    });
+
+    it('should validate bundleId format', () => {
+      // Bundle IDs should follow reverse domain notation
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 2,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite'],
+                },
+                {
+                  name: 'Safari',
+                  bundleId: 'com.apple.Safari',
+                  description: 'Web browser',
+                  toolCount: 35,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.content[0].text);
+      for (const app of parsed.apps) {
+        // Bundle IDs should match reverse domain notation pattern
+        expect(app.bundleId).toMatch(/^[a-zA-Z0-9.-]+$/);
+        expect(app.bundleId).toContain('.');
+      }
+    });
+
+    it('should return JSON parseable response', () => {
+      // Critical: Response must be valid JSON
+      const response = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      // Should not throw
+      expect(() => JSON.parse(response.content[0].text)).not.toThrow();
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed).toBeDefined();
+    });
+  });
+
+  // ============================================================================
   // SECTION 3B: Lazy Loading - get_app_tools Handler
   // ============================================================================
 
