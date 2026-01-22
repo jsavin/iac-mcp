@@ -109,6 +109,34 @@ async function discoverAppMetadata(): Promise<AppMetadata[]> {
 }
 
 /**
+ * Format app metadata for MCP response
+ *
+ * Shared by list_apps tool and iac://apps resource for consistency.
+ * Performs runtime validation and maps AppMetadata to response format.
+ *
+ * @param appMetadataList - Array of app metadata from discovery
+ * @returns Formatted response with totalApps count and apps array
+ */
+function formatAppMetadataResponse(appMetadataList: AppMetadata[]) {
+  return {
+    totalApps: appMetadataList.length,
+    apps: appMetadataList.map(metadata => {
+      // Runtime validation for required fields
+      if (!metadata.appName || !metadata.bundleId) {
+        throw new Error(`Invalid app metadata: missing appName or bundleId`);
+      }
+      return {
+        name: metadata.appName,
+        bundleId: metadata.bundleId,
+        description: metadata.description || 'No description available',
+        toolCount: metadata.toolCount ?? 0,
+        suites: metadata.suiteNames || [],
+      };
+    }),
+  };
+}
+
+/**
  * Setup MCP request handlers
  *
  * Registers all MCP protocol handlers with the server:
@@ -262,25 +290,8 @@ export async function setupHandlers(
           // Use shared discovery function
           const appMetadataList = await discoverAppMetadata();
 
-          // Build response with runtime validation
-          const response = {
-            totalApps: appMetadataList.length,
-            apps: appMetadataList.map(metadata => {
-              // Runtime validation for required fields
-              if (!metadata.appName || !metadata.bundleId) {
-                console.error(`[CallTool/list_apps] Invalid metadata: missing required fields for app: ${JSON.stringify(metadata)}`);
-                throw new Error(`Invalid app metadata: missing appName or bundleId`);
-              }
-
-              return {
-                name: metadata.appName,
-                bundleId: metadata.bundleId,
-                description: metadata.description || 'No description available',
-                toolCount: metadata.toolCount ?? 0,
-                suites: metadata.suiteNames || [],
-              };
-            }),
-          };
+          // Use shared formatting function
+          const response = formatAppMetadataResponse(appMetadataList);
 
           console.error(`[CallTool/list_apps] Returning ${response.totalApps} apps`);
 
@@ -625,24 +636,8 @@ export async function setupHandlers(
         // Use shared discovery function (same as list_apps tool)
         const appMetadataList = await discoverAppMetadata();
 
-        const response = {
-          totalApps: appMetadataList.length,
-          apps: appMetadataList.map(metadata => {
-            // Runtime validation for required fields
-            if (!metadata.appName || !metadata.bundleId) {
-              console.error(`[ReadResource] Invalid metadata: missing required fields for app: ${JSON.stringify(metadata)}`);
-              throw new Error(`Invalid app metadata: missing appName or bundleId`);
-            }
-
-            return {
-              name: metadata.appName,
-              bundleId: metadata.bundleId,
-              description: metadata.description || 'No description available',
-              toolCount: metadata.toolCount ?? 0,
-              suites: metadata.suiteNames || [],
-            };
-          }),
-        };
+        // Use shared formatting function
+        const response = formatAppMetadataResponse(appMetadataList);
 
         console.error(`[ReadResource] Returning ${response.totalApps} apps for iac://apps`);
 
