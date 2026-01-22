@@ -85,64 +85,14 @@ function sdefTypeToString(type: any): string {
  * - Classes with properties, elements, and inheritance
  * - Enumerations with their valid values
  *
+ * Note: This function is synchronous but returns a Promise for API compatibility.
+ * Use extractObjectModelSync() for performance-critical synchronous paths.
+ *
  * @param dictionary - Parsed SDEF dictionary
  * @returns AppObjectModel containing classes and enumerations
  */
 export async function extractObjectModel(dictionary: SDEFDictionary): Promise<AppObjectModel> {
-  const allClasses: ClassInfo[] = [];
-  const allEnumerations: EnumerationInfo[] = [];
-
-  // Extract classes and enumerations from all suites
-  for (const suite of dictionary.suites) {
-    // Extract classes
-    for (const sdefClass of suite.classes) {
-      const classInfo: ClassInfo = {
-        name: sdefClass.name,
-        code: sdefClass.code,
-        description: sdefClass.description || '',
-        properties: sdefClass.properties.map((prop): PropertyInfo => ({
-          name: prop.name,
-          code: prop.code,
-          type: sdefTypeToString(prop.type),
-          description: prop.description || '',
-          optional: false, // SDEF properties don't have optional flag
-        })),
-        elements: sdefClass.elements.map((elem): ElementInfo => ({
-          name: elem.type, // Use type as name for elements
-          type: elem.type,
-          description: '', // SDEF elements don't have descriptions
-        })),
-      };
-
-      // Add inheritance if present
-      if (sdefClass.inherits) {
-        classInfo.inherits = sdefClass.inherits;
-      }
-
-      allClasses.push(classInfo);
-    }
-
-    // Extract enumerations
-    for (const sdefEnum of suite.enumerations) {
-      const enumInfo: EnumerationInfo = {
-        name: sdefEnum.name,
-        code: sdefEnum.code,
-        description: sdefEnum.description || '',
-        values: sdefEnum.enumerators.map((enumerator): EnumeratorInfo => ({
-          name: enumerator.name,
-          code: enumerator.code,
-          description: enumerator.description || '',
-        })),
-      };
-
-      allEnumerations.push(enumInfo);
-    }
-  }
-
-  return {
-    classes: allClasses,
-    enumerations: allEnumerations,
-  };
+  return extractObjectModelSync(dictionary);
 }
 
 /**
