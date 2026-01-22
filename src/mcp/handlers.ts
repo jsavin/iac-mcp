@@ -20,6 +20,8 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { PermissionDecision } from '../permissions/types.js';
@@ -146,7 +148,21 @@ export async function setupHandlers(
         };
       }
 
-      // Create the get_app_tools tool
+      // MCP Tools for app discovery
+      //
+      // Note: We provide BOTH a tool and a resource for app listing:
+      // - Resource (iac://apps): Loaded at session start, cached by client
+      // - Tool (list_apps): Discoverable during conversation, can refresh mid-session
+      //
+      // This dual approach optimizes for both session initialization and ongoing discoverability.
+
+      /**
+       * get_app_tools Tool Definition
+       *
+       * Lazy loads MCP tools for a specific macOS application on demand.
+       * Returns tool definitions and object model (classes/enumerations).
+       * Uses per-app caching for performance.
+       */
       const getAppToolsTool: Tool = {
         name: 'get_app_tools',
         description: 'Get all available tools and object model for a specific macOS application. Use this to load tools on-demand for any discovered app.',
@@ -162,7 +178,16 @@ export async function setupHandlers(
         },
       };
 
-      // Create the list_apps tool
+      /**
+       * list_apps Tool Definition
+       *
+       * Returns metadata for all discovered scriptable macOS applications.
+       * No parameters required. Returns JSON with app names, bundle IDs,
+       * descriptions, tool counts, and suite names.
+       *
+       * Complements the iac://apps resource by providing discoverable
+       * mid-conversation refresh capability.
+       */
       const listAppsTool: Tool = {
         name: 'list_apps',
         description: 'List all available macOS applications with their metadata',
@@ -205,6 +230,12 @@ export async function setupHandlers(
 
       // Check for list_apps (return all apps with metadata)
       if (toolName === 'list_apps') {
+        // Defensive validation: ensure no unexpected arguments
+        if (args && Object.keys(args).length > 0) {
+          console.error('[CallTool/list_apps] Warning: Unexpected arguments provided, ignoring');
+          // Continue anyway for forward compatibility
+        }
+
         try {
           console.error('[CallTool/list_apps] Executing list_apps tool');
 
@@ -472,6 +503,98 @@ export async function setupHandlers(
           },
         ],
         isError: true,
+      };
+    }
+  });
+
+  /**
+   * ListResources Handler
+   *
+   * Returns available MCP resources for session initialization.
+   * Resources provide static/semi-static data that clients can cache.
+   */
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    try {
+      console.error('[ListResources] Listing available resources');
+
+      return {
+        resources: [
+          {
+            uri: 'iac://apps',
+            name: 'Available macOS Applications',
+            description: 'List of all scriptable macOS applications with metadata (cached for session)',
+            mimeType: 'application/json',
+          },
+        ],
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[ListResources] Error: ${message}`);
+      return {
+        resources: [],
+        _error: message,
+      };
+    }
+  });
+
+  /**
+   * ReadResource Handler
+   *
+   * Returns resource content for requested URI.
+   * Uses shared discoverAppMetadata() for consistency with list_apps tool.
+   */
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const { uri } = request.params;
+
+    try {
+      console.error(`[ReadResource] Reading resource: ${uri}`);
+
+      if (uri === 'iac://apps') {
+        // Use shared discovery function (same as list_apps tool)
+        const appMetadataList = await discoverAppMetadata();
+
+        const response = {
+          totalApps: appMetadataList.length,
+          apps: appMetadataList.map(metadata => ({
+            name: metadata.appName,
+            bundleId: metadata.bundleId,
+            description: metadata.description,
+            toolCount: metadata.toolCount,
+            suites: metadata.suiteNames,
+          })),
+        };
+
+        console.error(`[ReadResource] Returning ${response.totalApps} apps for iac://apps`);
+
+        return {
+          contents: [{
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify(response, null, 2),
+          }],
+        };
+      }
+
+      // Unknown resource URI
+      console.error(`[ReadResource] Unknown resource URI: ${uri}`);
+      return {
+        contents: [{
+          uri,
+          mimeType: 'text/plain',
+          text: `Error: Unknown resource URI: ${uri}`,
+        }],
+      };
+
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[ReadResource] Error reading ${uri}: ${message}`);
+
+      return {
+        contents: [{
+          uri,
+          mimeType: 'text/plain',
+          text: `Error reading resource: ${message}`,
+        }],
       };
     }
   });
