@@ -41,6 +41,52 @@ import type { PerAppCache } from '../jitd/cache/per-app-cache.js';
 const MAX_APP_NAME_LENGTH = 100;
 
 /**
+ * Discover and build metadata for all scriptable apps
+ *
+ * Shared by ListTools and list_apps handlers for consistency.
+ * Discovers apps, parses SDEFs in parallel, and builds lightweight metadata.
+ *
+ * @returns Array of AppMetadata sorted alphabetically by name
+ */
+async function discoverAppMetadata(): Promise<AppMetadata[]> {
+  const apps = await findAllScriptableApps({ useCache: false });
+
+  if (apps.length === 0) {
+    console.error('[discoverAppMetadata] No scriptable apps found');
+    return [];
+  }
+
+  console.error(`[discoverAppMetadata] Discovered ${apps.length} scriptable apps`);
+
+  // Build metadata in parallel for performance
+  const metadataPromises = apps.map(async (app) => {
+    try {
+      console.error(`[discoverAppMetadata] Building metadata for ${app.appName}`);
+      const dictionary = await sdefParser.parse(app.sdefPath);
+      return await buildMetadata(app, dictionary);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[discoverAppMetadata] Failed to build metadata for ${app.appName}: ${errorMsg}`);
+      return null;
+    }
+  });
+
+  const metadataResults = await Promise.all(metadataPromises);
+
+  // Filter out failed apps
+  const appMetadataList = metadataResults.filter(
+    (metadata): metadata is AppMetadata => metadata !== null
+  );
+
+  // Sort alphabetically for consistent ordering
+  appMetadataList.sort((a, b) => a.appName.localeCompare(b.appName));
+
+  console.error(`[discoverAppMetadata] Built metadata for ${appMetadataList.length} apps`);
+
+  return appMetadataList;
+}
+
+/**
  * Setup MCP request handlers
  *
  * Registers all MCP protocol handlers with the server:
@@ -85,48 +131,20 @@ export async function setupHandlers(
     try {
       console.error('[ListTools] Starting lazy loading app discovery');
 
-      // Discover all scriptable apps (just find SDEF files, don't parse yet)
-      const apps = await findAllScriptableApps({ useCache: false });
-      console.error(`[ListTools] Discovered ${apps.length} scriptable apps`);
+      // Use shared discovery function
+      const appMetadataList = await discoverAppMetadata();
 
-      // Store for lazy loading in CallTool handler
+      // Store discovered apps for lazy loading in CallTool handler
+      const apps = await findAllScriptableApps({ useCache: false });
       discoveredApps = apps;
 
-      if (apps.length === 0) {
+      if (appMetadataList.length === 0) {
         console.error('[ListTools] No scriptable apps found');
         return {
           tools: [],
           _app_metadata: [],
         };
       }
-
-      // Build metadata for each app IN PARALLEL (critical for <1s performance)
-      const metadataPromises = apps.map(async (app) => {
-        try {
-          console.error(`[ListTools] Building metadata for ${app.appName}`);
-
-          // Parse SDEF dictionary (fast - just XML parsing)
-          const dictionary = await sdefParser.parse(app.sdefPath);
-
-          // Build lightweight metadata (20-30ms per app, but parallelized)
-          return await buildMetadata(app, dictionary);
-        } catch (error) {
-          // Log error but don't fail entire ListTools call
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          console.error(`[ListTools] Failed to build metadata for ${app.appName}: ${errorMsg}`);
-          return null;
-        }
-      });
-
-      // Wait for all metadata to be built in parallel
-      const metadataResults = await Promise.all(metadataPromises);
-
-      // Filter out null results (apps that failed to parse)
-      const appMetadataList = metadataResults.filter(
-        (metadata): metadata is AppMetadata => metadata !== null
-      );
-
-      console.error(`[ListTools] Built metadata for ${appMetadataList.length} apps`);
 
       // Create the get_app_tools tool
       const getAppToolsTool: Tool = {
@@ -188,56 +206,12 @@ export async function setupHandlers(
       // Check for list_apps (return all apps with metadata)
       if (toolName === 'list_apps') {
         try {
-          console.error('[CallTool] Handling list_apps request');
+          console.error('[CallTool/list_apps] Executing list_apps tool');
 
-          // Reuse the app discovery and metadata building from ListTools
-          const apps = await findAllScriptableApps({ useCache: false });
-          console.error(`[CallTool/list_apps] Discovered ${apps.length} scriptable apps`);
+          // Use shared discovery function
+          const appMetadataList = await discoverAppMetadata();
 
-          if (apps.length === 0) {
-            return {
-              content: [{
-                type: 'text' as const,
-                text: JSON.stringify({
-                  totalApps: 0,
-                  apps: [],
-                }),
-              }],
-            };
-          }
-
-          // Build metadata for each app in parallel
-          const metadataPromises = apps.map(async (app) => {
-            try {
-              console.error(`[CallTool/list_apps] Building metadata for ${app.appName}`);
-
-              // Parse SDEF dictionary
-              const dictionary = await sdefParser.parse(app.sdefPath);
-
-              // Build metadata
-              return await buildMetadata(app, dictionary);
-            } catch (error) {
-              // Log error but don't fail entire list_apps call
-              const errorMsg = error instanceof Error ? error.message : String(error);
-              console.error(`[CallTool/list_apps] Failed to build metadata for ${app.appName}: ${errorMsg}`);
-              return null;
-            }
-          });
-
-          // Wait for all metadata to be built in parallel
-          const metadataResults = await Promise.all(metadataPromises);
-
-          // Filter out null results (apps that failed to parse)
-          const appMetadataList = metadataResults.filter(
-            (metadata): metadata is AppMetadata => metadata !== null
-          );
-
-          // Sort apps alphabetically by name for consistent ordering
-          appMetadataList.sort((a, b) => a.appName.localeCompare(b.appName));
-
-          console.error(`[CallTool/list_apps] Built metadata for ${appMetadataList.length} apps`);
-
-          // Build response in the expected format
+          // Build response
           const response = {
             totalApps: appMetadataList.length,
             apps: appMetadataList.map(metadata => ({
@@ -249,10 +223,12 @@ export async function setupHandlers(
             })),
           };
 
+          console.error(`[CallTool/list_apps] Returning ${response.totalApps} apps`);
+
           return {
             content: [{
               type: 'text' as const,
-              text: JSON.stringify(response),
+              text: JSON.stringify(response, null, 2),
             }],
           };
         } catch (error) {
