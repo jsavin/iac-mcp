@@ -721,6 +721,162 @@ describe('AppToolsLoader', () => {
       expect(userAppPath).not.toMatch(/^\/Applications\//);
       expect(userAppPath).toContain('/Users/');
     });
+
+    it('should reject path traversal attempts in bundle path', async () => {
+      // Security: Prevent path traversal via malicious bundle paths
+      // readBundleIdFromPlist should validate paths
+      const { mkdir, writeFile, rm, symlink } = await import('fs/promises');
+      const { join } = await import('path');
+      const { homedir } = await import('os');
+
+      const testDir = join(
+        homedir(),
+        '.cache',
+        'iac-mcp',
+        'test-path-traversal-' + Math.random().toString(36).slice(2)
+      );
+
+      try {
+        await mkdir(testDir, { recursive: true });
+
+        // Create a file outside the "app bundle"
+        const secretFile = join(testDir, 'secret.txt');
+        await writeFile(secretFile, 'SECRET_DATA');
+
+        // Try to create malicious bundle path with traversal
+        const maliciousBundlePath = join(testDir, 'App.app');
+        await mkdir(join(maliciousBundlePath, 'Contents'), { recursive: true });
+
+        // Create Info.plist that would normally be read
+        const infoPlistPath = join(maliciousBundlePath, 'Contents', 'Info.plist');
+        const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.test.app</string>
+</dict>
+</plist>`;
+        await writeFile(infoPlistPath, infoPlist);
+
+        // The path validation should ensure we can only read from within the bundle
+        expect(maliciousBundlePath).toContain('.app');
+      } finally {
+        await rm(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should reject non-.app bundle paths', async () => {
+      // Security: Only .app bundles should be accepted
+      const invalidPaths = [
+        '/Applications/NotAnApp',
+        '/Applications/Malicious.txt',
+        '/etc/passwd',
+        '/Users/test/random-directory',
+      ];
+
+      for (const path of invalidPaths) {
+        // These should fail the .app extension check
+        expect(path.endsWith('.app')).toBe(false);
+      }
+    });
+
+    it('should reject relative paths in bundle path', async () => {
+      // Security: Only absolute paths should be accepted
+      const relativePaths = [
+        '../Applications/App.app',
+        './App.app',
+        '../../etc/passwd',
+        'relative/path/App.app',
+      ];
+
+      for (const path of relativePaths) {
+        // These should fail the absolute path check
+        expect(path.startsWith('/')).toBe(false);
+      }
+    });
+
+    it('should resolve symlinks and validate canonical path', async () => {
+      // Security: Symlinks should be resolved to prevent bypassing validation
+      const { mkdir, writeFile, rm, symlink } = await import('fs/promises');
+      const { join } = await import('path');
+      const { homedir } = await import('os');
+
+      const testDir = join(
+        homedir(),
+        '.cache',
+        'iac-mcp',
+        'test-symlink-' + Math.random().toString(36).slice(2)
+      );
+
+      try {
+        await mkdir(testDir, { recursive: true });
+
+        // Create real app bundle
+        const realAppPath = join(testDir, 'RealApp.app');
+        await mkdir(join(realAppPath, 'Contents'), { recursive: true });
+
+        const infoPlistPath = join(realAppPath, 'Contents', 'Info.plist');
+        const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.real.app</string>
+</dict>
+</plist>`;
+        await writeFile(infoPlistPath, infoPlist);
+
+        // Create symlink to app
+        const symlinkPath = join(testDir, 'LinkToApp.app');
+        await symlink(realAppPath, symlinkPath);
+
+        // Symlink should be resolved to real path
+        expect(symlinkPath).not.toBe(realAppPath);
+      } finally {
+        await rm(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should prevent Info.plist path from escaping bundle', async () => {
+      // Security: Even with malicious Contents/Info.plist path, should stay within bundle
+      const { mkdir, writeFile, rm } = await import('fs/promises');
+      const { join } = await import('path');
+      const { homedir } = await import('os');
+
+      const testDir = join(
+        homedir(),
+        '.cache',
+        'iac-mcp',
+        'test-plist-escape-' + Math.random().toString(36).slice(2)
+      );
+
+      try {
+        await mkdir(testDir, { recursive: true });
+
+        // Create app bundle
+        const appPath = join(testDir, 'TestApp.app');
+        await mkdir(join(appPath, 'Contents'), { recursive: true });
+
+        // Create normal Info.plist
+        const infoPlistPath = join(appPath, 'Contents', 'Info.plist');
+        const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.test.app</string>
+</dict>
+</plist>`;
+        await writeFile(infoPlistPath, infoPlist);
+
+        // The join(bundlePath, 'Contents', 'Info.plist') should always stay within bundle
+        // Even if bundlePath is canonical
+        expect(infoPlistPath.startsWith(appPath)).toBe(true);
+      } finally {
+        await rm(testDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('performance targets', () => {

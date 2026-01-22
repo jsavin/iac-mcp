@@ -96,26 +96,31 @@ export async function setupHandlers(
         };
       }
 
-      // Build lightweight metadata for each app (WITHOUT tool generation)
-      const appMetadataList: AppMetadata[] = [];
-
-      for (const app of apps) {
+      // Build metadata for each app IN PARALLEL (critical for <1s performance)
+      const metadataPromises = apps.map(async (app) => {
         try {
           console.error(`[ListTools] Building metadata for ${app.appName}`);
 
           // Parse SDEF dictionary (fast - just XML parsing)
           const dictionary = await sdefParser.parse(app.sdefPath);
 
-          // Build metadata without generating tools
-          const metadata = await buildMetadata(app, dictionary);
-          appMetadataList.push(metadata);
-
+          // Build lightweight metadata (20-30ms per app, but parallelized)
+          return await buildMetadata(app, dictionary);
         } catch (error) {
+          // Log error but don't fail entire ListTools call
           const errorMsg = error instanceof Error ? error.message : String(error);
           console.error(`[ListTools] Failed to build metadata for ${app.appName}: ${errorMsg}`);
-          // Continue with other apps
+          return null;
         }
-      }
+      });
+
+      // Wait for all metadata to be built in parallel
+      const metadataResults = await Promise.all(metadataPromises);
+
+      // Filter out null results (apps that failed to parse)
+      const appMetadataList = metadataResults.filter(
+        (metadata): metadata is AppMetadata => metadata !== null
+      );
 
       console.error(`[ListTools] Built metadata for ${appMetadataList.length} apps`);
 
@@ -169,11 +174,46 @@ export async function setupHandlers(
       if (toolName === 'get_app_tools') {
         // Validate app_name parameter
         const appName = args?.app_name as string | undefined;
+
         if (!appName) {
           return {
             content: [{
               type: 'text' as const,
               text: 'Error: Missing required parameter \'app_name\'',
+            }],
+            isError: true,
+          };
+        }
+
+        // Input validation for app_name (security: prevent command injection)
+        // 1. Length limit (prevent buffer overflow/DoS)
+        if (appName.length > 100) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'Error: app_name parameter too long (max 100 characters)',
+            }],
+            isError: true,
+          };
+        }
+
+        // 2. Character whitelist (alphanumeric + common app name characters)
+        if (!/^[a-zA-Z0-9\s\-_.]+$/.test(appName)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'Error: app_name contains invalid characters. Only alphanumeric, spaces, hyphens, underscores, and periods allowed.',
+            }],
+            isError: true,
+          };
+        }
+
+        // 3. Null byte rejection (prevent null byte injection)
+        if (appName.includes('\0')) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'Error: app_name contains null bytes',
             }],
             isError: true,
           };

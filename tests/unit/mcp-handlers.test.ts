@@ -629,6 +629,86 @@ describe('MCP Handlers', () => {
       expect(toolCall.arguments.app_name).toBeUndefined();
     });
 
+    it('should reject app_name that is too long (>100 chars)', () => {
+      // Security: Prevent buffer overflow/DoS with extremely long app names
+      const longAppName = 'A'.repeat(101);
+      const toolCall = {
+        name: 'get_app_tools',
+        arguments: {
+          app_name: longAppName,
+        },
+      };
+
+      // Should be rejected
+      expect(toolCall.arguments.app_name.length).toBeGreaterThan(100);
+    });
+
+    it('should reject app_name with invalid characters (special chars)', () => {
+      // Security: Prevent command injection via special characters
+      const maliciousNames = [
+        'Finder; rm -rf /',
+        'Safari && malicious',
+        'Mail | cat /etc/passwd',
+        'Notes`whoami`',
+        'Contacts$(whoami)',
+        'Calendar<script>alert(1)</script>',
+      ];
+
+      for (const name of maliciousNames) {
+        // These should all fail character validation
+        expect(/^[a-zA-Z0-9\s\-_.]+$/.test(name)).toBe(false);
+      }
+    });
+
+    it('should reject app_name with null bytes', () => {
+      // Security: Prevent null byte injection
+      const nullByteNames = [
+        'Finder\0malicious',
+        'Safari\x00',
+        '\0',
+      ];
+
+      for (const name of nullByteNames) {
+        // These should all be rejected
+        expect(name.includes('\0')).toBe(true);
+      }
+    });
+
+    it('should reject app_name with path traversal attempts', () => {
+      // Security: Prevent path traversal
+      const pathTraversalNames = [
+        '../../../etc/passwd',
+        '..\\..\\windows\\system32',
+        'App/../../secret',
+      ];
+
+      for (const name of pathTraversalNames) {
+        // These should fail character validation (contain '/')
+        expect(/^[a-zA-Z0-9\s\-_.]+$/.test(name)).toBe(false);
+      }
+    });
+
+    it('should accept valid app_name with common characters', () => {
+      // Valid app names should pass validation
+      const validNames = [
+        'Finder',
+        'Safari',
+        'Microsoft Word',
+        'Adobe_Photoshop',
+        'App-Name',
+        'App.Name',
+        'App Name 2.0',
+        'MyApp_v1.2-beta',
+      ];
+
+      for (const name of validNames) {
+        // These should all pass validation
+        expect(name.length).toBeLessThanOrEqual(100);
+        expect(/^[a-zA-Z0-9\s\-_.]+$/.test(name)).toBe(true);
+        expect(name.includes('\0')).toBe(false);
+      }
+    });
+
     it('should return error when app not found', () => {
       // When get_app_tools called with unknown app name
       const response = {

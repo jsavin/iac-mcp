@@ -13,8 +13,8 @@
  * Phase 5 of lazy loading implementation.
  */
 
-import { stat, readFile } from 'fs/promises';
-import { join } from 'path';
+import { stat, readFile, realpath } from 'fs/promises';
+import { join, resolve } from 'path';
 import type { AppWithSDEF } from './find-sdef.js';
 import type { SDEFDictionary } from '../../types/sdef.js';
 import type { MCPTool } from '../../types/mcp-tool.js';
@@ -209,12 +209,43 @@ export async function loadAppTools(
 /**
  * Read bundle ID from app's Info.plist file
  *
+ * Security measures:
+ * - Path canonicalization with realpath() to resolve symlinks
+ * - Absolute path verification
+ * - .app extension verification
+ * - Prevents path traversal attacks
+ *
  * @param bundlePath - Path to app bundle
  * @returns Bundle ID from Info.plist, or null if not found/readable
  */
 async function readBundleIdFromPlist(bundlePath: string): Promise<string | null> {
   try {
-    const plistPath = join(bundlePath, 'Contents', 'Info.plist');
+    // 1. Canonicalize path (resolve symlinks, relative paths)
+    const canonicalBundlePath = await realpath(bundlePath);
+
+    // 2. Verify it's an absolute path
+    if (!resolve(canonicalBundlePath).startsWith('/')) {
+      console.warn(`Bundle path is not absolute: ${bundlePath}`);
+      return null;
+    }
+
+    // 3. Verify it ends with .app (macOS app bundle)
+    if (!canonicalBundlePath.endsWith('.app')) {
+      console.warn(`Bundle path does not end with .app: ${bundlePath}`);
+      return null;
+    }
+
+    // 4. Construct Info.plist path safely
+    const plistPath = join(canonicalBundlePath, 'Contents', 'Info.plist');
+
+    // 5. Verify plist is within bundle (prevent path traversal)
+    const canonicalPlistPath = await realpath(plistPath).catch(() => plistPath);
+    if (!canonicalPlistPath.startsWith(canonicalBundlePath)) {
+      console.warn(`Info.plist path traversal detected: ${plistPath}`);
+      return null;
+    }
+
+    // 6. Read and parse plist
     const content = await readFile(plistPath, 'utf-8');
 
     // Parse plist XML to find CFBundleIdentifier

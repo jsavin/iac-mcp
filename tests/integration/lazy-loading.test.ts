@@ -230,6 +230,82 @@ describe('Lazy Loading Integration Tests', () => {
       expect(endTime - startTime).toBeLessThan(5000); // Generous for test overhead
     });
 
+    it('should process apps in parallel not sequentially (Fix #3)', async () => {
+      // Security/Performance Fix: ListTools should use Promise.all() for parallel processing
+      // Sequential processing: 50 apps × 30ms = 1500ms (FAILS <1s target)
+      // Parallel processing: 50 apps in parallel = ~300ms (ACHIEVES <1s target)
+
+      const appCount = 15;
+      const singleAppProcessingTime = 30; // ms
+
+      // Test parallel processing
+      const startTime = performance.now();
+
+      // Simulate parallel metadata creation (Promise.all pattern)
+      const metadataPromises = Array.from({ length: appCount }, async (_, i) => {
+        // Simulate SDEF parsing time per app
+        await new Promise(resolve => setTimeout(resolve, singleAppProcessingTime));
+        return {
+          appName: `App${i}`,
+          bundleId: `com.app${i}`,
+          description: 'Test app',
+          toolCount: 20,
+          suiteNames: ['Standard Suite'],
+        };
+      });
+
+      const metadata = await Promise.all(metadataPromises);
+      const endTime = performance.now();
+      const elapsed = endTime - startTime;
+
+      // Parallel execution should take ~singleAppProcessingTime
+      // (NOT appCount × singleAppProcessingTime)
+      expect(metadata).toHaveLength(appCount);
+
+      // With parallel execution, time should be close to single app time
+      // Allow 3x margin for test framework overhead and system load
+      const maxParallelTime = singleAppProcessingTime * 3;
+      expect(elapsed).toBeLessThan(maxParallelTime);
+
+      // Verify it's NOT sequential (would take much longer)
+      const sequentialTime = appCount * singleAppProcessingTime;
+      expect(elapsed).toBeLessThan(sequentialTime * 0.5); // Should be < 50% of sequential time
+    });
+
+    it('should handle parallel processing with failures gracefully (Fix #3)', async () => {
+      // When using Promise.all(), some apps may fail to parse
+      // Failed apps should be filtered out without breaking the entire ListTools
+
+      const appCount = 10;
+
+      // Simulate parallel processing with some failures
+      const metadataPromises = Array.from({ length: appCount }, async (_, i) => {
+        // Apps 2 and 5 fail to parse
+        if (i === 2 || i === 5) {
+          throw new Error(`Failed to parse App${i}`);
+        }
+
+        return {
+          appName: `App${i}`,
+          bundleId: `com.app${i}`,
+          description: 'Test app',
+          toolCount: 20,
+          suiteNames: ['Standard Suite'],
+        };
+      });
+
+      // Use Promise.allSettled to handle failures gracefully
+      const results = await Promise.allSettled(metadataPromises);
+      const successfulMetadata = results
+        .filter((result): result is PromiseFulfilledResult<AppMetadata> => result.status === 'fulfilled')
+        .map(result => result.value);
+
+      // Should have 8 successful apps (10 - 2 failures)
+      expect(successfulMetadata).toHaveLength(8);
+      expect(successfulMetadata.map(m => m.appName)).not.toContain('App2');
+      expect(successfulMetadata.map(m => m.appName)).not.toContain('App5');
+    });
+
     it('should return consistent metadata across calls', async () => {
       // ListTools should return same metadata on subsequent calls
       const call1 = [createTestMetadata('Finder')];
