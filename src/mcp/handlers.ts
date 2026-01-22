@@ -6,8 +6,6 @@
  * Handlers:
  * - ListTools: Discover and list all available MCP tools from macOS applications
  * - CallTool: Execute an MCP tool with permission checks and error handling
- * - ListResources: List available resources (app dictionaries)
- * - ReadResource: Retrieve a specific resource by URI
  *
  * Integration points:
  * - ToolGenerator: Generates MCP tool definitions from SDEF data
@@ -22,8 +20,6 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { PermissionDecision } from '../permissions/types.js';
@@ -31,18 +27,14 @@ import type { ToolGenerator } from '../jitd/tool-generator/generator.js';
 import type { MacOSAdapter } from '../adapters/macos/macos-adapter.js';
 import type { PermissionChecker } from '../permissions/permission-checker.js';
 import type { ErrorHandler } from '../error-handler.js';
-import type { ToolCache } from '../jitd/cache/tool-cache.js';
 import type { MCPTool } from '../types/mcp-tool.js';
-import type { CacheManifest } from '../jitd/cache/tool-cache.js';
-import { CACHE_VERSION } from '../jitd/cache/tool-cache.js';
-import { findAllScriptableApps } from '../jitd/discovery/find-sdef.js';
+import { findAllScriptableApps, type AppWithSDEF } from '../jitd/discovery/find-sdef.js';
 import { sdefParser } from '../jitd/discovery/parse-sdef.js';
+import { buildMetadata } from '../jitd/discovery/app-metadata-builder.js';
+import { loadAppTools } from '../jitd/discovery/app-tools-loader.js';
+import type { AppMetadata } from '../types/app-metadata.js';
+import type { PerAppCache } from '../jitd/cache/per-app-cache.js';
 
-/**
- * Resource cache for app dictionaries
- * Maps URI → resource content
- */
-type ResourceCache = Map<string, { uri: string; name: string; content: string }>;
 
 /**
  * Setup MCP request handlers
@@ -50,8 +42,6 @@ type ResourceCache = Map<string, { uri: string; name: string; content: string }>
  * Registers all MCP protocol handlers with the server:
  * - ListTools: Returns all discovered tools
  * - CallTool: Executes a tool with permission checks
- * - ListResources: Lists available app dictionaries
- * - ReadResource: Retrieves a specific app dictionary
  *
  * @param server - MCP Server instance
  * @param toolGenerator - ToolGenerator instance for discovering tools
@@ -72,145 +62,89 @@ export async function setupHandlers(
   permissionChecker: PermissionChecker,
   adapter: MacOSAdapter,
   errorHandler: ErrorHandler,
-  toolCache: ToolCache
+  perAppCache: PerAppCache
 ): Promise<void> {
-  // Initialize resource cache for app dictionaries
-  const resourceCache: ResourceCache = new Map();
-
   // Store discovered tools in memory for CallTool lookups
   let discoveredTools: MCPTool[] = [];
 
+  // Store discovered apps for lazy loading
+  let discoveredApps: AppWithSDEF[] = [];
+
   /**
-   * ListTools Handler
+   * ListTools Handler (Lazy Loading)
    *
    * Called by MCP clients to discover available tools.
-   * Generates tools from JITD engine and returns them in MCP format.
+   * Returns only the get_app_tools tool plus app metadata for lazy loading.
+   * This allows fast initialization (<1s) instead of generating all tools upfront.
    */
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     try {
-      console.error('[ListTools] Starting tool discovery');
+      console.error('[ListTools] Starting lazy loading app discovery');
 
-      // Try to load from cache first
-      const cachedManifest = await toolCache.load();
-
-      if (cachedManifest) {
-        console.error(`[ListTools] Loaded ${cachedManifest.apps.length} apps from cache`);
-
-        // Validate cache and collect valid tools
-        const validTools: MCPTool[] = [];
-        const invalidApps: string[] = [];
-
-        for (const cachedApp of cachedManifest.apps) {
-          const isValid = await toolCache.isValid(cachedApp);
-          if (isValid) {
-            validTools.push(...cachedApp.generatedTools);
-          } else {
-            invalidApps.push(cachedApp.appName);
-          }
-        }
-
-        // If all cached apps are valid, use cache
-        if (invalidApps.length === 0) {
-          console.error(`[ListTools] Cache is valid, returning ${validTools.length} tools`);
-          discoveredTools = validTools;
-
-          return {
-            tools: validTools.map(tool => ({
-              name: tool.name,
-              description: tool.description,
-              inputSchema: tool.inputSchema as any, // MCP SDK type is slightly different
-            })),
-          };
-        }
-
-        console.error(`[ListTools] Cache partially invalid (${invalidApps.join(', ')}), regenerating`);
-      } else {
-        console.error('[ListTools] No cache found, discovering apps');
-      }
-
-      // Discover all scriptable apps
+      // Discover all scriptable apps (just find SDEF files, don't parse yet)
       const apps = await findAllScriptableApps({ useCache: false });
       console.error(`[ListTools] Discovered ${apps.length} scriptable apps`);
 
+      // Store for lazy loading in CallTool handler
+      discoveredApps = apps;
+
       if (apps.length === 0) {
         console.error('[ListTools] No scriptable apps found');
-        discoveredTools = [];
-        return { tools: [] };
+        return {
+          tools: [],
+          _app_metadata: [],
+        };
       }
 
-      // Parse SDEF files and generate tools for each app
-      const allTools: MCPTool[] = [];
-      const cacheManifest: CacheManifest = {
-        version: CACHE_VERSION,
-        cachedAt: Date.now(),
-        apps: [],
-      };
-
-      for (const app of apps) {
+      // Build metadata for each app IN PARALLEL (critical for <1s performance)
+      const metadataPromises = apps.map(async (app) => {
         try {
-          console.error(`[ListTools] Processing ${app.appName}`);
+          console.error(`[ListTools] Building metadata for ${app.appName}`);
 
-          // Parse SDEF
+          // Parse SDEF dictionary (fast - just XML parsing)
           const dictionary = await sdefParser.parse(app.sdefPath);
 
-          // Get bundle ID from SDEF title or use a fallback
-          const bundleId = dictionary.title || `com.unknown.${app.appName.toLowerCase()}`;
-
-          // Create AppInfo for tool generator
-          const appInfo = {
-            appName: app.appName,
-            bundleId,
-            bundlePath: app.bundlePath,
-            sdefPath: app.sdefPath,
-          };
-
-          // Generate tools
-          const tools = toolGenerator.generateTools(dictionary, appInfo);
-          console.error(`[ListTools] Generated ${tools.length} tools for ${app.appName}`);
-
-          allTools.push(...tools);
-
-          // Get file stats for caching
-          const { stat } = await import('fs/promises');
-          const bundleStats = await stat(app.bundlePath);
-          const sdefStats = await stat(app.sdefPath);
-
-          // Add to cache manifest
-          cacheManifest.apps.push({
-            appName: app.appName,
-            bundlePath: app.bundlePath,
-            bundleId,
-            sdefPath: app.sdefPath,
-            sdefModifiedTime: sdefStats.mtimeMs,
-            bundleModifiedTime: bundleStats.mtimeMs,
-            parsedSDEF: dictionary,
-            generatedTools: tools,
-            cachedAt: Date.now(),
-          });
-
+          // Build lightweight metadata (20-30ms per app, but parallelized)
+          return await buildMetadata(app, dictionary);
         } catch (error) {
+          // Log error but don't fail entire ListTools call
           const errorMsg = error instanceof Error ? error.message : String(error);
-          console.error(`[ListTools] Failed to process ${app.appName}: ${errorMsg}`);
-          // Continue with other apps
+          console.error(`[ListTools] Failed to build metadata for ${app.appName}: ${errorMsg}`);
+          return null;
         }
-      }
+      });
 
-      console.error(`[ListTools] Total tools generated: ${allTools.length}`);
+      // Wait for all metadata to be built in parallel
+      const metadataResults = await Promise.all(metadataPromises);
 
-      // Save to cache for next startup
-      await toolCache.save(cacheManifest);
+      // Filter out null results (apps that failed to parse)
+      const appMetadataList = metadataResults.filter(
+        (metadata): metadata is AppMetadata => metadata !== null
+      );
 
-      // Store tools for CallTool handler
-      discoveredTools = allTools;
+      console.error(`[ListTools] Built metadata for ${appMetadataList.length} apps`);
 
-      // Return tools in MCP format (without _metadata)
-      const tools: Tool[] = allTools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema as any, // MCP SDK type is slightly different
-      }));
+      // Create the get_app_tools tool
+      const getAppToolsTool: Tool = {
+        name: 'get_app_tools',
+        description: 'Get all available tools and object model for a specific macOS application. Use this to load tools on-demand for any discovered app.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            app_name: {
+              type: 'string',
+              description: 'Application name (e.g., \'Finder\', \'Safari\') from the app metadata list',
+            },
+          },
+          required: ['app_name'],
+        },
+      };
 
-      return { tools };
+      // Return get_app_tools tool + app metadata
+      return {
+        tools: [getAppToolsTool],
+        _app_metadata: appMetadataList,
+      };
 
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -223,15 +157,12 @@ export async function setupHandlers(
   });
 
   /**
-   * CallTool Handler
+   * CallTool Handler (Lazy Loading)
    *
    * Called by MCP clients to execute a tool.
-   * Performs:
-   * 1. Tool lookup by name
-   * 2. Parameter validation
-   * 3. Permission check
-   * 4. Execution via MacOSAdapter
-   * 5. Error handling and formatting
+   * Handles both:
+   * - get_app_tools: Lazy load tools for a specific app
+   * - App-specific commands: Execute tool with permission checks
    */
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name: toolName, arguments: args } = request.params;
@@ -239,6 +170,99 @@ export async function setupHandlers(
     try {
       console.error(`[CallTool] Executing tool: ${toolName}`);
 
+      // Check for get_app_tools (lazy loading)
+      if (toolName === 'get_app_tools') {
+        // Validate app_name parameter
+        const appName = args?.app_name as string | undefined;
+
+        if (!appName) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'Error: Missing required parameter \'app_name\'',
+            }],
+            isError: true,
+          };
+        }
+
+        // Input validation for app_name (security: prevent command injection)
+        // 1. Length limit (prevent buffer overflow/DoS)
+        if (appName.length > 100) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'Error: app_name parameter too long (max 100 characters)',
+            }],
+            isError: true,
+          };
+        }
+
+        // 2. Character whitelist (alphanumeric + common app name characters)
+        if (!/^[a-zA-Z0-9\s\-_.]+$/.test(appName)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'Error: app_name contains invalid characters. Only alphanumeric, spaces, hyphens, underscores, and periods allowed.',
+            }],
+            isError: true,
+          };
+        }
+
+        // 3. Null byte rejection (prevent null byte injection)
+        if (appName.includes('\0')) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'Error: app_name contains null bytes',
+            }],
+            isError: true,
+          };
+        }
+
+        try {
+          // Load tools for this app (uses cache if available)
+          const appToolsResponse = await loadAppTools(
+            appName,
+            discoveredApps,
+            sdefParser,
+            toolGenerator,
+            perAppCache
+          );
+
+          // Return tools + object model as JSON
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify(appToolsResponse, null, 2),
+            }],
+          };
+        } catch (error) {
+          // Handle specific error types
+          if (error && typeof error === 'object' && 'name' in error) {
+            if (error.name === 'AppNotFoundError') {
+              return {
+                content: [{
+                  type: 'text' as const,
+                  text: `Error: Application "${appName}" not found. Use list_tools to see available apps.`,
+                }],
+                isError: true,
+              };
+            }
+          }
+
+          // Other errors
+          const message = error instanceof Error ? error.message : String(error);
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Error loading tools for ${appName}: ${message}`,
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      // Continue with existing tool lookup logic for app-specific commands
       // 1. Lookup tool by name
       const tool = discoveredTools.find(t => t.name === toolName);
 
@@ -377,183 +401,6 @@ export async function setupHandlers(
     }
   });
 
-  /**
-   * ListResources Handler (Optional)
-   *
-   * Called by MCP clients to discover available resources.
-   * Returns app dictionary resources for each discovered app.
-   */
-  server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    try {
-      console.error('[ListResources] Listing available resources');
-
-      // Generate resources from discovered tools
-      const resources = discoveredTools
-        .map(tool => {
-          const bundleId = tool._metadata?.bundleId;
-          const appName = tool._metadata?.appName;
-
-          if (!bundleId || !appName) {
-            return null;
-          }
-
-          const uri = `iac://apps/${bundleId}/dictionary`;
-          return {
-            uri,
-            name: `${appName} Dictionary`,
-            description: `Complete SDEF dictionary for ${appName} with all commands`,
-            mimeType: 'application/json',
-          };
-        })
-        .filter((r): r is NonNullable<typeof r> => r !== null)
-        // Remove duplicates (multiple tools from same app)
-        .filter((resource, index, self) =>
-          self.findIndex(r => r.uri === resource.uri) === index
-        );
-
-      console.error(`[ListResources] Returning ${resources.length} resources`);
-
-      return { resources };
-
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[ListResources] Error: ${message}`);
-      return {
-        resources: [],
-        _error: message,
-      };
-    }
-  });
-
-  /**
-   * ReadResource Handler (Optional)
-   *
-   * Called by MCP clients to retrieve a specific resource.
-   * Returns parsed SDEF dictionary for an app.
-   */
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    const { uri } = request.params;
-
-    try {
-      console.error(`[ReadResource] Reading resource: ${uri}`);
-
-      // Check cache first
-      const cached = resourceCache.get(uri);
-      if (cached) {
-        console.error(`[ReadResource] Cache hit for ${uri}`);
-        return {
-          contents: [
-            {
-              uri: cached.uri,
-              mimeType: 'application/json',
-              text: cached.content,
-            },
-          ],
-        };
-      }
-
-      // Parse URI: iac://apps/{bundleId}/dictionary
-      const match = uri.match(/^iac:\/\/apps\/([^/]+)\/dictionary$/);
-      if (!match) {
-        console.error(`[ReadResource] Invalid URI format: ${uri}`);
-        return {
-          contents: [
-            {
-              uri,
-              mimeType: 'application/json',
-              text: JSON.stringify({
-                error: 'Invalid URI format. Expected: iac://apps/{bundleId}/dictionary',
-                uri,
-              }),
-            },
-          ],
-        };
-      }
-
-      const bundleId = match[1];
-
-      // Find all tools for this app
-      const appTools = discoveredTools.filter(
-        t => t._metadata?.bundleId === bundleId
-      );
-
-      if (appTools.length === 0) {
-        console.error(`[ReadResource] No tools found for bundleId: ${bundleId}`);
-        return {
-          contents: [
-            {
-              uri,
-              mimeType: 'application/json',
-              text: JSON.stringify({
-                error: 'Resource not found',
-                bundleId,
-                uri,
-              }),
-            },
-          ],
-        };
-      }
-
-      // Format as LLM-friendly dictionary
-      const appName = appTools[0]?._metadata?.appName || 'Unknown';
-      const dictionary = {
-        appName,
-        bundleId,
-        commands: appTools.map(tool => ({
-          tool: tool.name,
-          description: tool.description,
-          parameters: Object.entries(tool.inputSchema.properties || {}).reduce(
-            (acc, [key, value]) => {
-              acc[key] = {
-                type: value.type,
-                description: value.description,
-                required: tool.inputSchema.required?.includes(key) || false,
-              };
-              return acc;
-            },
-            {} as Record<string, any>
-          ),
-        })),
-      };
-
-      const content = JSON.stringify(dictionary, null, 2);
-
-      // Cache the result
-      resourceCache.set(uri, {
-        uri,
-        name: `${appName} Dictionary`,
-        content,
-      });
-
-      console.error(`[ReadResource] Returning dictionary for ${appName} (${appTools.length} commands)`);
-
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: 'application/json',
-            text: content,
-          },
-        ],
-      };
-
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[ReadResource] Error: ${message}`);
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: 'application/json',
-            text: JSON.stringify({
-              error: message,
-              uri,
-            }),
-          },
-        ],
-      };
-    }
-  });
 }
 
 /**
@@ -694,5 +541,3 @@ export function formatPermissionDeniedResponse(decision: PermissionDecision): Re
   };
 }
 
-// Export types for usage in other modules
-export type { ResourceCache };
