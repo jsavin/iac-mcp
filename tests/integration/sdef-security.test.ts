@@ -111,9 +111,9 @@ describe('SDEF Security Tests', () => {
 
       const parser = new SDEFParser();
       // Security property: XXE protection - parser must reject ENTITY declarations with SYSTEM URIs
-      // Regex matches: "ENTITY declarations found" OR "DOCTYPE with ENTITY SYSTEM references" OR "Failed to parse SDEF XML"
+      // Regex matches: "XXE vulnerability detected" OR "ENTITY declaration" OR "Failed to parse SDEF XML"
       await expect(() => parser.parseContent(maliciousXML)).rejects.toThrow(
-        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM references|Failed to parse SDEF XML/i
+        /XXE vulnerability detected|ENTITY declaration|Failed to parse SDEF XML/i
       );
     });
 
@@ -136,9 +136,9 @@ describe('SDEF Security Tests', () => {
 
       const parser = new SDEFParser();
       // Security property: XXE protection - multiple entities with SYSTEM URIs must all be rejected
-      // Regex matches: "ENTITY declarations found" OR "DOCTYPE with ENTITY SYSTEM references" OR "Failed to parse SDEF XML"
+      // Regex matches: "XXE vulnerability detected" OR "ENTITY declaration" OR "Failed to parse SDEF XML"
       await expect(() => parser.parseContent(maliciousXML)).rejects.toThrow(
-        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM references|Failed to parse SDEF XML/i
+        /XXE vulnerability detected|ENTITY declaration|Failed to parse SDEF XML/i
       );
     });
 
@@ -157,9 +157,29 @@ describe('SDEF Security Tests', () => {
 
       const parser = new SDEFParser();
       // Security property: XXE protection - parameter entities with SYSTEM URIs are also blocked
-      // Regex matches: "ENTITY declarations found" OR "DOCTYPE with ENTITY SYSTEM references" OR "Failed to parse SDEF XML"
+      // Regex matches: "XXE vulnerability detected" OR "ENTITY declaration" OR "Failed to parse SDEF XML"
       await expect(() => parser.parseContent(maliciousXML)).rejects.toThrow(
-        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM references|Failed to parse SDEF XML/i
+        /XXE vulnerability detected|ENTITY declaration|Failed to parse SDEF XML/i
+      );
+    });
+
+    /**
+     * Test that multi-line ENTITY SYSTEM declarations are rejected
+     * Attackers might use multi-line formatting to evade basic pattern matching
+     */
+    it('should reject multi-line ENTITY SYSTEM declarations', async () => {
+      const multilineXXE = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary [
+  <!ENTITY xxe
+    SYSTEM "file:///etc/passwd">
+]>
+<dictionary title="Test"></dictionary>`;
+
+      const parser = new SDEFParser();
+      // Security property: XXE protection - multi-line ENTITY declarations with SYSTEM URIs are also blocked
+      // Regex matches: "XXE vulnerability detected" OR "ENTITY declaration" OR "Failed to parse SDEF XML"
+      await expect(() => parser.parseContent(multilineXXE)).rejects.toThrow(
+        /XXE vulnerability detected|ENTITY declaration|Failed to parse SDEF XML/i
       );
     });
 
@@ -219,6 +239,54 @@ describe('SDEF Security Tests', () => {
       // Regex matches: "sensitive file" OR "DOCTYPE SYSTEM reference"
       await expect(() => resolver['validateNoExternalEntities'](maliciousXML))
         .toThrow(/sensitive file|DOCTYPE SYSTEM reference/i);
+    });
+
+    /**
+     * Test that pathological DOCTYPE input does not cause ReDoS
+     * This validates that the DOCTYPE regex is properly bounded and cannot be exploited
+     * to cause catastrophic backtracking.
+     *
+     * ATTACK VECTOR: Regular Expression Denial of Service (ReDoS)
+     * An attacker could craft malicious input that triggers catastrophic backtracking
+     * in the DOCTYPE validation regex, causing the parser to hang for seconds or minutes.
+     *
+     * SECURITY PROPERTY: ReDoS Protection
+     * The DOCTYPE validation regex must be designed to avoid catastrophic backtracking:
+     * 1. Use possessive quantifiers or atomic groups where possible
+     * 2. Avoid nested quantifiers (e.g., (a*)*)
+     * 3. Test with pathological inputs designed to trigger backtracking
+     * 4. Validate that parsing completes quickly (<100ms) even with malicious input
+     *
+     * This test creates deeply nested brackets in the DOCTYPE declaration to attempt
+     * to trigger backtracking. A properly designed regex should handle this input
+     * quickly (typically <10ms), while a vulnerable regex would hang for seconds.
+     */
+    it('should not hang on pathological DOCTYPE input (ReDoS protection)', async () => {
+      // Malicious input designed to trigger catastrophic backtracking
+      // if DOCTYPE regex is not properly bounded
+      const maliciousXML = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary ${'['.repeat(1000)}>
+<dictionary title="Test">
+  <suite name="Test Suite" code="test">
+    <command name="test" code="test"></command>
+  </suite>
+</dictionary>`;
+
+      const startTime = Date.now();
+      const parser = new SDEFParser();
+
+      try {
+        await parser.parseContent(maliciousXML);
+        // May succeed or fail, we only care that it completes quickly
+      } catch (error) {
+        // Expected to fail on malformed input, that's OK
+      }
+
+      const duration = Date.now() - startTime;
+
+      // Should complete in well under 100ms (typically <10ms with fixed regex)
+      // If vulnerable to ReDoS, this would hang for seconds/minutes
+      expect(duration).toBeLessThan(100);
     });
   });
 
@@ -1072,7 +1140,7 @@ describe('SDEF Security Tests', () => {
       const parser = new SDEFParser();
       // Should reject because of XXE protection (first layer)
       await expect(() => parser.parseContent(combinedAttack)).rejects.toThrow(
-        /ENTITY declarations found|DOCTYPE with ENTITY SYSTEM/i
+        /XXE vulnerability detected|ENTITY declaration.*SYSTEM/i
       );
     });
 
