@@ -14,7 +14,7 @@ import { ToolGenerator } from './jitd/tool-generator/generator.js';
 import { MacOSAdapter } from './adapters/macos/macos-adapter.js';
 import { PermissionChecker } from './permissions/permission-checker.js';
 import { ErrorHandler } from './error-handler.js';
-import { ToolCache } from './jitd/cache/tool-cache.js';
+import { PerAppCache } from './jitd/cache/per-app-cache.js';
 
 /**
  * Logging utility that writes to stderr (stdout is reserved for MCP protocol)
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   const adapter = new MacOSAdapter();
   const permissionChecker = new PermissionChecker();
   const errorHandler = new ErrorHandler();
-  const toolCache = new ToolCache();
+  const perAppCache = new PerAppCache();
 
   // Setup all MCP handlers
   try {
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
       permissionChecker,
       adapter,
       errorHandler,
-      toolCache
+      perAppCache
     );
     log('INFO', 'MCP handlers setup complete');
   } catch (error) {
