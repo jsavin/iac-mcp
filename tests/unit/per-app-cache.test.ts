@@ -367,6 +367,259 @@ describe('PerAppCache', () => {
     });
   });
 
+  describe('Security - Path Traversal Protection (Issue #1)', () => {
+    it('should reject bundle ID with path traversal attempts (..)', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      // Attempt path traversal
+      const maliciousBundleId = '../../etc/passwd';
+
+      // Should reject (caught by regex first, but that's good - defense in depth)
+      expect(() => cache.getCachePath(maliciousBundleId)).toThrow(
+        /Invalid bundle ID format|path traversal/i
+      );
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should reject bundle ID with forward slashes', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const maliciousBundleId = 'com/apple/test';
+
+      // Should reject (caught by regex first, but that's good - defense in depth)
+      expect(() => cache.getCachePath(maliciousBundleId)).toThrow(
+        /Invalid bundle ID format|path traversal/i
+      );
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should reject bundle ID with backslashes', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const maliciousBundleId = 'com\\apple\\test';
+
+      // Should reject (caught by regex first, but that's good - defense in depth)
+      expect(() => cache.getCachePath(maliciousBundleId)).toThrow(
+        /Invalid bundle ID format|path traversal/i
+      );
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should reject bundle ID with special characters', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const maliciousBundleId = 'com.apple.test!@#$%';
+
+      expect(() => cache.getCachePath(maliciousBundleId)).toThrow(
+        'Invalid bundle ID format'
+      );
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should accept valid bundle IDs (com.apple.finder)', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const validBundleId = 'com.apple.finder';
+      const path = cache.getCachePath(validBundleId);
+
+      expect(path).toContain('com.apple.finder.json');
+      expect(path).not.toContain('..');
+      expect(path).not.toContain('//');
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should accept valid bundle IDs with hyphens (com.example.app-name)', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const validBundleId = 'com.example.app-name';
+      const path = cache.getCachePath(validBundleId);
+
+      expect(path).toContain('com.example.app-name.json');
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should accept valid bundle IDs with numbers (org.company.app2)', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const validBundleId = 'org.company.app2';
+      const path = cache.getCachePath(validBundleId);
+
+      expect(path).toContain('org.company.app2.json');
+
+      await cleanupCacheDir(cacheDir);
+    });
+  });
+
+  describe('Security - JSON Validation (Issue #2)', () => {
+    it('should reject cache with missing required fields', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const bundleId = 'com.test.missing';
+      const cachePath = cache.getCachePath(bundleId);
+
+      // Create invalid cache file (missing appName)
+      const invalidCache = {
+        bundleId: 'com.test.missing',
+        sdefPath: '/test.sdef',
+        sdefModifiedTime: Date.now(),
+        bundleModifiedTime: Date.now(),
+        parsedSDEF: { title: 'Test', suites: [] },
+        generatedTools: [],
+        cachedAt: Date.now(),
+      };
+
+      await mkdir(cacheDir, { recursive: true });
+      await writeFile(cachePath, JSON.stringify(invalidCache));
+
+      const loaded = await cache.load(bundleId);
+      expect(loaded).toBeNull();
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should reject cache with invalid parsedSDEF structure', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const bundleId = 'com.test.invalid';
+      const cachePath = cache.getCachePath(bundleId);
+
+      // Create cache with malformed parsedSDEF
+      const invalidCache = {
+        appName: 'Test',
+        bundleId: 'com.test.invalid',
+        sdefPath: '/test.sdef',
+        sdefModifiedTime: Date.now(),
+        bundleModifiedTime: Date.now(),
+        parsedSDEF: { invalidField: 'wrong' }, // Missing title and suites
+        generatedTools: [],
+        cachedAt: Date.now(),
+      };
+
+      await mkdir(cacheDir, { recursive: true });
+      await writeFile(cachePath, JSON.stringify(invalidCache));
+
+      const loaded = await cache.load(bundleId);
+      expect(loaded).toBeNull();
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should reject cache with invalid generatedTools array', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const bundleId = 'com.test.badtools';
+      const cachePath = cache.getCachePath(bundleId);
+
+      // Create cache with malformed tools
+      const invalidCache = {
+        appName: 'Test',
+        bundleId: 'com.test.badtools',
+        sdefPath: '/test.sdef',
+        sdefModifiedTime: Date.now(),
+        bundleModifiedTime: Date.now(),
+        parsedSDEF: { title: 'Test', suites: [] },
+        generatedTools: [
+          { name: 'tool1' }, // Missing description and inputSchema
+        ],
+        cachedAt: Date.now(),
+      };
+
+      await mkdir(cacheDir, { recursive: true });
+      await writeFile(cachePath, JSON.stringify(invalidCache));
+
+      const loaded = await cache.load(bundleId);
+      expect(loaded).toBeNull();
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should accept valid cache structure', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const bundleId = 'com.test.valid';
+      const validCache = createTestCacheData('ValidApp', bundleId);
+
+      await cache.save(bundleId, validCache);
+      const loaded = await cache.load(bundleId);
+
+      expect(loaded).not.toBeNull();
+      expect(loaded?.appName).toBe('ValidApp');
+      expect(loaded?.bundleId).toBe(bundleId);
+
+      await cleanupCacheDir(cacheDir);
+    });
+
+    it('should reject cache with invalid SDEF command structure', async () => {
+      const { PerAppCache } = await import('../../src/jitd/cache/per-app-cache.js');
+      const cacheDir = await getTempCacheDir();
+      const cache = new PerAppCache(cacheDir);
+
+      const bundleId = 'com.test.badcmd';
+      const cachePath = cache.getCachePath(bundleId);
+
+      // Create cache with malformed command
+      const invalidCache = {
+        appName: 'Test',
+        bundleId: 'com.test.badcmd',
+        sdefPath: '/test.sdef',
+        sdefModifiedTime: Date.now(),
+        bundleModifiedTime: Date.now(),
+        parsedSDEF: {
+          title: 'Test',
+          suites: [
+            {
+              name: 'Suite',
+              code: 'test',
+              commands: [
+                { name: 'cmd' }, // Missing required fields
+              ],
+              classes: [],
+              enumerations: [],
+            },
+          ],
+        },
+        generatedTools: [],
+        cachedAt: Date.now(),
+      };
+
+      await mkdir(cacheDir, { recursive: true });
+      await writeFile(cachePath, JSON.stringify(invalidCache));
+
+      const loaded = await cache.load(bundleId);
+      expect(loaded).toBeNull();
+
+      await cleanupCacheDir(cacheDir);
+    });
+  });
+
   describe('Edge cases', () => {
     it('should handle bundleId with many dots', async () => {
       // Bundle ID like "org.company.division.product.variant"

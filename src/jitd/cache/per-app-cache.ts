@@ -20,6 +20,7 @@ import { mkdir, writeFile, unlink, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { z } from 'zod';
 import type { SDEFDictionary } from '../../types/sdef.js';
 import type { MCPTool } from '../../types/mcp-tool.js';
 
@@ -29,6 +30,149 @@ import type { MCPTool } from '../../types/mcp-tool.js';
  * Increment when cache format changes to force cache invalidation.
  */
 const CACHE_VERSION = '1.0.0';
+
+/**
+ * Zod schema for SDEF Type validation (discriminated union)
+ */
+const SDEFTypeSchema: z.ZodType<any> = z.lazy(() =>
+  z.union([
+    z.object({ kind: z.literal('primitive'), type: z.enum(['text', 'integer', 'real', 'boolean']) }),
+    z.object({ kind: z.literal('file') }),
+    z.object({ kind: z.literal('list'), itemType: SDEFTypeSchema }),
+    z.object({ kind: z.literal('record'), properties: z.record(z.string(), SDEFTypeSchema) }),
+    z.object({ kind: z.literal('class'), className: z.string() }),
+    z.object({ kind: z.literal('enumeration'), enumerationName: z.string() }),
+    z.object({ kind: z.literal('any') }),
+    z.object({ kind: z.literal('missing_value') }),
+    z.object({ kind: z.literal('type_class') }),
+    z.object({ kind: z.literal('location_specifier') }),
+    z.object({ kind: z.literal('color') }),
+    z.object({ kind: z.literal('date') }),
+    z.object({ kind: z.literal('property') }),
+    z.object({ kind: z.literal('save_options') }),
+  ])
+);
+
+/**
+ * Zod schema for SDEF Parameter validation
+ */
+const SDEFParameterSchema = z.object({
+  name: z.string(),
+  code: z.string(),
+  type: SDEFTypeSchema,
+  description: z.string().optional(),
+  optional: z.boolean().optional(),
+});
+
+/**
+ * Zod schema for SDEF Command validation
+ */
+const SDEFCommandSchema = z.object({
+  name: z.string(),
+  code: z.string(),
+  description: z.string().optional(),
+  parameters: z.array(SDEFParameterSchema),
+  result: SDEFTypeSchema.optional(),
+  directParameter: SDEFParameterSchema.optional(),
+});
+
+/**
+ * Zod schema for SDEF Property validation
+ */
+const SDEFPropertySchema = z.object({
+  name: z.string(),
+  code: z.string(),
+  type: SDEFTypeSchema,
+  description: z.string().optional(),
+  access: z.enum(['r', 'w', 'rw']),
+});
+
+/**
+ * Zod schema for SDEF Element validation
+ */
+const SDEFElementSchema = z.object({
+  type: z.string(),
+  access: z.enum(['r', 'w', 'rw']),
+});
+
+/**
+ * Zod schema for SDEF Enumerator validation
+ */
+const SDEFEnumeratorSchema = z.object({
+  name: z.string(),
+  code: z.string(),
+  description: z.string().optional(),
+});
+
+/**
+ * Zod schema for SDEF Enumeration validation
+ */
+const SDEFEnumerationSchema = z.object({
+  name: z.string(),
+  code: z.string(),
+  description: z.string().optional(),
+  enumerators: z.array(SDEFEnumeratorSchema),
+});
+
+/**
+ * Zod schema for SDEF Class validation
+ */
+const SDEFClassSchema = z.object({
+  name: z.string(),
+  code: z.string(),
+  description: z.string().optional(),
+  properties: z.array(SDEFPropertySchema),
+  elements: z.array(SDEFElementSchema),
+  inherits: z.string().optional(),
+});
+
+/**
+ * Zod schema for SDEF Suite validation
+ */
+const SDEFSuiteSchema = z.object({
+  name: z.string(),
+  code: z.string(),
+  description: z.string().optional(),
+  commands: z.array(SDEFCommandSchema),
+  classes: z.array(SDEFClassSchema),
+  enumerations: z.array(SDEFEnumerationSchema),
+});
+
+/**
+ * Zod schema for SDEF Dictionary validation
+ */
+const SDEFDictionarySchema = z.object({
+  title: z.string(),
+  suites: z.array(SDEFSuiteSchema),
+});
+
+/**
+ * Zod schema for MCP Tool validation
+ */
+const MCPToolSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  inputSchema: z.object({
+    type: z.literal('object'),
+    properties: z.record(z.string(), z.any()).optional(),
+    required: z.array(z.string()).optional(),
+  }),
+});
+
+/**
+ * Schema for cache data validation
+ */
+const PerAppCacheDataSchema = z.object({
+  appName: z.string(),
+  bundleId: z.string(),
+  sdefPath: z.string(),
+  sdefModifiedTime: z.number(),
+  bundleModifiedTime: z.number(),
+  parsedSDEF: SDEFDictionarySchema,
+  generatedTools: z.array(MCPToolSchema),
+  cachedAt: z.number(),
+  cacheVersion: z.string().optional(),
+});
 
 /**
  * Data stored in per-app cache file
@@ -103,8 +247,21 @@ export class PerAppCache {
    *
    * @param bundleId - Application bundle identifier
    * @returns Absolute path to cache file
+   * @throws Error if bundle ID contains invalid characters or path traversal sequences
    */
   getCachePath(bundleId: string): string {
+    // Validate bundle ID follows reverse-DNS format (alphanumeric, dots, hyphens only)
+    if (!/^[a-zA-Z0-9.-]+$/.test(bundleId)) {
+      throw new Error(
+        `Invalid bundle ID format: ${bundleId}. Must match reverse-DNS pattern (a-zA-Z0-9.-)`
+      );
+    }
+
+    // Additional safety: reject path traversal attempts
+    if (bundleId.includes('..') || bundleId.includes('/') || bundleId.includes('\\')) {
+      throw new Error(`Bundle ID contains path traversal sequences: ${bundleId}`);
+    }
+
     return join(this.cacheDir, `${bundleId}.json`);
   }
 
@@ -125,16 +282,26 @@ export class PerAppCache {
     try {
       // Read and parse cache file
       const content = await readFile(cachePath, 'utf-8');
-      const data = JSON.parse(content) as PerAppCacheData;
+      const parsedContent = JSON.parse(content);
 
-      // Verify cache has required fields
+      // Validate with zod schema
+      const data = PerAppCacheDataSchema.parse(parsedContent);
+
+      // Basic field checks (already validated by schema, but kept for clarity)
       if (!data.appName || !data.bundleId || !data.parsedSDEF || !data.generatedTools) {
         return null;
       }
 
-      return data;
+      return data as PerAppCacheData;
     } catch (error) {
-      // Return null for any errors (missing file, invalid JSON, etc.)
+      // Gracefully handle validation errors
+      if (error instanceof z.ZodError) {
+        console.warn(
+          `Cache validation failed for ${bundleId}:`,
+          error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')
+        );
+      }
+      // Return null for any errors (missing file, invalid JSON, validation errors, etc.)
       return null;
     }
   }

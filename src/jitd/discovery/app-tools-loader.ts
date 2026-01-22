@@ -13,7 +13,8 @@
  * Phase 5 of lazy loading implementation.
  */
 
-import { stat } from 'fs/promises';
+import { stat, readFile } from 'fs/promises';
+import { join } from 'path';
 import type { AppWithSDEF } from './find-sdef.js';
 import type { SDEFDictionary } from '../../types/sdef.js';
 import type { MCPTool } from '../../types/mcp-tool.js';
@@ -99,9 +100,9 @@ export async function loadAppTools(
   }
 
   // Extract bundle ID from bundle path
-  // Bundle ID convention: reverse domain from path component
+  // Reads from Info.plist first, falls back to conventional naming
   // e.g., /Applications/Safari.app → com.apple.Safari
-  const bundleId = extractBundleId(app.bundlePath, app.appName);
+  const bundleId = await extractBundleId(app.bundlePath, app.appName);
 
   // Get modification times for cache validation
   let sdefMtime: number;
@@ -206,6 +207,31 @@ export async function loadAppTools(
 }
 
 /**
+ * Read bundle ID from app's Info.plist file
+ *
+ * @param bundlePath - Path to app bundle
+ * @returns Bundle ID from Info.plist, or null if not found/readable
+ */
+async function readBundleIdFromPlist(bundlePath: string): Promise<string | null> {
+  try {
+    const plistPath = join(bundlePath, 'Contents', 'Info.plist');
+    const content = await readFile(plistPath, 'utf-8');
+
+    // Parse plist XML to find CFBundleIdentifier
+    // Simple regex approach (alternatively use plist parser library)
+    const match = content.match(/<key>CFBundleIdentifier<\/key>\s*<string>(.*?)<\/string>/);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+
+    return null;
+  } catch (error) {
+    // Info.plist not found or not readable
+    return null;
+  }
+}
+
+/**
  * Extract bundle ID from bundle path and app name
  *
  * Attempts to extract bundle ID from Info.plist if available,
@@ -215,12 +241,14 @@ export async function loadAppTools(
  * @param appName - Application name
  * @returns Bundle identifier
  */
-function extractBundleId(bundlePath: string, appName: string): string {
-  // For now, use conventional naming
-  // TODO: Read from Info.plist in future enhancement
-  // System apps: com.apple.<name>
-  // User apps: com.<vendor>.<name>
+async function extractBundleId(bundlePath: string, appName: string): Promise<string> {
+  // Try reading from Info.plist first (most accurate)
+  const bundleId = await readBundleIdFromPlist(bundlePath);
+  if (bundleId) {
+    return bundleId;
+  }
 
+  // Fallback to inferring from app name (for apps without Info.plist)
   if (bundlePath.startsWith('/System/') || bundlePath.startsWith('/Applications/')) {
     // Likely system app
     return `com.apple.${appName.toLowerCase().replace(/\s+/g, '')}`;
@@ -255,7 +283,7 @@ export async function invalidateApp(
   }
 
   // Extract bundle ID
-  const bundleId = extractBundleId(app.bundlePath, app.appName);
+  const bundleId = await extractBundleId(app.bundlePath, app.appName);
 
   // Invalidate cache
   await perAppCache.invalidate(bundleId);
