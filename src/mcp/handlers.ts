@@ -278,10 +278,13 @@ export async function setupHandlers(
 
       // Check for get_app_tools (lazy loading)
       if (toolName === 'get_app_tools') {
+        console.error('[CallTool/get_app_tools] Executing get_app_tools tool');
+
         // Validate app_name parameter
         const appName = args?.app_name as string | undefined;
 
         if (!appName) {
+          console.error('[CallTool/get_app_tools] Error: Missing app_name parameter');
           return {
             content: [{
               type: 'text' as const,
@@ -327,6 +330,7 @@ export async function setupHandlers(
 
         try {
           // Load tools for this app (uses cache if available)
+          console.error(`[CallTool/get_app_tools] Loading tools for app: ${appName}`);
           const appToolsResponse = await loadAppTools(
             appName,
             discoveredApps,
@@ -334,6 +338,8 @@ export async function setupHandlers(
             toolGenerator,
             perAppCache
           );
+
+          console.error(`[CallTool/get_app_tools] Successfully loaded ${appToolsResponse.tools.length} tools for ${appName}`);
 
           // Return tools + object model as JSON
           return {
@@ -346,6 +352,7 @@ export async function setupHandlers(
           // Handle specific error types
           if (error && typeof error === 'object' && 'name' in error) {
             if (error.name === 'AppNotFoundError') {
+              console.error(`[CallTool/get_app_tools] App not found: ${appName}`);
               return {
                 content: [{
                   type: 'text' as const,
@@ -358,6 +365,7 @@ export async function setupHandlers(
 
           // Other errors
           const message = error instanceof Error ? error.message : String(error);
+          console.error(`[CallTool/get_app_tools] Error loading tools for ${appName}: ${message}`);
           return {
             content: [{
               type: 'text' as const,
