@@ -146,6 +146,7 @@ export class IACMCPServer {
       {
         capabilities: {
           tools: {},
+          resources: {},
         },
       }
     );
