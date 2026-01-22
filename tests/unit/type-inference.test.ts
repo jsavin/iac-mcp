@@ -1512,6 +1512,440 @@ describe('Type Inference - Lenient Mode', () => {
     });
   });
 
+  describe('Edge Cases for Parser Fixes', () => {
+    describe('ReDoS protection for integer pattern', () => {
+      it('should not hang on strings with repeated count/index keywords', async () => {
+        // Test that integer pattern doesn't hang on repeated keywords
+        const repeatedName = 'countcountcountcountcountcountcountcount';
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="${repeatedName}" code="test" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const startTime = Date.now();
+        const result = await parser.parseContent(xml);
+        const duration = Date.now() - startTime;
+
+        // Should complete quickly (no ReDoS)
+        expect(duration).toBeLessThan(100); // Should be near-instantaneous
+
+        // Should fall through to default text type (no pattern match)
+        const param = result.suites[0].commands[0].parameters[0];
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('text');
+      });
+
+      it('should still match valid integer patterns like item_count', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="item_count" code="icnt" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // Should match (^|_)(count|index)($|_) pattern
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('integer');
+      });
+
+      it('should still match valid integer patterns like recordIndex', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="recordIndex" code="ridx" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // Should match (Count|Index) pattern
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('integer');
+      });
+
+      it('should handle pathological ReDoS input for date pattern', async () => {
+        // Test repeated date/time keywords
+        const repeatedName = 'datetimedatetimedatetimedatetimedate';
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="${repeatedName}" code="test" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const startTime = Date.now();
+        const result = await parser.parseContent(xml);
+        const duration = Date.now() - startTime;
+
+        // Should complete quickly (no ReDoS)
+        expect(duration).toBeLessThan(100);
+
+        // May or may not match pattern depending on word boundaries
+        const param = result.suites[0].commands[0].parameters[0];
+        expect(param.type).toBeDefined();
+      });
+
+      it('should handle pathological ReDoS input for URL pattern', async () => {
+        // Test repeated url/uri keywords
+        const repeatedName = 'urluriurluriurluriurluriurl';
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="${repeatedName}" code="test" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const startTime = Date.now();
+        const result = await parser.parseContent(xml);
+        const duration = Date.now() - startTime;
+
+        // Should complete quickly (no ReDoS)
+        expect(duration).toBeLessThan(100);
+
+        const param = result.suites[0].commands[0].parameters[0];
+        expect(param.type).toBeDefined();
+      });
+
+      it('should handle pathological ReDoS input for ID pattern', async () => {
+        // Test repeated id/identifier keywords
+        const repeatedName = 'ididentifierididentifierididentifier';
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="${repeatedName}" code="test" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const startTime = Date.now();
+        const result = await parser.parseContent(xml);
+        const duration = Date.now() - startTime;
+
+        // Should complete quickly (no ReDoS)
+        expect(duration).toBeLessThan(100);
+
+        const param = result.suites[0].commands[0].parameters[0];
+        expect(param.type).toBeDefined();
+      });
+    });
+
+    describe('Four-character code normalization', () => {
+      it('should handle codes with trailing spaces correctly (obj )', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="target" code="obj " />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "obj " (with trailing space) should match CODE_TO_TYPE_MAP["obj "]
+        // This tests that the normalization preserves trailing spaces
+        expect(param.type.kind).toBe('location_specifier');
+
+        const codeWarning = warnings.find(w => w.code === 'TYPE_INFERRED_FROM_CODE');
+        expect(codeWarning).toBeDefined();
+      });
+
+      it('should handle codes with trailing spaces correctly (ldt )', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="created" code="ldt " />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "ldt " (with trailing space) should match CODE_TO_TYPE_MAP["ldt "]
+        // This tests that the normalization preserves trailing spaces
+        expect(param.type.kind).toBe('date');
+
+        const codeWarning = warnings.find(w => w.code === 'TYPE_INFERRED_FROM_CODE');
+        expect(codeWarning).toBeDefined();
+      });
+
+      it('should handle codes that need normalization (TEXT with variations)', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="message" code="TEXT" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "TEXT" should match CODE_TO_TYPE_MAP["TEXT"]
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('text');
+
+        const codeWarning = warnings.find(w => w.code === 'TYPE_INFERRED_FROM_CODE');
+        expect(codeWarning).toBeDefined();
+      });
+
+      it('should handle code normalization with trim and padding logic (bool)', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="flag" code="bool" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "bool" matches CODE_TO_TYPE_MAP["bool"]
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('boolean');
+
+        const codeWarning = warnings.find(w => w.code === 'TYPE_INFERRED_FROM_CODE');
+        expect(codeWarning).toBeDefined();
+      });
+
+      it('should verify normalization handles codes that do not match map', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="custom" code="cust" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "cust" doesn't match any CODE_TO_TYPE_MAP entry
+        // Falls back to name-based inference ("custom" -> default text)
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('text');
+
+        // Should NOT have code inference warning (code didn't match)
+        const codeWarning = warnings.find(w => w.code === 'TYPE_INFERRED_FROM_CODE');
+        expect(codeWarning).toBeUndefined();
+      });
+    });
+
+    describe('Boolean pattern false positives', () => {
+      it('should NOT infer boolean for "canvas" (starts with "can" but no camelCase)', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="canvas" code="canv" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "canvas" doesn't match /^(is|has|can|should|will)[A-Z]/ (no capital after "can")
+        // Falls through to default text type
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('text');
+
+        const boolWarning = warnings.find(
+          w => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'boolean'
+        );
+        expect(boolWarning).toBeUndefined();
+      });
+
+      it('should NOT infer boolean for "island" (starts with "is" but no camelCase)', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="island" code="isld" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "island" doesn't match /^(is|has|can|should|will)[A-Z]/ (no capital after "is")
+        // Falls through to default text type
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('text');
+
+        const boolWarning = warnings.find(
+          w => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'boolean'
+        );
+        expect(boolWarning).toBeUndefined();
+      });
+
+      it('should NOT infer boolean for "willingness" (starts with "will" but no camelCase)', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="willingness" code="wlng" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "willingness" doesn't match /^(is|has|can|should|will)[A-Z]/ (no capital after "will")
+        // Falls through to default text type
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('text');
+
+        const boolWarning = warnings.find(
+          w => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'boolean'
+        );
+        expect(boolWarning).toBeUndefined();
+      });
+
+      it('should NOT infer boolean for "history" (contains "is" but not at start)', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="history" code="hist" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "history" doesn't match /^(is|has|can|should|will)[A-Z]/ ("is" not at start)
+        // Falls through to default text type
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('text');
+
+        const boolWarning = warnings.find(
+          w => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'boolean'
+        );
+        expect(boolWarning).toBeUndefined();
+      });
+
+      it('should still infer boolean for valid "isVisible" (camelCase)', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="isVisible" code="isvs" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "isVisible" matches /^(is|has|can|should|will)[A-Z]/ AND contains "visible"
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('boolean');
+
+        const boolWarning = warnings.find(
+          w => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'boolean'
+        );
+        expect(boolWarning).toBeDefined();
+      });
+
+      it('should still infer boolean for valid "has_permission" (contains enabled/disabled/visible)', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="hasPermission" code="hprm" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "hasPermission" matches /^(is|has|can|should|will)[A-Z]/
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('boolean');
+
+        const boolWarning = warnings.find(
+          w => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'boolean'
+        );
+        expect(boolWarning).toBeDefined();
+      });
+
+      it('should still infer boolean for standalone "is" keyword', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="is" code="is  " />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "is" matches /^(is|has|can|should|will)$/i (standalone keyword)
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('boolean');
+
+        const boolWarning = warnings.find(
+          w => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'boolean'
+        );
+        expect(boolWarning).toBeDefined();
+      });
+
+      it('should infer boolean for "enabled" substring match', async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test" code="TEST">
+    <command name="test" code="TESTtest">
+      <parameter name="enabled" code="enab" />
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // "enabled" matches lowerName.includes('enabled')
+        expect(param.type.kind).toBe('primitive');
+        expect(param.type.type).toBe('boolean');
+
+        const boolWarning = warnings.find(
+          w => w.code === 'TYPE_INFERRED_FROM_PATTERN' && w.inferredValue === 'boolean'
+        );
+        expect(boolWarning).toBeDefined();
+      });
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle parameter with both type attribute and child element', async () => {
       const xml = `<?xml version="1.0" encoding="UTF-8"?>

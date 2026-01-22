@@ -925,7 +925,7 @@ export class SDEFParser {
     if (elementCode) {
       // Normalize to exactly 4 characters (trim then pad to 4 chars)
       // This handles codes with extra whitespace while preserving trailing spaces like 'obj ' and 'ldt '
-      const normalizedCode = elementCode.trim().padEnd(4, ' ');
+      const normalizedCode = elementCode.trim().padEnd(4, ' ').slice(0, 4);
       const mappedType = CODE_TO_TYPE_MAP[normalizedCode];
       if (mappedType) {
         inferredType = this.parseType(mappedType);
@@ -1067,7 +1067,7 @@ export class SDEFParser {
     // Match: itemCount, pageNumber (at end), number (standalone)
     // Don't match: phoneNumber, accountNumber, serialNumber (number at end of compound word should be text)
     if (
-      /(^|[^a-zA-Z])(count|index)($|[^a-zA-Z])|(Count|Index)/.test(elementName) ||
+      /(^|_)(count|index)($|_)|(Count|Index)/.test(elementName) ||
       /^number$/i.test(lowerName) || // Only match "number" as standalone word
       lowerName.includes('size')
     ) {
@@ -1092,7 +1092,7 @@ export class SDEFParser {
     // Match: isEnabled, hasPermission, canEdit
     // Don't match: list, this, exists, dismiss
     if (
-      /^(is|has|can|should|will)[A-Z]/.test(elementName) || // camelCase: isEnabled, hasValue
+      /^(is|has|can|should|will)([A-Z]|_)/.test(elementName) || // camelCase: isEnabled, hasValue
       /^(is|has|can|should|will)$/i.test(elementName) || // standalone: is, has, can
       lowerName.includes('enabled') ||
       lowerName.includes('disabled') ||
