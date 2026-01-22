@@ -452,9 +452,11 @@ export class SDEFParser {
       //
       // Since our XML parser is configured with ignoreDeclaration: true and never executes
       // DOCTYPE processing, stripping is safe and prevents any residual XXE risk.
-      // Fix: Match DOCTYPE with optional internal subset (handles multi-line DTD)
+      // Simplified pattern - safe from ReDoS
+      // Note: We strip DOCTYPE for security (XXE protection), so we don't need
+      // to preserve internal subsets. Simple greedy match is sufficient.
       const contentWithoutDoctype = contentWithoutComments.replace(
-        /<!DOCTYPE[^[]*(?:\[[^\]]*\])?\s*>/i,
+        /<!DOCTYPE[^>]*>/i,
         ''
       );
 
@@ -925,24 +927,29 @@ export class SDEFParser {
     if (elementCode) {
       // Normalize to exactly 4 characters (trim then pad to 4 chars)
       // This handles codes with extra whitespace while preserving trailing spaces like 'obj ' and 'ldt '
-      const normalizedCode = elementCode.trim().padEnd(4, ' ').slice(0, 4);
-      const mappedType = CODE_TO_TYPE_MAP[normalizedCode];
-      if (mappedType) {
-        inferredType = this.parseType(mappedType);
+      const trimmed = elementCode.trim();
+      if (trimmed.length === 0) {
+        // Skip code-based inference for empty codes
+      } else {
+        const normalizedCode = trimmed.padEnd(4, ' ').slice(0, 4);
+        const mappedType = CODE_TO_TYPE_MAP[normalizedCode];
+        if (mappedType) {
+          inferredType = this.parseType(mappedType);
 
-        this.warn({
-          code: 'TYPE_INFERRED_FROM_CODE',
-          message: `Type inferred from four-character code "${elementCode}": ${mappedType}`,
-          location: {
-            element: context || 'unknown',
-            name: elementName,
-            suite: this.currentSuite,
-            command: this.currentCommand,
-          },
-          inferredValue: mappedType,
-        });
+          this.warn({
+            code: 'TYPE_INFERRED_FROM_CODE',
+            message: `Type inferred from four-character code "${elementCode}": ${mappedType}`,
+            location: {
+              element: context || 'unknown',
+              name: elementName,
+              suite: this.currentSuite,
+              command: this.currentCommand,
+            },
+            inferredValue: mappedType,
+          });
 
-        return inferredType;
+          return inferredType;
+        }
       }
     }
 
@@ -1069,7 +1076,7 @@ export class SDEFParser {
     if (
       /(^|_)(count|index)($|_)|(Count|Index)/.test(elementName) ||
       /^number$/i.test(lowerName) || // Only match "number" as standalone word
-      lowerName.includes('size')
+      /(^|_)(size)($|_)/i.test(elementName) || /(Size)/.test(elementName)
     ) {
       inferredType = { kind: 'primitive', type: 'integer' };
 
@@ -1094,9 +1101,8 @@ export class SDEFParser {
     if (
       /^(is|has|can|should|will)([A-Z]|_)/.test(elementName) || // camelCase: isEnabled, hasValue
       /^(is|has|can|should|will)$/i.test(elementName) || // standalone: is, has, can
-      lowerName.includes('enabled') ||
-      lowerName.includes('disabled') ||
-      lowerName.includes('visible')
+      /(^|_)(enabled|disabled|visible)($|_)/i.test(elementName) || // word boundaries
+      /(Enabled|Disabled|Visible)/.test(elementName) // camelCase suffix
     ) {
       inferredType = { kind: 'primitive', type: 'boolean' };
 
