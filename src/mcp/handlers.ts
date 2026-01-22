@@ -144,9 +144,20 @@ export async function setupHandlers(
         },
       };
 
-      // Return get_app_tools tool + app metadata
+      // Create the list_apps tool
+      const listAppsTool: Tool = {
+        name: 'list_apps',
+        description: 'List all available macOS applications with their metadata',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+      };
+
+      // Return get_app_tools tool + list_apps tool + app metadata
       return {
-        tools: [getAppToolsTool],
+        tools: [getAppToolsTool, listAppsTool],
         _app_metadata: appMetadataList,
       };
 
@@ -173,6 +184,90 @@ export async function setupHandlers(
 
     try {
       console.error(`[CallTool] Executing tool: ${toolName}`);
+
+      // Check for list_apps (return all apps with metadata)
+      if (toolName === 'list_apps') {
+        try {
+          console.error('[CallTool] Handling list_apps request');
+
+          // Reuse the app discovery and metadata building from ListTools
+          const apps = await findAllScriptableApps({ useCache: false });
+          console.error(`[CallTool/list_apps] Discovered ${apps.length} scriptable apps`);
+
+          if (apps.length === 0) {
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                  totalApps: 0,
+                  apps: [],
+                }),
+              }],
+            };
+          }
+
+          // Build metadata for each app in parallel
+          const metadataPromises = apps.map(async (app) => {
+            try {
+              console.error(`[CallTool/list_apps] Building metadata for ${app.appName}`);
+
+              // Parse SDEF dictionary
+              const dictionary = await sdefParser.parse(app.sdefPath);
+
+              // Build metadata
+              return await buildMetadata(app, dictionary);
+            } catch (error) {
+              // Log error but don't fail entire list_apps call
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              console.error(`[CallTool/list_apps] Failed to build metadata for ${app.appName}: ${errorMsg}`);
+              return null;
+            }
+          });
+
+          // Wait for all metadata to be built in parallel
+          const metadataResults = await Promise.all(metadataPromises);
+
+          // Filter out null results (apps that failed to parse)
+          const appMetadataList = metadataResults.filter(
+            (metadata): metadata is AppMetadata => metadata !== null
+          );
+
+          // Sort apps alphabetically by name for consistent ordering
+          appMetadataList.sort((a, b) => a.appName.localeCompare(b.appName));
+
+          console.error(`[CallTool/list_apps] Built metadata for ${appMetadataList.length} apps`);
+
+          // Build response in the expected format
+          const response = {
+            totalApps: appMetadataList.length,
+            apps: appMetadataList.map(metadata => ({
+              name: metadata.appName,
+              bundleId: metadata.bundleId,
+              description: metadata.description,
+              toolCount: metadata.toolCount,
+              suites: metadata.suiteNames,
+            })),
+          };
+
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify(response),
+            }],
+          };
+        } catch (error) {
+          // Handle errors
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[CallTool/list_apps] Error: ${message}`);
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Error listing apps: ${message}`,
+            }],
+            isError: true,
+          };
+        }
+      }
 
       // Check for get_app_tools (lazy loading)
       if (toolName === 'get_app_tools') {
