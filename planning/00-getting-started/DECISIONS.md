@@ -104,6 +104,69 @@
 
 **Status:** Deferred
 
+## Dual Approach for App Discovery (Resource + Tool)
+
+**Date:** 2026-01-22
+**Context:** PR #19 - list_apps tool implementation
+**Decision:** Provide BOTH MCP resource (`iac://apps`) AND MCP tool (`list_apps`) for app discovery
+
+**Rationale:**
+
+Resources and tools serve complementary purposes in MCP:
+
+1. **Resource (`iac://apps`)**:
+   - Loaded at session initialization
+   - Cached by MCP clients for duration of session
+   - Efficient: Single fetch at session start
+   - Use case: Claude starts with immediate context of available apps
+
+2. **Tool (`list_apps`)**:
+   - Discoverable during conversation (shows in tool list)
+   - Can refresh app list mid-session
+   - Better UX: Users can explicitly request "what apps are available?"
+   - Use case: User asks about capabilities or apps change during session
+
+**Implementation Details:**
+
+- Both resource and tool use shared `discoverAppMetadata()` function
+- Ensures consistency - identical data from both endpoints
+- Resource URI: `iac://apps`
+- Tool name: `list_apps` (no parameters)
+- Response format: JSON with `totalApps` count and `apps` array
+
+**Trade-offs:**
+
+- ✅ **Pro:** Optimizes for both session initialization (resource) and discoverability (tool)
+- ✅ **Pro:** MCP clients can cache resource, reducing repeated calls
+- ✅ **Pro:** Tool provides user-friendly "list apps" action
+- ⚠️ **Con:** Some code duplication between resource and tool handlers
+  - Mitigated: Both use shared `discoverAppMetadata()` function (DRY)
+- ⚠️ **Con:** Two ways to get same data
+  - Acceptable: Different use cases justify redundancy
+
+**Alternative Considered:** Resource-only approach
+
+- More semantically correct per MCP spec (app list is "data")
+- But poor discoverability - users wouldn't find it easily
+- No way to refresh mid-session without knowing URI scheme
+
+**Precedent:**
+
+This reverses the decision from PR #15 to remove all resource handlers. PR #15 removed resources to simplify the architecture, but user feedback identified the complementary value of resources for session initialization.
+
+**Future Considerations:**
+
+- Could add additional resources: `iac://apps/{bundleId}` (per-app details)
+- Could add resource for object model: `iac://apps/{bundleId}/object-model`
+- These would complement existing `get_app_tools` tool
+
+**References:**
+- PR #19: https://github.com/jsavin/iac-mcp/pull/19
+- Bot review discussion on resources vs tools
+- MCP Protocol specification on resources
+
+**Status:** ✅ Decided
+
 ## Open Questions (Still To Decide)
 
 ### 1. IPC Architecture for Hybrid Stack
@@ -151,6 +214,7 @@
 | 2026-01-15 | Hybrid tech stack | Native feel + code reuse |
 | 2026-01-15 | Core open, UI proprietary | Community + business model |
 | 2026-01-15 | Freemium subscription pricing | Proven pricing for Mac productivity apps |
+| 2026-01-22 | Dual resource + tool for app discovery | Complementary use cases: session init + discoverability |
 
 ---
 
