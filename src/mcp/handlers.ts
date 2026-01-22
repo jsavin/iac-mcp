@@ -20,6 +20,8 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { PermissionDecision } from '../permissions/types.js';
@@ -39,6 +41,100 @@ import type { PerAppCache } from '../jitd/cache/per-app-cache.js';
  * Maximum length for app_name parameter to prevent DoS attacks
  */
 const MAX_APP_NAME_LENGTH = 100;
+
+// Server-side cache for app metadata
+let cachedAppMetadata: AppMetadata[] | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 60000; // 1 minute TTL
+
+/**
+ * Discover and build metadata for all scriptable apps
+ *
+ * Shared by ListTools, list_apps tool, and iac://apps resource.
+ * Implements server-side caching with 1-minute TTL for performance.
+ *
+ * @returns Array of AppMetadata sorted alphabetically by name
+ */
+async function discoverAppMetadata(): Promise<AppMetadata[]> {
+  // Check cache validity
+  const now = Date.now();
+  if (cachedAppMetadata && (now - cacheTimestamp) < CACHE_TTL_MS) {
+    console.error(`[discoverAppMetadata] Returning cached metadata (age: ${now - cacheTimestamp}ms)`);
+    return cachedAppMetadata;
+  }
+
+  console.error('[discoverAppMetadata] Cache miss or expired, discovering apps');
+
+  const apps = await findAllScriptableApps({ useCache: false });
+
+  if (apps.length === 0) {
+    console.error('[discoverAppMetadata] No scriptable apps found');
+    cachedAppMetadata = [];
+    cacheTimestamp = now;
+    return [];
+  }
+
+  console.error(`[discoverAppMetadata] Discovered ${apps.length} scriptable apps`);
+
+  // Build metadata in parallel for performance
+  const metadataPromises = apps.map(async (app) => {
+    try {
+      console.error(`[discoverAppMetadata] Building metadata for ${app.appName}`);
+      const dictionary = await sdefParser.parse(app.sdefPath);
+      return await buildMetadata(app, dictionary);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[discoverAppMetadata] Failed to build metadata for ${app.appName}: ${errorMsg}`);
+      return null;
+    }
+  });
+
+  const metadataResults = await Promise.all(metadataPromises);
+
+  // Filter out failed apps
+  const appMetadataList = metadataResults.filter(
+    (metadata): metadata is AppMetadata => metadata !== null
+  );
+
+  // Sort alphabetically for consistent ordering
+  appMetadataList.sort((a, b) => a.appName.localeCompare(b.appName));
+
+  console.error(`[discoverAppMetadata] Built metadata for ${appMetadataList.length} apps`);
+
+  // Update cache
+  cachedAppMetadata = appMetadataList;
+  cacheTimestamp = now;
+
+  return appMetadataList;
+}
+
+/**
+ * Format app metadata for MCP response
+ *
+ * Shared by list_apps tool and iac://apps resource for consistency.
+ * Performs runtime validation and maps AppMetadata to response format.
+ *
+ * @param appMetadataList - Array of app metadata from discovery
+ * @returns Formatted response with totalApps count and apps array
+ */
+function formatAppMetadataResponse(appMetadataList: AppMetadata[]) {
+  return {
+    totalApps: appMetadataList.length,
+    apps: appMetadataList.map(metadata => {
+      // Runtime validation for required fields
+      if (!metadata.appName || !metadata.bundleId) {
+        throw new Error(`Invalid app metadata: missing appName or bundleId`);
+      }
+      return {
+        name: metadata.appName,
+        bundleId: metadata.bundleId,
+        description: metadata.description || 'No description available',
+        toolCount: metadata.toolCount ?? 0,
+        suites: metadata.suiteNames || [],
+      };
+    }),
+  };
+}
 
 /**
  * Setup MCP request handlers
@@ -85,14 +181,14 @@ export async function setupHandlers(
     try {
       console.error('[ListTools] Starting lazy loading app discovery');
 
-      // Discover all scriptable apps (just find SDEF files, don't parse yet)
-      const apps = await findAllScriptableApps({ useCache: false });
-      console.error(`[ListTools] Discovered ${apps.length} scriptable apps`);
+      // Use shared discovery function
+      const appMetadataList = await discoverAppMetadata();
 
-      // Store for lazy loading in CallTool handler
+      // Store discovered apps for lazy loading in CallTool handler
+      const apps = await findAllScriptableApps({ useCache: false });
       discoveredApps = apps;
 
-      if (apps.length === 0) {
+      if (appMetadataList.length === 0) {
         console.error('[ListTools] No scriptable apps found');
         return {
           tools: [],
@@ -100,35 +196,21 @@ export async function setupHandlers(
         };
       }
 
-      // Build metadata for each app IN PARALLEL (critical for <1s performance)
-      const metadataPromises = apps.map(async (app) => {
-        try {
-          console.error(`[ListTools] Building metadata for ${app.appName}`);
+      // MCP Tools for app discovery
+      //
+      // Note: We provide BOTH a tool and a resource for app listing:
+      // - Resource (iac://apps): Loaded at session start, cached by client
+      // - Tool (list_apps): Discoverable during conversation, can refresh mid-session
+      //
+      // This dual approach optimizes for both session initialization and ongoing discoverability.
 
-          // Parse SDEF dictionary (fast - just XML parsing)
-          const dictionary = await sdefParser.parse(app.sdefPath);
-
-          // Build lightweight metadata (20-30ms per app, but parallelized)
-          return await buildMetadata(app, dictionary);
-        } catch (error) {
-          // Log error but don't fail entire ListTools call
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          console.error(`[ListTools] Failed to build metadata for ${app.appName}: ${errorMsg}`);
-          return null;
-        }
-      });
-
-      // Wait for all metadata to be built in parallel
-      const metadataResults = await Promise.all(metadataPromises);
-
-      // Filter out null results (apps that failed to parse)
-      const appMetadataList = metadataResults.filter(
-        (metadata): metadata is AppMetadata => metadata !== null
-      );
-
-      console.error(`[ListTools] Built metadata for ${appMetadataList.length} apps`);
-
-      // Create the get_app_tools tool
+      /**
+       * get_app_tools Tool Definition
+       *
+       * Lazy loads MCP tools for a specific macOS application on demand.
+       * Returns tool definitions and object model (classes/enumerations).
+       * Uses per-app caching for performance.
+       */
       const getAppToolsTool: Tool = {
         name: 'get_app_tools',
         description: 'Get all available tools and object model for a specific macOS application. Use this to load tools on-demand for any discovered app.',
@@ -144,9 +226,29 @@ export async function setupHandlers(
         },
       };
 
-      // Return get_app_tools tool + app metadata
+      /**
+       * list_apps Tool Definition
+       *
+       * Returns metadata for all discovered scriptable macOS applications.
+       * No parameters required. Returns JSON with app names, bundle IDs,
+       * descriptions, tool counts, and suite names.
+       *
+       * Complements the iac://apps resource by providing discoverable
+       * mid-conversation refresh capability.
+       */
+      const listAppsTool: Tool = {
+        name: 'list_apps',
+        description: 'List all available macOS applications with their metadata',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+      };
+
+      // Return get_app_tools tool + list_apps tool + app metadata
       return {
-        tools: [getAppToolsTool],
+        tools: [getAppToolsTool, listAppsTool],
         _app_metadata: appMetadataList,
       };
 
@@ -174,12 +276,54 @@ export async function setupHandlers(
     try {
       console.error(`[CallTool] Executing tool: ${toolName}`);
 
+      // Check for list_apps (return all apps with metadata)
+      if (toolName === 'list_apps') {
+        // Defensive validation: ensure no unexpected arguments
+        if (args && Object.keys(args).length > 0) {
+          console.error('[CallTool/list_apps] Warning: Unexpected arguments provided, ignoring');
+          // Continue anyway for forward compatibility
+        }
+
+        try {
+          console.error('[CallTool/list_apps] Executing list_apps tool');
+
+          // Use shared discovery function
+          const appMetadataList = await discoverAppMetadata();
+
+          // Use shared formatting function
+          const response = formatAppMetadataResponse(appMetadataList);
+
+          console.error(`[CallTool/list_apps] Returning ${response.totalApps} apps`);
+
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify(response, null, 2),
+            }],
+          };
+        } catch (error) {
+          // Handle errors
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[CallTool/list_apps] Error: ${message}`);
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Error listing apps: ${message}`,
+            }],
+            isError: true,
+          };
+        }
+      }
+
       // Check for get_app_tools (lazy loading)
       if (toolName === 'get_app_tools') {
+        console.error('[CallTool/get_app_tools] Executing get_app_tools tool');
+
         // Validate app_name parameter
         const appName = args?.app_name as string | undefined;
 
         if (!appName) {
+          console.error('[CallTool/get_app_tools] Error: Missing app_name parameter');
           return {
             content: [{
               type: 'text' as const,
@@ -225,6 +369,7 @@ export async function setupHandlers(
 
         try {
           // Load tools for this app (uses cache if available)
+          console.error(`[CallTool/get_app_tools] Loading tools for app: ${appName}`);
           const appToolsResponse = await loadAppTools(
             appName,
             discoveredApps,
@@ -232,6 +377,8 @@ export async function setupHandlers(
             toolGenerator,
             perAppCache
           );
+
+          console.error(`[CallTool/get_app_tools] Successfully loaded ${appToolsResponse.tools.length} tools for ${appName}`);
 
           // Return tools + object model as JSON
           return {
@@ -244,6 +391,7 @@ export async function setupHandlers(
           // Handle specific error types
           if (error && typeof error === 'object' && 'name' in error) {
             if (error.name === 'AppNotFoundError') {
+              console.error(`[CallTool/get_app_tools] App not found: ${appName}`);
               return {
                 content: [{
                   type: 'text' as const,
@@ -256,6 +404,7 @@ export async function setupHandlers(
 
           // Other errors
           const message = error instanceof Error ? error.message : String(error);
+          console.error(`[CallTool/get_app_tools] Error loading tools for ${appName}: ${message}`);
           return {
             content: [{
               type: 'text' as const,
@@ -401,6 +550,126 @@ export async function setupHandlers(
           },
         ],
         isError: true,
+      };
+    }
+  });
+
+  /**
+   * ListResources Handler
+   *
+   * Returns available MCP resources for session initialization.
+   * Resources provide static/semi-static data that clients can cache.
+   */
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    try {
+      console.error('[ListResources] Listing available resources');
+
+      return {
+        resources: [
+          {
+            uri: 'iac://apps',
+            name: 'Available macOS Applications',
+            description: 'List of all scriptable macOS applications with metadata (cached for session)',
+            mimeType: 'application/json',
+          },
+        ],
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[ListResources] Error: ${message}`);
+      return {
+        resources: [],
+        _error: message,
+      };
+    }
+  });
+
+  /**
+   * ReadResource Handler
+   *
+   * Returns resource content for requested URI.
+   * Uses shared discoverAppMetadata() for consistency with list_apps tool.
+   */
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const { uri } = request.params;
+
+    try {
+      console.error(`[ReadResource] Reading resource: ${uri}`);
+
+      // Validate URI (security: prevent path traversal, DoS)
+      if (!uri || typeof uri !== 'string') {
+        console.error('[ReadResource] Invalid URI: not a string');
+        return {
+          contents: [{
+            uri: uri || '',
+            mimeType: 'text/plain',
+            text: 'Error: Invalid URI format',
+          }],
+        };
+      }
+
+      // Length limit to prevent DoS
+      if (uri.length > 256) {
+        console.error(`[ReadResource] URI too long: ${uri.length} characters`);
+        return {
+          contents: [{
+            uri,
+            mimeType: 'text/plain',
+            text: 'Error: URI exceeds maximum length (256 characters)',
+          }],
+        };
+      }
+
+      // Whitelist known URI schemes
+      if (!uri.startsWith('iac://')) {
+        console.error(`[ReadResource] Unknown URI scheme: ${uri}`);
+        return {
+          contents: [{
+            uri,
+            mimeType: 'text/plain',
+            text: `Error: Unknown URI scheme. Only 'iac://' URIs are supported.`,
+          }],
+        };
+      }
+
+      if (uri === 'iac://apps') {
+        // Use shared discovery function (same as list_apps tool)
+        const appMetadataList = await discoverAppMetadata();
+
+        // Use shared formatting function
+        const response = formatAppMetadataResponse(appMetadataList);
+
+        console.error(`[ReadResource] Returning ${response.totalApps} apps for iac://apps`);
+
+        return {
+          contents: [{
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify(response, null, 2),
+          }],
+        };
+      }
+
+      // Unknown resource URI
+      console.error(`[ReadResource] Unknown resource URI: ${uri}`);
+      return {
+        contents: [{
+          uri,
+          mimeType: 'text/plain',
+          text: `Error: Unknown resource URI: ${uri}`,
+        }],
+      };
+
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[ReadResource] Error reading ${uri}: ${message}`);
+
+      return {
+        contents: [{
+          uri,
+          mimeType: 'text/plain',
+          text: `Error reading resource: ${message}`,
+        }],
       };
     }
   });
