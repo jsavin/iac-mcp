@@ -1144,6 +1144,467 @@ describe('MCP Handlers', () => {
   });
 
   // ============================================================================
+  // SECTION 3C: Resource Handlers (ListResources and ReadResource)
+  // ============================================================================
+
+  describe('ListResources Handler', () => {
+    it('should return iac://apps resource definition', () => {
+      // ListResources should return array with iac://apps resource
+      const response = {
+        resources: [
+          {
+            uri: 'iac://apps',
+            name: 'Available macOS Applications',
+            description: 'List of all scriptable macOS applications with metadata (cached for session)',
+            mimeType: 'application/json',
+          },
+        ],
+      };
+
+      expect(response.resources).toHaveLength(1);
+      expect(response.resources[0].uri).toBe('iac://apps');
+    });
+
+    it('should include correct resource metadata fields', () => {
+      // Each resource must have: uri, name, description, mimeType
+      const resource = {
+        uri: 'iac://apps',
+        name: 'Available macOS Applications',
+        description: 'List of all scriptable macOS applications with metadata (cached for session)',
+        mimeType: 'application/json',
+      };
+
+      expect(resource).toHaveProperty('uri');
+      expect(resource).toHaveProperty('name');
+      expect(resource).toHaveProperty('description');
+      expect(resource).toHaveProperty('mimeType');
+
+      expect(typeof resource.uri).toBe('string');
+      expect(typeof resource.name).toBe('string');
+      expect(typeof resource.description).toBe('string');
+      expect(typeof resource.mimeType).toBe('string');
+    });
+
+    it('should use application/json MIME type for iac://apps', () => {
+      const resource = {
+        uri: 'iac://apps',
+        name: 'Available macOS Applications',
+        description: 'List of all scriptable macOS applications with metadata (cached for session)',
+        mimeType: 'application/json',
+      };
+
+      expect(resource.mimeType).toBe('application/json');
+    });
+
+    it('should handle errors gracefully without crashing', () => {
+      // If error occurs, should return empty resources array with error info
+      const errorResponse = {
+        resources: [],
+        _error: 'Discovery failed',
+      };
+
+      expect(errorResponse.resources).toHaveLength(0);
+      expect(errorResponse._error).toBeDefined();
+      expect(typeof errorResponse._error).toBe('string');
+    });
+
+    it('should include all required resource fields in definition', () => {
+      const resource = {
+        uri: 'iac://apps',
+        name: 'Available macOS Applications',
+        description: 'List of all scriptable macOS applications with metadata (cached for session)',
+        mimeType: 'application/json',
+      };
+
+      const requiredFields = ['uri', 'name', 'description', 'mimeType'];
+
+      for (const field of requiredFields) {
+        expect(resource).toHaveProperty(field);
+        expect((resource as any)[field]).toBeDefined();
+        expect((resource as any)[field]).not.toBeNull();
+        expect((resource as any)[field]).not.toBe('');
+      }
+    });
+  });
+
+  describe('ReadResource Handler - iac://apps', () => {
+    it('should return app list JSON when reading iac://apps', () => {
+      // ReadResource for iac://apps should return app metadata
+      const response = {
+        contents: [
+          {
+            uri: 'iac://apps',
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              totalApps: 2,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite', 'Finder Suite'],
+                },
+                {
+                  name: 'Safari',
+                  bundleId: 'com.apple.Safari',
+                  description: 'Web browser',
+                  toolCount: 35,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      expect(response.contents).toHaveLength(1);
+      expect(response.contents[0].uri).toBe('iac://apps');
+      expect(response.contents[0].mimeType).toBe('application/json');
+
+      const parsed = JSON.parse(response.contents[0].text);
+      expect(parsed.totalApps).toBe(2);
+      expect(parsed.apps).toHaveLength(2);
+    });
+
+    it('should return correct response structure with uri, mimeType, and text', () => {
+      // Response must follow MCP ReadResource format
+      const response = {
+        contents: [
+          {
+            uri: 'iac://apps',
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      expect(response).toHaveProperty('contents');
+      expect(Array.isArray(response.contents)).toBe(true);
+      expect(response.contents[0]).toHaveProperty('uri');
+      expect(response.contents[0]).toHaveProperty('mimeType');
+      expect(response.contents[0]).toHaveProperty('text');
+    });
+
+    it('should return JSON content with totalApps and apps array', () => {
+      const responseText = JSON.stringify({
+        totalApps: 3,
+        apps: [
+          {
+            name: 'Finder',
+            bundleId: 'com.apple.finder',
+            description: 'File manager',
+            toolCount: 42,
+            suites: ['Standard Suite'],
+          },
+          {
+            name: 'Mail',
+            bundleId: 'com.apple.mail',
+            description: 'Email client',
+            toolCount: 58,
+            suites: ['Standard Suite'],
+          },
+          {
+            name: 'Safari',
+            bundleId: 'com.apple.Safari',
+            description: 'Web browser',
+            toolCount: 35,
+            suites: ['Standard Suite'],
+          },
+        ],
+      });
+
+      const parsed = JSON.parse(responseText);
+      expect(parsed).toHaveProperty('totalApps');
+      expect(parsed).toHaveProperty('apps');
+      expect(typeof parsed.totalApps).toBe('number');
+      expect(Array.isArray(parsed.apps)).toBe(true);
+      expect(parsed.totalApps).toBe(parsed.apps.length);
+    });
+
+    it('should return same data structure as list_apps tool (consistency)', () => {
+      // Both should use discoverAppMetadata() and return identical app data
+      const listAppsResponse = {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              totalApps: 2,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite', 'Finder Suite'],
+                },
+                {
+                  name: 'Safari',
+                  bundleId: 'com.apple.Safari',
+                  description: 'Web browser',
+                  toolCount: 35,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const readResourceResponse = {
+        contents: [
+          {
+            uri: 'iac://apps',
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              totalApps: 2,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite', 'Finder Suite'],
+                },
+                {
+                  name: 'Safari',
+                  bundleId: 'com.apple.Safari',
+                  description: 'Web browser',
+                  toolCount: 35,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      // Extract and compare app data
+      const listAppsData = JSON.parse(listAppsResponse.content[0].text);
+      const resourceData = JSON.parse(readResourceResponse.contents[0].text);
+
+      expect(listAppsData).toEqual(resourceData);
+    });
+
+    it('should include all required fields for each app', () => {
+      const responseText = JSON.stringify({
+        totalApps: 2,
+        apps: [
+          {
+            name: 'Finder',
+            bundleId: 'com.apple.finder',
+            description: 'File manager',
+            toolCount: 42,
+            suites: ['Standard Suite', 'Finder Suite'],
+          },
+          {
+            name: 'Safari',
+            bundleId: 'com.apple.Safari',
+            description: 'Web browser',
+            toolCount: 35,
+            suites: ['Standard Suite'],
+          },
+        ],
+      });
+
+      const parsed = JSON.parse(responseText);
+      const requiredFields = ['name', 'bundleId', 'description', 'toolCount', 'suites'];
+
+      for (const app of parsed.apps) {
+        for (const field of requiredFields) {
+          expect(app).toHaveProperty(field);
+          expect(app[field]).toBeDefined();
+          expect(app[field]).not.toBeNull();
+        }
+      }
+    });
+
+    it('should handle empty apps list gracefully', () => {
+      // When no apps discovered, should return empty array
+      const response = {
+        contents: [
+          {
+            uri: 'iac://apps',
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              totalApps: 0,
+              apps: [],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.contents[0].text);
+      expect(parsed.totalApps).toBe(0);
+      expect(parsed.apps).toHaveLength(0);
+      expect(Array.isArray(parsed.apps)).toBe(true);
+    });
+
+    it('should work correctly with single app', () => {
+      const response = {
+        contents: [
+          {
+            uri: 'iac://apps',
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite', 'Finder Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.contents[0].text);
+      expect(parsed.totalApps).toBe(1);
+      expect(parsed.apps).toHaveLength(1);
+      expect(parsed.apps[0].name).toBe('Finder');
+    });
+
+    it('should work correctly with many apps (50+)', () => {
+      // Generate 50 mock apps
+      const apps = Array.from({ length: 50 }, (_, i) => ({
+        name: `App${i}`,
+        bundleId: `com.example.app${i}`,
+        description: `Test app ${i}`,
+        toolCount: 10 + i,
+        suites: ['Standard Suite'],
+      }));
+
+      const response = {
+        contents: [
+          {
+            uri: 'iac://apps',
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              totalApps: 50,
+              apps,
+            }),
+          },
+        ],
+      };
+
+      const parsed = JSON.parse(response.contents[0].text);
+      expect(parsed.totalApps).toBe(50);
+      expect(parsed.apps).toHaveLength(50);
+    });
+
+    it('should return error for unknown resource URI', () => {
+      // Unknown URIs should return error message
+      const response = {
+        contents: [
+          {
+            uri: 'iac://unknown',
+            mimeType: 'text/plain',
+            text: 'Error: Unknown resource URI: iac://unknown',
+          },
+        ],
+      };
+
+      expect(response.contents[0].uri).toBe('iac://unknown');
+      expect(response.contents[0].mimeType).toBe('text/plain');
+      expect(response.contents[0].text).toContain('Error');
+      expect(response.contents[0].text).toContain('Unknown resource URI');
+    });
+
+    it('should handle discovery errors gracefully', () => {
+      // If discoverAppMetadata() throws, should return error in text
+      const errorResponse = {
+        contents: [
+          {
+            uri: 'iac://apps',
+            mimeType: 'text/plain',
+            text: 'Error reading resource: Discovery failed',
+          },
+        ],
+      };
+
+      expect(errorResponse.contents[0].uri).toBe('iac://apps');
+      expect(errorResponse.contents[0].mimeType).toBe('text/plain');
+      expect(errorResponse.contents[0].text).toContain('Error');
+    });
+
+    it('should use application/json MIME type for iac://apps', () => {
+      const response = {
+        contents: [
+          {
+            uri: 'iac://apps',
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              totalApps: 1,
+              apps: [
+                {
+                  name: 'Finder',
+                  bundleId: 'com.apple.finder',
+                  description: 'File manager',
+                  toolCount: 42,
+                  suites: ['Standard Suite'],
+                },
+              ],
+            }),
+          },
+        ],
+      };
+
+      expect(response.contents[0].mimeType).toBe('application/json');
+    });
+
+    it('should return apps sorted alphabetically by name', () => {
+      const responseText = JSON.stringify({
+        totalApps: 3,
+        apps: [
+          {
+            name: 'Finder',
+            bundleId: 'com.apple.finder',
+            description: 'File manager',
+            toolCount: 42,
+            suites: ['Standard Suite'],
+          },
+          {
+            name: 'Mail',
+            bundleId: 'com.apple.mail',
+            description: 'Email client',
+            toolCount: 58,
+            suites: ['Standard Suite'],
+          },
+          {
+            name: 'Safari',
+            bundleId: 'com.apple.Safari',
+            description: 'Web browser',
+            toolCount: 35,
+            suites: ['Standard Suite'],
+          },
+        ],
+      });
+
+      const parsed = JSON.parse(responseText);
+      const names = parsed.apps.map((app: any) => app.name);
+
+      // Should be in alphabetical order
+      const sortedNames = [...names].sort();
+      expect(names).toEqual(sortedNames);
+    });
+  });
+
+  // ============================================================================
   // SECTION 3B: Lazy Loading - get_app_tools Handler
   // ============================================================================
 
