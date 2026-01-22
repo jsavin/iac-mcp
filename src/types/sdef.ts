@@ -76,6 +76,7 @@ export interface SDEFClass {
   description?: string;
   properties: SDEFProperty[];
   elements: SDEFElement[];
+  inherits?: string; // Parent class name for inheritance
 }
 
 /**
@@ -103,6 +104,7 @@ export interface SDEFElement {
 export interface SDEFEnumeration {
   name: string;
   code: string; // Four-character code
+  description?: string;
   enumerators: SDEFEnumerator[];
 }
 
