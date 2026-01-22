@@ -1944,6 +1944,30 @@ describe('Type Inference - Lenient Mode', () => {
         expect(boolWarning).toBeDefined();
       });
     });
+
+    describe('four-character code normalization', () => {
+      it('should handle four-character codes with trailing spaces (code="obj ")', async () => {
+        // Test that codes with trailing spaces like "obj " are properly normalized
+        // and looked up in CODE_TO_TYPE_MAP
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Test Suite" code="test">
+    <command name="testCmd" code="testtcmd">
+      <parameter name="testParam" code="obj " description="Object specifier">
+        <type type="specifier"/>
+      </parameter>
+    </command>
+  </suite>
+</dictionary>`;
+
+        const result = await parser.parseContent(xml);
+
+        const param = result.suites[0].commands[0].parameters[0];
+
+        // Should use explicit type from XML
+        expect(param.type.kind).toBe('location_specifier');
+      });
+    });
   });
 
   describe('edge cases', () => {

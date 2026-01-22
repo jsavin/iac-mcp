@@ -1024,6 +1024,10 @@ export class SDEFParser {
       return inferredType;
     }
 
+    // NOTE: Pattern order doesn't affect correctness when multiple patterns resolve to same type.
+    // Example: "idUrl" matches both URL and ID patterns, but both infer to 'text'.
+    // We check URL first for performance (more common pattern), but result is identical.
+
     // URL/URI-related - match at word boundaries or camelCase boundaries
     // Matches: "websiteUrl", "resourceUri", "url", "uri"
     // Rejects: "curious" (uri not at boundary)
@@ -1101,8 +1105,9 @@ export class SDEFParser {
     if (
       /^(is|has|can|should|will)([A-Z]|_)/.test(elementName) || // camelCase: isEnabled, hasValue
       /^(is|has|can|should|will)$/i.test(elementName) || // standalone: is, has, can
-      /(^|_)(enabled|disabled|visible)($|_)/i.test(elementName) || // word boundaries
-      /(Enabled|Disabled|Visible)/.test(elementName) // camelCase suffix
+      /(^|_)(enabled|disabled|visible)$/i.test(elementName) || // Match at end only
+      /(Enabled|Disabled|Visible)$/.test(elementName) || // Match camelCase suffix at end
+      /^(enabled|disabled|visible)$/i.test(elementName) // Match standalone
     ) {
       inferredType = { kind: 'primitive', type: 'boolean' };
 
