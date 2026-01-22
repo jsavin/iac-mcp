@@ -35,6 +35,10 @@ import { loadAppTools } from '../jitd/discovery/app-tools-loader.js';
 import type { AppMetadata } from '../types/app-metadata.js';
 import type { PerAppCache } from '../jitd/cache/per-app-cache.js';
 
+/**
+ * Maximum length for app_name parameter to prevent DoS attacks
+ */
+const MAX_APP_NAME_LENGTH = 100;
 
 /**
  * Setup MCP request handlers
@@ -187,11 +191,11 @@ export async function setupHandlers(
 
         // Input validation for app_name (security: prevent command injection)
         // 1. Length limit (prevent buffer overflow/DoS)
-        if (appName.length > 100) {
+        if (appName.length > MAX_APP_NAME_LENGTH) {
           return {
             content: [{
               type: 'text' as const,
-              text: 'Error: app_name parameter too long (max 100 characters)',
+              text: `Error: app_name parameter too long (max ${MAX_APP_NAME_LENGTH} characters)`,
             }],
             isError: true,
           };
