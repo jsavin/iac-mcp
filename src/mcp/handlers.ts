@@ -42,19 +42,35 @@ import type { PerAppCache } from '../jitd/cache/per-app-cache.js';
  */
 const MAX_APP_NAME_LENGTH = 100;
 
+// Server-side cache for app metadata
+let cachedAppMetadata: AppMetadata[] | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 60000; // 1 minute TTL
+
 /**
  * Discover and build metadata for all scriptable apps
  *
- * Shared by ListTools and list_apps handlers for consistency.
- * Discovers apps, parses SDEFs in parallel, and builds lightweight metadata.
+ * Shared by ListTools, list_apps tool, and iac://apps resource.
+ * Implements server-side caching with 1-minute TTL for performance.
  *
  * @returns Array of AppMetadata sorted alphabetically by name
  */
 async function discoverAppMetadata(): Promise<AppMetadata[]> {
+  // Check cache validity
+  const now = Date.now();
+  if (cachedAppMetadata && (now - cacheTimestamp) < CACHE_TTL_MS) {
+    console.error(`[discoverAppMetadata] Returning cached metadata (age: ${now - cacheTimestamp}ms)`);
+    return cachedAppMetadata;
+  }
+
+  console.error('[discoverAppMetadata] Cache miss or expired, discovering apps');
+
   const apps = await findAllScriptableApps({ useCache: false });
 
   if (apps.length === 0) {
     console.error('[discoverAppMetadata] No scriptable apps found');
+    cachedAppMetadata = [];
+    cacheTimestamp = now;
     return [];
   }
 
@@ -84,6 +100,10 @@ async function discoverAppMetadata(): Promise<AppMetadata[]> {
   appMetadataList.sort((a, b) => a.appName.localeCompare(b.appName));
 
   console.error(`[discoverAppMetadata] Built metadata for ${appMetadataList.length} apps`);
+
+  // Update cache
+  cachedAppMetadata = appMetadataList;
+  cacheTimestamp = now;
 
   return appMetadataList;
 }
@@ -242,16 +262,24 @@ export async function setupHandlers(
           // Use shared discovery function
           const appMetadataList = await discoverAppMetadata();
 
-          // Build response
+          // Build response with runtime validation
           const response = {
             totalApps: appMetadataList.length,
-            apps: appMetadataList.map(metadata => ({
-              name: metadata.appName,
-              bundleId: metadata.bundleId,
-              description: metadata.description,
-              toolCount: metadata.toolCount,
-              suites: metadata.suiteNames,
-            })),
+            apps: appMetadataList.map(metadata => {
+              // Runtime validation for required fields
+              if (!metadata.appName || !metadata.bundleId) {
+                console.error(`[CallTool/list_apps] Invalid metadata: missing required fields for app: ${JSON.stringify(metadata)}`);
+                throw new Error(`Invalid app metadata: missing appName or bundleId`);
+              }
+
+              return {
+                name: metadata.appName,
+                bundleId: metadata.bundleId,
+                description: metadata.description || 'No description available',
+                toolCount: metadata.toolCount ?? 0,
+                suites: metadata.suiteNames || [],
+              };
+            }),
           };
 
           console.error(`[CallTool/list_apps] Returning ${response.totalApps} apps`);
@@ -557,19 +585,63 @@ export async function setupHandlers(
     try {
       console.error(`[ReadResource] Reading resource: ${uri}`);
 
+      // Validate URI (security: prevent path traversal, DoS)
+      if (!uri || typeof uri !== 'string') {
+        console.error('[ReadResource] Invalid URI: not a string');
+        return {
+          contents: [{
+            uri: uri || '',
+            mimeType: 'text/plain',
+            text: 'Error: Invalid URI format',
+          }],
+        };
+      }
+
+      // Length limit to prevent DoS
+      if (uri.length > 256) {
+        console.error(`[ReadResource] URI too long: ${uri.length} characters`);
+        return {
+          contents: [{
+            uri,
+            mimeType: 'text/plain',
+            text: 'Error: URI exceeds maximum length (256 characters)',
+          }],
+        };
+      }
+
+      // Whitelist known URI schemes
+      if (!uri.startsWith('iac://')) {
+        console.error(`[ReadResource] Unknown URI scheme: ${uri}`);
+        return {
+          contents: [{
+            uri,
+            mimeType: 'text/plain',
+            text: `Error: Unknown URI scheme. Only 'iac://' URIs are supported.`,
+          }],
+        };
+      }
+
       if (uri === 'iac://apps') {
         // Use shared discovery function (same as list_apps tool)
         const appMetadataList = await discoverAppMetadata();
 
         const response = {
           totalApps: appMetadataList.length,
-          apps: appMetadataList.map(metadata => ({
-            name: metadata.appName,
-            bundleId: metadata.bundleId,
-            description: metadata.description,
-            toolCount: metadata.toolCount,
-            suites: metadata.suiteNames,
-          })),
+          apps: appMetadataList.map(metadata => {
+            // Runtime validation for required fields
+            if (!metadata.appName || !metadata.bundleId) {
+              console.error(`[ReadResource] Invalid metadata: missing required fields for app: ${JSON.stringify(metadata)}`);
+              throw new Error(`Invalid app metadata: missing appName or bundleId`);
+            }
+
+            return {
+              name: metadata.appName,
+              bundleId: metadata.bundleId,
+              description: metadata.description || 'No description available',
+              toolCount: metadata.toolCount ?? 0,
+              suites: metadata.suiteNames || [],
+            };
+          }),
         };
 
         console.error(`[ReadResource] Returning ${response.totalApps} apps for iac://apps`);
