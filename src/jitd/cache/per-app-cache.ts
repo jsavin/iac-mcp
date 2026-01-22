@@ -16,7 +16,7 @@
  * Phase 4 of lazy loading implementation.
  */
 
-import { mkdir, writeFile, unlink, readFile, stat } from 'fs/promises';
+import { mkdir, writeFile, unlink, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';

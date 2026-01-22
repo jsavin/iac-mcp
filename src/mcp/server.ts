@@ -29,7 +29,7 @@ import { ToolGenerator } from '../jitd/tool-generator/generator.js';
 import { MacOSAdapter } from '../adapters/macos/macos-adapter.js';
 import { PermissionChecker } from '../permissions/permission-checker.js';
 import { ErrorHandler } from '../error-handler.js';
-import { ToolCache } from '../jitd/cache/tool-cache.js';
+import { PerAppCache } from '../jitd/cache/per-app-cache.js';
 import { setupHandlers, validateToolArguments } from './handlers.js';
 import type { MCPTool } from '../types/mcp-tool.js';
 
@@ -102,7 +102,7 @@ export class IACMCPServer {
   private adapter: MacOSAdapter;
   private permissionChecker: PermissionChecker;
   private errorHandler: ErrorHandler;
-  private toolCache: ToolCache;
+  private perAppCache: PerAppCache;
 
   // State tracking
   private status: ServerStatus = {
@@ -146,7 +146,6 @@ export class IACMCPServer {
       {
         capabilities: {
           tools: {},
-          resources: {},
         },
       }
     );
@@ -164,7 +163,7 @@ export class IACMCPServer {
 
     this.permissionChecker = new PermissionChecker();
     this.errorHandler = new ErrorHandler();
-    this.toolCache = new ToolCache(this.options.cacheDir);
+    this.perAppCache = new PerAppCache(this.options.cacheDir);
   }
 
   /**
@@ -235,7 +234,7 @@ export class IACMCPServer {
         this.permissionChecker,
         this.adapter,
         this.errorHandler,
-        this.toolCache
+        this.perAppCache
       );
 
       // Override ListTools handler to return generated tools

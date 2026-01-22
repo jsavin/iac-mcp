@@ -17,7 +17,7 @@ import { stat } from 'fs/promises';
 import type { AppWithSDEF } from './find-sdef.js';
 import type { SDEFDictionary } from '../../types/sdef.js';
 import type { MCPTool } from '../../types/mcp-tool.js';
-import type { AppToolsResponse, AppObjectModel } from '../../types/app-metadata.js';
+import type { AppToolsResponse } from '../../types/app-metadata.js';
 import type { AppInfo } from '../../types/tool-generator.js';
 import { SDEFParser } from './parse-sdef.js';
 import { ToolGenerator } from '../tool-generator/generator.js';
