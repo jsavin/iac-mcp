@@ -108,6 +108,9 @@ export async function buildMetadata(
     description: generateDescription(dictionary),
     toolCount: countTotalCommands(dictionary),
     suiteNames: extractSuiteNames(dictionary),
+    parsingStatus: {
+      status: 'success',
+    },
   };
 }
 
@@ -148,5 +151,8 @@ export function buildMetadataSync(
     description: generateDescription(dictionary),
     toolCount: countTotalCommands(dictionary),
     suiteNames: extractSuiteNames(dictionary),
+    parsingStatus: {
+      status: 'success',
+    },
   };
 }
