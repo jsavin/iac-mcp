@@ -156,3 +156,31 @@ export function buildMetadataSync(
     },
   };
 }
+
+/**
+ * Builds fallback metadata for apps with unparseable SDEF files
+ *
+ * When SDEF parsing completely fails (XML errors, missing files, etc.),
+ * this function creates basic metadata with status 'failed' rather than
+ * hiding the app completely.
+ *
+ * @param app - Application with SDEF file information
+ * @param error - Error that occurred during SDEF parsing
+ * @returns AppMetadata object with failed status
+ */
+export function buildFallbackMetadata(
+  app: AppWithSDEF,
+  error: Error
+): AppMetadata {
+  return {
+    appName: app.appName,
+    bundleId: inferBundleId(app.appName, app.bundlePath),
+    description: 'Unable to parse SDEF file',
+    toolCount: 0,
+    suiteNames: [],
+    parsingStatus: {
+      status: 'failed',
+      errorMessage: error.message,
+    },
+  };
+}
