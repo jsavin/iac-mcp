@@ -158,6 +158,53 @@ export function buildMetadataSync(
 }
 
 /**
+ * Sanitizes error messages to prevent information leakage
+ *
+ * Removes sensitive information from error messages:
+ * - File system paths (absolute paths, user directories)
+ * - Stack traces (only keeps first line)
+ * - Long messages (truncates to max 200 chars)
+ *
+ * Maps common error patterns to generic messages for security.
+ *
+ * @param error - Error object or unknown error
+ * @returns Sanitized error message safe for external exposure
+ */
+function sanitizeErrorMessage(error: Error | unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+
+  // Remove absolute file paths (any string starting with /)
+  let sanitized = message.replace(/\/[^\s]+/g, '<file path>');
+
+  // Remove Windows paths (C:\...)
+  sanitized = sanitized.replace(/[A-Z]:\\[^\s]+/g, '<file path>');
+
+  // Remove user home directory references
+  sanitized = sanitized.replace(/~\/[^\s]+/g, '<file path>');
+
+  // Take only first line (removes stack traces)
+  sanitized = sanitized.split('\n')[0] || sanitized;
+
+  // Truncate if too long (max 200 chars)
+  if (sanitized.length > 200) {
+    sanitized = sanitized.substring(0, 197) + '...';
+  }
+
+  // Generic message for common cases
+  if (sanitized.toLowerCase().includes('enoent')) {
+    return 'SDEF file not found or inaccessible';
+  }
+  if (sanitized.toLowerCase().includes('permission denied')) {
+    return 'Permission denied reading SDEF file';
+  }
+  if (sanitized.toLowerCase().includes('parse') || sanitized.toLowerCase().includes('xml')) {
+    return 'XML parsing error in SDEF file';
+  }
+
+  return sanitized;
+}
+
+/**
  * Builds fallback metadata for apps with unparseable SDEF files
  *
  * When SDEF parsing completely fails (XML errors, missing files, etc.),
@@ -180,7 +227,7 @@ export function buildFallbackMetadata(
     suiteNames: [],
     parsingStatus: {
       status: 'failed',
-      errorMessage: error.message,
+      errorMessage: sanitizeErrorMessage(error),
     },
   };
 }
