@@ -38,7 +38,7 @@ npx @modelcontextprotocol/inspector node dist/index.js  # MCP Inspector
 
 # Git workflow
 git worktree add ../iac-mcp-<feature> -b feature/<name>  # Create worktree
-git push origin feature/<name>  # Push feature branch (NEVER push to origin/master)
+git push origin feature/<name>  # Push feature branch (NEVER push to origin/main)
 ```
 
 ### Documentation Quick Links
@@ -147,7 +147,7 @@ pwd && git branch --show-current
     │             │
     │             ▼
     │      ┌─────────────────────────┐
-    │      │ Am I on master branch?  │
+    │      │ Am I on main branch?  │
     │      └──────┬──────────────────┘
     │             │
     │      ┌──────┴──────┐
@@ -174,7 +174,7 @@ pwd && git branch --show-current
     ▼
 ┌──────────────────────────┐
 │ OK to proceed            │
-│ - Trivial on master OR   │
+│ - Trivial on main OR   │
 │ - Non-trivial in worktree│
 └──────────────────────────┘
 ```
@@ -189,10 +189,10 @@ Before **EVERY** coding session:
    ```
 
 2. ✅ **Evaluate task complexity**
-   - Trivial: Single-line fix, typo, quick doc update → OK on master
+   - Trivial: Single-line fix, typo, quick doc update → OK on main
    - Non-trivial: Feature, bug fix, multi-file change → MUST use worktree
 
-3. ✅ **If non-trivial AND on master → STOP**
+3. ✅ **If non-trivial AND on main → STOP**
    ```bash
    # From main iac-mcp directory
    cd /Users/jake/dev/jsavin/iac-mcp
@@ -217,11 +217,11 @@ Before **EVERY** commit:
    ```
 
 2. ✅ **Check output:**
-   - `/Users/jake/dev/jsavin/iac-mcp` + `master` → ONLY if user explicitly said "commit to master"
+   - `/Users/jake/dev/jsavin/iac-mcp` + `main` → ONLY if user explicitly said "commit to main"
    - `/Users/jake/dev/jsavin/iac-mcp-<name>` + `feature/*` → ✅ CORRECT for non-trivial work
    - Anything else → STOP AND ASK USER
 
-3. ✅ **Never push to origin/master directly** (use PR workflow)
+3. ✅ **Never push to origin/main directly** (use PR workflow)
 
 ### Why This Matters
 
@@ -344,7 +344,7 @@ git worktree remove ../iac-mcp-<feature-name>
 4. Push feature branch to origin
    ```bash
    git push origin feature/<branch-name>
-   # NEVER: git push origin master
+   # NEVER: git push origin main
    ```
 5. Create PR using pull-request agent or `gh` command
 6. **NEVER merge PRs without explicit user approval**
@@ -440,8 +440,8 @@ Verify your location with 'pwd && git branch' before making any changes.
 
 **Why This is Critical**:
 - Agents don't automatically inherit working directory context
-- Without explicit path, agents may work in main iac-mcp directory on master
-- This introduces breaking changes to master instead of feature branch
+- Without explicit path, agents may work in main iac-mcp directory on main
+- This introduces breaking changes to main instead of feature branch
 - Creates redundant work and violates worktree workflow discipline
 
 **When This Applies**:
