@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+
+<dictionary title="Strict Mode Compatible Test">
+	<suite name="Test Suite" code="TEST" description="Minimal suite with only strict-mode compatible types">
+		<command name="open" code="TESTopen" description="Open a file">
+			<direct-parameter type="file" description="the file to open"/>
+			<parameter name="with text" code="wtxt" type="text" optional="yes" description="optional text parameter"/>
+			<result type="boolean" description="success"/>
+		</command>
+
+		<command name="count" code="TESTcoun" description="Count items">
+			<parameter name="items" code="item" type="list" optional="no" description="items to count"/>
+			<result type="integer" description="the count"/>
+		</command>
+
+		<class name="application" code="capp" description="The application">
+			<property name="name" code="pnam" type="text" access="r" description="the name"/>
+			<property name="version" code="vers" type="text" access="r" description="the version"/>
+			<property name="active" code="actv" type="boolean" access="rw" description="is active"/>
+		</class>
+	</suite>
+</dictionary>

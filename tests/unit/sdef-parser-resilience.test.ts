@@ -473,4 +473,235 @@ describe('SDEF Parser Resilience', () => {
       expect(result).toBeDefined();
     });
   });
+
+  describe('Edge Cases', () => {
+    it('should handle SDEF with only malformed elements', async () => {
+      const allInvalidSdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="All Invalid">
+  <suite name="Suite" code="test">
+    <command name="cmd1" code="TOOLONG123"/>
+    <command name="cmd2" code="XX"/>
+    <enumeration name="enum1" code="0xBAD"/>
+  </suite>
+</dictionary>`;
+
+      const warnings: ParseWarning[] = [];
+      const parser = new SDEFParser({
+        mode: 'lenient',
+        onWarning: (w) => warnings.push(w),
+      });
+
+      const result = await parser.parseContent(allInvalidSdef);
+
+      // Should parse successfully but with empty suite
+      expect(result.suites).toHaveLength(1);
+      expect(result.suites[0].commands).toHaveLength(0);
+      expect(result.suites[0].enumerations).toHaveLength(0);
+      expect(warnings.length).toBeGreaterThan(0);
+    });
+
+    it('should handle codes with only whitespace', async () => {
+      const whitespaceSdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Whitespace">
+  <suite name="Suite" code="test">
+    <command name="cmd" code="    "/>
+  </suite>
+</dictionary>`;
+
+      const parser = new SDEFParser({ mode: 'lenient' });
+      const result = await parser.parseContent(whitespaceSdef);
+
+      // Whitespace-only codes should be skipped
+      expect(result.suites[0].commands).toHaveLength(0);
+    });
+
+    it('should handle empty codes', async () => {
+      const emptyCodeSdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Empty Code">
+  <suite name="Suite" code="test">
+    <command name="cmd" code=""/>
+  </suite>
+</dictionary>`;
+
+      const warnings: ParseWarning[] = [];
+      const parser = new SDEFParser({
+        mode: 'lenient',
+        onWarning: (w) => warnings.push(w),
+      });
+      const result = await parser.parseContent(emptyCodeSdef);
+
+      // Empty codes should be skipped
+      expect(result.suites[0].commands).toHaveLength(0);
+      expect(warnings.length).toBeGreaterThan(0);
+    });
+
+    it('should handle deeply nested malformed structures', async () => {
+      const deeplyNestedSdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Deep">
+  <suite name="Suite" code="test">
+    <class name="BadClass" code="TOOLONG">
+      <property name="prop1" code="NOPE"/>
+      <property name="prop2" code="X"/>
+      <element type="BadElement"/>
+    </class>
+  </suite>
+</dictionary>`;
+
+      const warnings: ParseWarning[] = [];
+      const parser = new SDEFParser({
+        mode: 'lenient',
+        onWarning: (w) => warnings.push(w),
+      });
+
+      const result = await parser.parseContent(deeplyNestedSdef);
+
+      // Class should be skipped (invalid code)
+      expect(result.suites[0].classes).toHaveLength(0);
+      expect(warnings.length).toBeGreaterThan(0);
+    });
+
+    it('should handle mixed valid and invalid elements in same suite', async () => {
+      const mixedSdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Mixed">
+  <suite name="Suite" code="test">
+    <command name="valid" code="validcmd">
+      <direct-parameter type="text"/>
+    </command>
+    <command name="invalid1" code="TOOLONGXX">
+      <direct-parameter type="text"/>
+    </command>
+    <command name="another_valid" code="valid222">
+      <direct-parameter type="text"/>
+    </command>
+    <command name="invalid2" code="XX">
+      <direct-parameter type="text"/>
+    </command>
+  </suite>
+</dictionary>`;
+
+      const warnings: ParseWarning[] = [];
+      const parser = new SDEFParser({
+        mode: 'lenient',
+        onWarning: (w) => warnings.push(w),
+      });
+
+      const result = await parser.parseContent(mixedSdef);
+
+      // Should have 2 valid commands, 2 invalid skipped
+      expect(result.suites[0].commands).toHaveLength(2);
+      expect(result.suites[0].commands[0].name).toBe('valid');
+      expect(result.suites[0].commands[1].name).toBe('another_valid');
+      expect(warnings.length).toBe(2);
+    });
+
+    it('should handle unicode in codes and names', async () => {
+      const unicodeSdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Unicode Test">
+  <suite name="Suite 😀" code="test">
+    <command name="cmd_emoji" code="😀😀😀😀😀😀😀😀">
+      <direct-parameter type="text"/>
+    </command>
+    <command name="valid" code="validcmd">
+      <direct-parameter type="text"/>
+    </command>
+  </suite>
+</dictionary>`;
+
+      const warnings: ParseWarning[] = [];
+      const parser = new SDEFParser({
+        mode: 'lenient',
+        onWarning: (w) => warnings.push(w),
+      });
+
+      const result = await parser.parseContent(unicodeSdef);
+
+      // Emoji code should be skipped (non-ASCII or wrong length)
+      expect(result.suites[0].commands).toHaveLength(1);
+      expect(result.suites[0].commands[0].name).toBe('valid');
+      expect(warnings.length).toBeGreaterThan(0);
+    });
+
+    it('should handle empty dictionary with valid XML structure', async () => {
+      const emptySdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Empty">
+  <suite name="Suite" code="test">
+  </suite>
+</dictionary>`;
+
+      const parser = new SDEFParser({ mode: 'lenient' });
+      const result = await parser.parseContent(emptySdef);
+
+      // Should parse successfully with empty suite
+      expect(result).toBeDefined();
+      expect(result.title).toBe('Empty');
+      expect(result.suites).toHaveLength(1);
+      expect(result.suites[0].commands).toHaveLength(0);
+      expect(result.suites[0].enumerations).toHaveLength(0);
+      expect(result.suites[0].classes).toHaveLength(0);
+    });
+
+    it('should handle concurrent parsing of same content', async () => {
+      const validSdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Concurrent Test">
+  <suite name="Suite" code="test">
+    <command name="cmd" code="testcmnd">
+      <direct-parameter type="text"/>
+    </command>
+  </suite>
+</dictionary>`;
+
+      // Parse same content 5 times concurrently
+      const parser = new SDEFParser({ mode: 'lenient' });
+      const promises = Array(5)
+        .fill(null)
+        .map(() => parser.parseContent(validSdef));
+
+      const results = await Promise.all(promises);
+
+      // All should succeed with identical results
+      expect(results).toHaveLength(5);
+      results.forEach((r) => {
+        expect(r.title).toBe('Concurrent Test');
+        expect(r.suites).toHaveLength(1);
+        expect(r.suites[0].commands).toHaveLength(1);
+      });
+    });
+
+    it('should handle special characters in app/suite names', async () => {
+      const specialCharsSdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="App/With/Slashes-And-Dashes">
+  <suite name="Suite (with) [brackets]" code="test">
+    <command name="valid" code="validcmd">
+      <direct-parameter type="text"/>
+    </command>
+  </suite>
+</dictionary>`;
+
+      const parser = new SDEFParser({ mode: 'lenient' });
+      const result = await parser.parseContent(specialCharsSdef);
+
+      // Should parse successfully preserving special chars
+      expect(result.title).toBe('App/With/Slashes-And-Dashes');
+      expect(result.suites[0].name).toBe('Suite (with) [brackets]');
+      expect(result.suites[0].commands).toHaveLength(1);
+    });
+
+    it('should handle very long element names', async () => {
+      const longNameSdef = `<?xml version="1.0" encoding="UTF-8"?>
+<dictionary title="Test">
+  <suite name="Suite" code="test">
+    <command name="this_is_a_very_long_command_name_that_exceeds_normal_expectations_but_should_still_work" code="validcmd">
+      <direct-parameter type="text"/>
+    </command>
+  </suite>
+</dictionary>`;
+
+      const parser = new SDEFParser({ mode: 'lenient' });
+      const result = await parser.parseContent(longNameSdef);
+
+      // Should handle long names without issue
+      expect(result.suites[0].commands).toHaveLength(1);
+      expect(result.suites[0].commands[0].name).toContain('very_long');
+    });
+  });
 });
