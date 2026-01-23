@@ -69,6 +69,58 @@ function removeXMLComments(content: string): string {
 }
 
 /**
+ * Remove DOCTYPE declaration using a linear-time state machine
+ *
+ * Handles DOCTYPE with internal subset: <!DOCTYPE root [ ... ]>
+ * This is necessary for iWork apps (Pages, Numbers, Keynote) that use parameter
+ * entities in their DOCTYPE internal subset.
+ *
+ * WHY: Regex-based DOCTYPE removal is vulnerable to ReDoS when DOCTYPE has a
+ * complex internal subset. This linear-time approach is immune to ReDoS attacks.
+ *
+ * @param content - XML content potentially containing DOCTYPE
+ * @returns Content with DOCTYPE declaration removed
+ */
+function removeDOCTYPE(content: string): string {
+  let result = '';
+  let i = 0;
+
+  while (i < content.length) {
+    // Check for DOCTYPE start
+    if (content.slice(i, i + 9).toUpperCase() === '<!DOCTYPE') {
+      // Skip DOCTYPE start
+      i += 9;
+
+      // Track bracket depth for internal subset
+      let bracketDepth = 0;
+
+      // Skip to end of DOCTYPE (either > or end of internal subset)
+      while (i < content.length) {
+        const char = content[i];
+
+        if (char === '[') {
+          bracketDepth++;
+        } else if (char === ']') {
+          bracketDepth--;
+        } else if (char === '>' && bracketDepth === 0) {
+          // End of DOCTYPE
+          i++;
+          break;
+        }
+
+        i++;
+      }
+    } else {
+      // Regular character - add to result
+      result += content[i];
+      i++;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Warning emitted during parsing when type inference occurs
  */
 export interface ParseWarning {
@@ -452,13 +504,9 @@ export class SDEFParser {
       //
       // Since our XML parser is configured with ignoreDeclaration: true and never executes
       // DOCTYPE processing, stripping is safe and prevents any residual XXE risk.
-      // Simplified pattern - safe from ReDoS
-      // Note: We strip DOCTYPE for security (XXE protection), so we don't need
-      // to preserve internal subsets. Simple greedy match is sufficient.
-      const contentWithoutDoctype = contentWithoutComments.replace(
-        /<!DOCTYPE[^>]*>/i,
-        ''
-      );
+      //
+      // Use linear-time DOCTYPE removal to handle internal subsets safely (ReDoS prevention)
+      const contentWithoutDoctype = removeDOCTYPE(contentWithoutComments);
 
       // SECURITY: Defensive check - verify no ENTITY declarations remain after DOCTYPE removal
       // This should never trigger (DOCTYPE regex should remove all ENTITY declarations),
