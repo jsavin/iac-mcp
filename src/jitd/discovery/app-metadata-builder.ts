@@ -83,7 +83,7 @@ function generateDescription(dictionary: SDEFDictionary): string {
 }
 
 /**
- * Builds lightweight app metadata from AppWithSDEF and SDEF dictionary
+ * Core metadata construction logic shared by both sync and async versions
  *
  * Extracts metadata WITHOUT generating full tool definitions:
  * - App name
@@ -92,16 +92,14 @@ function generateDescription(dictionary: SDEFDictionary): string {
  * - Tool count (total commands across all suites)
  * - Suite names (list of suite names in order)
  *
- * Performance: Should complete in <30ms per app
- *
  * @param app - Application with SDEF file information
  * @param dictionary - Parsed SDEF dictionary
  * @returns AppMetadata object
  */
-export async function buildMetadata(
+function buildMetadataCore(
   app: AppWithSDEF,
   dictionary: SDEFDictionary
-): Promise<AppMetadata> {
+): AppMetadata {
   return {
     appName: app.appName,
     bundleId: inferBundleId(app.appName, app.bundlePath),
@@ -112,6 +110,23 @@ export async function buildMetadata(
       status: 'success',
     },
   };
+}
+
+/**
+ * Builds lightweight app metadata from AppWithSDEF and SDEF dictionary
+ *
+ * Async version for use with Promise-based workflows.
+ * Performance: Should complete in <30ms per app
+ *
+ * @param app - Application with SDEF file information
+ * @param dictionary - Parsed SDEF dictionary
+ * @returns AppMetadata object
+ */
+export async function buildMetadata(
+  app: AppWithSDEF,
+  dictionary: SDEFDictionary
+): Promise<AppMetadata> {
+  return buildMetadataCore(app, dictionary);
 }
 
 /**
@@ -145,16 +160,7 @@ export function buildMetadataSync(
   app: AppWithSDEF,
   dictionary: SDEFDictionary
 ): AppMetadata {
-  return {
-    appName: app.appName,
-    bundleId: inferBundleId(app.appName, app.bundlePath),
-    description: generateDescription(dictionary),
-    toolCount: countTotalCommands(dictionary),
-    suiteNames: extractSuiteNames(dictionary),
-    parsingStatus: {
-      status: 'success',
-    },
-  };
+  return buildMetadataCore(app, dictionary);
 }
 
 /**
