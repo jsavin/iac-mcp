@@ -11,7 +11,7 @@
  * - getSDEFPath: Construct expected SDEF path from app bundle path
  */
 
-import { readdir, access, stat, realpath } from 'fs/promises';
+import { readdir, access, stat, realpath, open } from 'fs/promises';
 import { constants } from 'fs';
 import { join, basename, resolve, normalize } from 'path';
 import { homedir } from 'os';
@@ -353,7 +353,7 @@ async function findAppBundlesRecursive(
     }
 
     // Get real path to handle symlinks
-    const realPath = await import('fs/promises').then(fs => fs.realpath(directory).catch(() => directory));
+    const realPath = await realpath(directory).catch(() => directory);
 
     // Check for circular symlinks
     if (visited.paths.has(realPath)) {
@@ -613,8 +613,7 @@ export async function isValidSDEFFile(
     }
 
     // Read first few bytes to check for XML declaration
-    const fs = await import('fs/promises');
-    const handle = await fs.open(filePath, 'r');
+    const handle = await open(filePath, 'r');
 
     try {
       const buffer = Buffer.alloc(100);
