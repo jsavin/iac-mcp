@@ -49,13 +49,87 @@ const MAX_APP_NAME_LENGTH = 100;
  */
 const MAX_WARNINGS_PER_APP = 100;
 
+/**
+ * Type guard to validate app_name parameter
+ * Ensures value is a non-empty string at runtime
+ *
+ * @param value - Value to check
+ * @returns true if value is a non-empty string
+ */
+function isValidAppName(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
 // Server-side cache for app metadata
 let cachedAppMetadata: AppMetadata[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 60000; // 1 minute TTL
 
 /**
+ * Streaming warning aggregator with O(1) memory per warning
+ *
+ * Aggregates warnings during collection (not after) to prevent unbounded memory growth.
+ * If an SDEF file has 10,000 malformed elements, the Map never exceeds MAX_WARNINGS_PER_APP entries.
+ *
+ * Groups by: code:suite:element
+ * Caps at: MAX_WARNINGS_PER_APP = 100 unique warning types
+ */
+class WarningAggregator {
+  private grouped = new Map<string, { warning: ParseWarning; count: number }>();
+
+  /**
+   * Add a warning to the aggregator
+   *
+   * If we've already hit MAX_WARNINGS_PER_APP unique warning types, ignore additional warnings.
+   * This prevents memory exhaustion with malformed SDEF files.
+   *
+   * @param warning - Parse warning to aggregate
+   */
+  add(warning: ParseWarning): void {
+    // Create key for deduplication (code:suite:element)
+    const key = `${warning.code}:${warning.location.suite || 'unknown'}:${warning.location.element}`;
+
+    const existing = this.grouped.get(key);
+
+    if (existing) {
+      // Increment count for existing warning type
+      existing.count++;
+    } else {
+      // Only add new warning types if under the limit
+      if (this.grouped.size < MAX_WARNINGS_PER_APP) {
+        this.grouped.set(key, { warning, count: 1 });
+      }
+      // Otherwise silently drop (we've already captured 100 unique warning types)
+    }
+  }
+
+  /**
+   * Convert aggregated warnings to output format
+   *
+   * @returns Array of warnings with count suffix for duplicates
+   */
+  toArray(): Array<{
+    code: string;
+    message: string;
+    element?: string;
+    suite?: string;
+  }> {
+    return Array.from(this.grouped.values()).map(({ warning, count }) => ({
+      code: warning.code,
+      message: count > 1
+        ? `${warning.message} (and ${count - 1} more similar warnings)`
+        : warning.message,
+      element: warning.location.element,
+      suite: warning.location.suite,
+    }));
+  }
+}
+
+/**
  * Aggregate similar warnings to prevent overwhelming users
+ *
+ * DEPRECATED: This function is kept for backwards compatibility with tests.
+ * For streaming aggregation (O(1) memory), use WarningAggregator class directly.
  *
  * Groups warnings by code, suite, and element type, then counts duplicates.
  * Limits total warnings to MAX_WARNINGS_PER_APP.
@@ -68,56 +142,15 @@ export function aggregateWarnings(warnings: ParseWarning[]): Array<{
   message: string;
   element?: string;
   suite?: string;
-  count?: number;
 }> {
-  // Limit to MAX_WARNINGS_PER_APP to prevent memory issues
-  const limitedWarnings = warnings.slice(0, MAX_WARNINGS_PER_APP);
+  const aggregator = new WarningAggregator();
 
-  // Group by code + suite + element type
-  const grouped = new Map<string, {
-    code: string;
-    message: string;
-    element?: string;
-    suite?: string;
-    count: number;
-  }>();
-
-  for (const warning of limitedWarnings) {
-    // Create key for deduplication (code:suite:element)
-    const key = `${warning.code}:${warning.location.suite || 'unknown'}:${warning.location.element}`;
-
-    const existing = grouped.get(key);
-    if (existing) {
-      existing.count++;
-    } else {
-      grouped.set(key, {
-        code: warning.code,
-        message: warning.message,
-        element: warning.location.element,
-        suite: warning.location.suite,
-        count: 1,
-      });
-    }
+  // Add all warnings (aggregator will cap at MAX_WARNINGS_PER_APP)
+  for (const warning of warnings) {
+    aggregator.add(warning);
   }
 
-  // Convert to array and add count suffix to messages
-  return Array.from(grouped.values()).map(w => {
-    if (w.count > 1) {
-      return {
-        code: w.code,
-        message: `${w.message} (and ${w.count - 1} more similar warnings)`,
-        element: w.element,
-        suite: w.suite,
-      };
-    }
-    // Return without count field if only 1 warning
-    return {
-      code: w.code,
-      message: w.message,
-      element: w.element,
-      suite: w.suite,
-    };
-  });
+  return aggregator.toArray();
 }
 
 /**
@@ -154,11 +187,11 @@ async function discoverAppMetadata(): Promise<AppMetadata[]> {
     try {
       console.error(`[discoverAppMetadata] Parsing SDEF for ${app.appName} in lenient mode`);
 
-      // Create parser with lenient mode and warning collection
-      const warnings: ParseWarning[] = [];
+      // Create aggregator with O(1) memory per warning (caps at MAX_WARNINGS_PER_APP)
+      const aggregator = new WarningAggregator();
       const parser = new SDEFParser({
         mode: 'lenient',
-        onWarning: (warning) => warnings.push(warning),
+        onWarning: (warning) => aggregator.add(warning),
       });
 
       // Parse SDEF with lenient mode
@@ -167,12 +200,13 @@ async function discoverAppMetadata(): Promise<AppMetadata[]> {
       // Build metadata from parsed dictionary
       const metadata = await buildMetadata(app, dictionary);
 
-      // Set parsing status based on warnings
-      if (warnings.length > 0) {
-        console.error(`[discoverAppMetadata] ${app.appName} parsed with ${warnings.length} warnings`);
+      // Set parsing status based on aggregated warnings
+      const aggregatedWarnings = aggregator.toArray();
+      if (aggregatedWarnings.length > 0) {
+        console.error(`[discoverAppMetadata] ${app.appName} parsed with ${aggregatedWarnings.length} warning types`);
         metadata.parsingStatus = {
           status: 'partial',
-          warnings: aggregateWarnings(warnings),
+          warnings: aggregatedWarnings,
         };
       } else {
         metadata.parsingStatus = { status: 'success' };
@@ -414,15 +448,15 @@ export async function setupHandlers(
       if (toolName === 'get_app_tools') {
         console.error('[CallTool/get_app_tools] Executing get_app_tools tool');
 
-        // Validate app_name parameter
-        const appName = args?.app_name as string | undefined;
+        // Validate app_name parameter with type guard
+        const appName = isValidAppName(args?.app_name) ? args.app_name : undefined;
 
         if (!appName) {
-          console.error('[CallTool/get_app_tools] Error: Missing app_name parameter');
+          console.error('[CallTool/get_app_tools] Error: Missing or invalid app_name parameter');
           return {
             content: [{
               type: 'text' as const,
-              text: 'Error: Missing required parameter \'app_name\'',
+              text: 'Error: Missing or invalid app_name parameter',
             }],
             isError: true,
           };
