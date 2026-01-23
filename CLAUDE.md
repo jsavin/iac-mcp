@@ -81,33 +81,6 @@ git push origin feature/<name>  # Push feature branch (NEVER push to origin/mast
 - Type definition tests (can't meaningfully test runtime behavior of types)
 - Example code (not customer-facing)
 
-### Work Strategy for C-Suite
-
-**Your role:** Strategic decisions only
-- What gets shipped (you decide)
-- When to ship (you decide)
-- Go/no-go on launch (you decide)
-- Direction on test structure/approach (you decide)
-
-**Claude's role:** Execute to spec with transparency
-- Implement MCP tests autonomously
-- Fix coverage gaps without asking
-- Commit progress regularly
-- Keep you informed at every checkpoint
-- Report blockers immediately (none expected)
-- Deliver working code that passes all tests
-
-**Communication:** Decision gates + issues only
-- **Decision gates at phase boundaries:**
-  - "Phase A complete. Proceed to Phase B?" (requires your approval)
-  - Final: "Launch-ready. All tests passing. Your call on shipping?"
-- **Unexpected patterns/issues:** Report immediately if any arise
-  - Design decisions that affect architecture
-  - Coverage gaps that can't be closed
-  - Test failures that reveal deeper problems
-  - Anything blocking launch
-- Otherwise: Work autonomously, commit regularly, stay on track
-
 ---
 
 ## ⚠️ MANDATORY: Code Quality Standards
@@ -481,6 +454,41 @@ Verify your location with 'pwd && git branch' before making any changes.
 ```bash
 cd <worktree-path> && git status  # Verify changes are on correct branch
 ```
+
+---
+
+## /doit Workflow - Feature Development
+
+**For comprehensive /doit workflow guidance**, see the global instructions in `~/.claude/CLAUDE.md`.
+
+This section provides **iac-mcp-specific agent selection** for each /doit phase.
+
+### /doit Agent Selection for iac-mcp
+
+| Phase | Primary Agent(s) | When to Use in Parallel | Notes |
+|-------|------------------|-------------------------|-------|
+| **Phase 2: Research** | Explore | Always use for multi-file analysis | Fast codebase exploration and architectural context |
+| **Phase 3: Planning** | Plan, system-architect | Use system-architect if architecture/design decisions needed | Plan for implementation steps, system-architect for tech decisions |
+| **Phase 4: Implementation** | typescript-engineer (TypeScript code)<br>mcp-protocol-expert (MCP protocol)<br>macos-automation-expert (SDEF/JXA) | Parallelize independent modules:<br>- TypeScript + tests<br>- MCP protocol + adapters<br>- SDEF parsing + tool generation | Choose based on domain:<br>- TypeScript patterns → typescript-engineer<br>- MCP compliance → mcp-protocol-expert<br>- macOS automation → macos-automation-expert |
+| **Phase 5: Testing** | typescript-engineer | Can parallel with code-review-bar-raiser | Write tests (unit + integration), ensure 100% coverage |
+| **Phase 6: PR** | pull-request<br>code-review-bar-raiser<br>security-reviewer | **Always parallel**: All three agents | PR creation + quality review + security review |
+
+### Common Parallel Agent Patterns for iac-mcp
+
+**New SDEF parser feature**:
+1. Explore (find existing parsers) + Plan (design approach) - sequential
+2. typescript-engineer (parser impl) + typescript-engineer (tests) - **parallel**
+3. code-review-bar-raiser + security-reviewer - **parallel**
+
+**MCP tool generation**:
+1. mcp-protocol-expert (tool schema design) + macos-automation-expert (execution strategy) - **parallel**
+2. typescript-engineer (implementation) + typescript-engineer (tests) - **parallel**
+3. code-review-bar-raiser + security-reviewer - **parallel**
+
+**Permission system feature**:
+1. security-reviewer (threat model) + system-architect (design) - sequential
+2. typescript-engineer (implementation) + typescript-engineer (tests) - **parallel**
+3. security-reviewer (validation) - sequential after implementation
 
 ---
 
