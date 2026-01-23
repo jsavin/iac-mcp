@@ -8,8 +8,9 @@
 import { describe, it, expect } from 'vitest';
 import { resolve } from 'path';
 import { SDEFParser } from '../../src/jitd/discovery/parse-sdef.js';
+import { isMacOS } from '../utils/test-helpers.js';
 
-describe('SDEF Parsing Performance', () => {
+describe.skipIf(!isMacOS())('SDEF Parsing Performance', () => {
   const finderSdefPath =
     '/System/Library/CoreServices/Finder.app/Contents/Resources/Finder.sdef';
   const strictCompatibleSdefPath = resolve(

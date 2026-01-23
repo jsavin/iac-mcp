@@ -513,60 +513,39 @@ describe('SDEF XML Parsing', () => {
     });
   });
 
-  describe('parsing Finder.sdef', () => {
+  describe.skipIf(!isMacOS())('parsing Finder.sdef', () => {
     it('should successfully parse actual Finder.sdef file', async () => {
       const finderSDEFPath = '/System/Library/CoreServices/Finder.app/Contents/Resources/Finder.sdef';
-
-      try {
-        const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
-        expect(finderSDEF).toBeTruthy();
-        expect(finderSDEF).toContain('<dictionary');
-        expect(finderSDEF).toContain('</dictionary>');
-      } catch (error) {
-        // Skip test if Finder.sdef is not accessible
-        console.log('Finder.sdef not accessible, skipping test');
-      }
+      const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
+      expect(finderSDEF).toBeTruthy();
+      expect(finderSDEF).toContain('<dictionary');
+      expect(finderSDEF).toContain('</dictionary>');
     });
 
     it('should extract multiple suites from Finder', async () => {
       const finderSDEFPath = '/System/Library/CoreServices/Finder.app/Contents/Resources/Finder.sdef';
-
-      try {
-        const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
-        // Finder has multiple suites: Standard Suite, Finder Basics, etc.
-        expect(finderSDEF).toContain('name="Standard Suite"');
-        expect(finderSDEF).toContain('name="Finder Basics"');
-      } catch (error) {
-        console.log('Finder.sdef not accessible, skipping test');
-      }
+      const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
+      // Finder has multiple suites: Standard Suite, Finder Basics, etc.
+      expect(finderSDEF).toContain('name="Standard Suite"');
+      expect(finderSDEF).toContain('name="Finder Basics"');
     });
 
     it('should extract common Finder commands', async () => {
       const finderSDEFPath = '/System/Library/CoreServices/Finder.app/Contents/Resources/Finder.sdef';
-
-      try {
-        const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
-        // Common Finder commands
-        expect(finderSDEF).toContain('name="open"');
-        expect(finderSDEF).toContain('name="quit"');
-        expect(finderSDEF).toContain('name="delete"');
-        expect(finderSDEF).toContain('name="duplicate"');
-      } catch (error) {
-        console.log('Finder.sdef not accessible, skipping test');
-      }
+      const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
+      // Common Finder commands
+      expect(finderSDEF).toContain('name="open"');
+      expect(finderSDEF).toContain('name="quit"');
+      expect(finderSDEF).toContain('name="delete"');
+      expect(finderSDEF).toContain('name="duplicate"');
     });
 
     it('should extract Finder classes', async () => {
       const finderSDEFPath = '/System/Library/CoreServices/Finder.app/Contents/Resources/Finder.sdef';
-
-      try {
-        const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
-        // Common Finder classes
-        expect(finderSDEF).toContain('name="application"');
-        expect(finderSDEF).toContain('name="window"');
-      } catch (error) {
-        console.log('Finder.sdef not accessible, skipping test');
-      }
+      const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
+      // Common Finder classes
+      expect(finderSDEF).toContain('name="application"');
+      expect(finderSDEF).toContain('name="window"');
     });
   });
 
@@ -623,23 +602,18 @@ describe('SDEF XML Parsing', () => {
   });
 
   describe('performance', () => {
-    it('should parse large SDEF files efficiently', async () => {
+    it.skipIf(!isMacOS())('should parse large SDEF files efficiently', async () => {
       // Finder.sdef is ~200KB - should parse in reasonable time
       const startTime = Date.now();
+      const finderSDEFPath = '/System/Library/CoreServices/Finder.app/Contents/Resources/Finder.sdef';
+      const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
 
-      try {
-        const finderSDEFPath = '/System/Library/CoreServices/Finder.app/Contents/Resources/Finder.sdef';
-        const finderSDEF = await readFile(finderSDEFPath, 'utf-8');
+      // Reading file
+      const readTime = Date.now() - startTime;
 
-        // Reading file
-        const readTime = Date.now() - startTime;
-
-        // Parser implementation will be timed here
-        // Should complete in < 1 second
-        expect(readTime).toBeLessThan(5000);
-      } catch (error) {
-        console.log('Finder.sdef not accessible, skipping test');
-      }
+      // Parser implementation will be timed here
+      // Should complete in < 1 second
+      expect(readTime).toBeLessThan(5000);
     });
 
     it('should handle multiple concurrent parse requests', async () => {
