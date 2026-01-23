@@ -164,6 +164,28 @@ export function buildMetadataSync(
 }
 
 /**
+ * Standard error categories for SDEF parsing failures
+ */
+enum ParseErrorCategory {
+  FILE_NOT_FOUND = 'SDEF file not found or inaccessible',
+  PERMISSION_DENIED = 'Permission denied reading SDEF file',
+  XML_PARSE_ERROR = 'XML parsing error in SDEF file',
+}
+
+/**
+ * Categorizes error message into standard error category
+ *
+ * @param message - Sanitized error message
+ * @returns Standard error category or original message
+ */
+function categorizeError(message: string): string {
+  if (/enoent/i.test(message)) return ParseErrorCategory.FILE_NOT_FOUND;
+  if (/permission denied/i.test(message)) return ParseErrorCategory.PERMISSION_DENIED;
+  if (/parse|xml/i.test(message)) return ParseErrorCategory.XML_PARSE_ERROR;
+  return message; // already sanitized
+}
+
+/**
  * Sanitizes error messages to prevent information leakage
  *
  * Removes sensitive information from error messages:
@@ -196,18 +218,8 @@ function sanitizeErrorMessage(error: Error | unknown): string {
     sanitized = sanitized.substring(0, 197) + '...';
   }
 
-  // Generic message for common cases
-  if (sanitized.toLowerCase().includes('enoent')) {
-    return 'SDEF file not found or inaccessible';
-  }
-  if (sanitized.toLowerCase().includes('permission denied')) {
-    return 'Permission denied reading SDEF file';
-  }
-  if (sanitized.toLowerCase().includes('parse') || sanitized.toLowerCase().includes('xml')) {
-    return 'XML parsing error in SDEF file';
-  }
-
-  return sanitized;
+  // Categorize into standard error types
+  return categorizeError(sanitized);
 }
 
 /**

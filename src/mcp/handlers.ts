@@ -76,6 +76,7 @@ const CACHE_TTL_MS = 60000; // 1 minute TTL
  */
 class WarningAggregator {
   private grouped = new Map<string, { warning: ParseWarning; count: number }>();
+  private capped = false;
 
   /**
    * Add a warning to the aggregator
@@ -98,9 +99,20 @@ class WarningAggregator {
       // Only add new warning types if under the limit
       if (this.grouped.size < MAX_WARNINGS_PER_APP) {
         this.grouped.set(key, { warning, count: 1 });
+      } else {
+        // Mark as capped when we hit the limit
+        this.capped = true;
       }
-      // Otherwise silently drop (we've already captured 100 unique warning types)
     }
+  }
+
+  /**
+   * Check if warning cap was reached
+   *
+   * @returns true if warnings were capped at MAX_WARNINGS_PER_APP
+   */
+  isCapped(): boolean {
+    return this.capped;
   }
 
   /**
@@ -128,8 +140,8 @@ class WarningAggregator {
 /**
  * Aggregate similar warnings to prevent overwhelming users
  *
- * DEPRECATED: This function is kept for backwards compatibility with tests.
- * For streaming aggregation (O(1) memory), use WarningAggregator class directly.
+ * @deprecated Use WarningAggregator class directly for streaming aggregation with O(1) memory.
+ * This function is kept for backward compatibility with tests.
  *
  * Groups warnings by code, suite, and element type, then counts duplicates.
  * Limits total warnings to MAX_WARNINGS_PER_APP.
@@ -207,6 +219,7 @@ async function discoverAppMetadata(): Promise<AppMetadata[]> {
         metadata.parsingStatus = {
           status: 'partial',
           warnings: aggregatedWarnings,
+          warningsCapped: aggregator.isCapped(),
         };
       } else {
         metadata.parsingStatus = { status: 'success' };

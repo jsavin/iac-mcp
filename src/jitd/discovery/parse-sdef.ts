@@ -1435,8 +1435,11 @@ export class SDEFParser {
     // CRITICAL: Null bytes always throw (security issue)
     // WHY: Null bytes (\0) can terminate strings in C/C++ code, potentially causing:
     // 1. String truncation attacks when codes are passed to native AppleEvent APIs
+    //    Example: "abc\0malicious" → C code sees only "abc"
     // 2. Path traversal if codes are used in filesystem operations
+    //    Example: "safe\0../../etc/passwd" → filesystem sees only "safe"
     // 3. Command injection if codes are interpolated into shell commands
+    //    Example: "cmd\0; rm -rf /" → shell sees only "cmd"
     // Rejecting null bytes prevents these attack vectors regardless of parsing mode.
     if (code.includes('\0')) {
       throw new Error(`${elementType} "${elementName}" code contains non-printable character (null byte)`);

@@ -74,6 +74,14 @@ export interface AppMetadata {
     }>;
 
     /**
+     * Whether warnings were capped at MAX_WARNINGS_PER_APP limit
+     *
+     * If true, additional warnings beyond the cap were silently dropped.
+     * This indicates the SDEF file has extensive malformations.
+     */
+    warningsCapped?: boolean;
+
+    /**
      * Error message if parsing failed completely (only for 'failed' status)
      *
      * Explains why the SDEF could not be parsed. This helps users
