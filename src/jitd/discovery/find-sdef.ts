@@ -624,8 +624,14 @@ export async function findAllScriptableApps(
   }
 
   // Search System Frameworks for embedded apps (Wish.app, etc.) and SDEF files
-  // Note: We only search specific known framework Resources directories to avoid
-  // excessive recursion through thousands of framework directories
+  //
+  // ARCHITECTURAL DECISION: Targeted search (not recursive)
+  // Why: /System/Library/Frameworks contains 300+ directories. Recursive search would:
+  //   - Add 5-10 seconds to discovery time
+  //   - Traverse thousands of files with minimal gain
+  //   - Find almost no additional scriptable apps
+  // Trade-off: We only check known locations where scriptable apps exist.
+  // If new framework apps are discovered, add their paths to knownFrameworkAppPaths.
   try {
     const knownFrameworkAppPaths = [
       // Tk.framework contains Wish.app and Wish Shell.app
