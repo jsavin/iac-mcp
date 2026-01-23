@@ -44,10 +44,81 @@ import { buildFallbackMetadata } from '../jitd/discovery/app-metadata-builder.js
  */
 const MAX_APP_NAME_LENGTH = 100;
 
+/**
+ * Maximum warnings per app to prevent memory exhaustion
+ */
+const MAX_WARNINGS_PER_APP = 100;
+
 // Server-side cache for app metadata
 let cachedAppMetadata: AppMetadata[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 60000; // 1 minute TTL
+
+/**
+ * Aggregate similar warnings to prevent overwhelming users
+ *
+ * Groups warnings by code, suite, and element type, then counts duplicates.
+ * Limits total warnings to MAX_WARNINGS_PER_APP.
+ *
+ * @param warnings - Array of parse warnings from SDEF parser
+ * @returns Aggregated warnings with counts for duplicates
+ */
+export function aggregateWarnings(warnings: ParseWarning[]): Array<{
+  code: string;
+  message: string;
+  element?: string;
+  suite?: string;
+  count?: number;
+}> {
+  // Limit to MAX_WARNINGS_PER_APP to prevent memory issues
+  const limitedWarnings = warnings.slice(0, MAX_WARNINGS_PER_APP);
+
+  // Group by code + suite + element type
+  const grouped = new Map<string, {
+    code: string;
+    message: string;
+    element?: string;
+    suite?: string;
+    count: number;
+  }>();
+
+  for (const warning of limitedWarnings) {
+    // Create key for deduplication (code:suite:element)
+    const key = `${warning.code}:${warning.location.suite || 'unknown'}:${warning.location.element}`;
+
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.count++;
+    } else {
+      grouped.set(key, {
+        code: warning.code,
+        message: warning.message,
+        element: warning.location.element,
+        suite: warning.location.suite,
+        count: 1,
+      });
+    }
+  }
+
+  // Convert to array and add count suffix to messages
+  return Array.from(grouped.values()).map(w => {
+    if (w.count > 1) {
+      return {
+        code: w.code,
+        message: `${w.message} (and ${w.count - 1} more similar warnings)`,
+        element: w.element,
+        suite: w.suite,
+      };
+    }
+    // Return without count field if only 1 warning
+    return {
+      code: w.code,
+      message: w.message,
+      element: w.element,
+      suite: w.suite,
+    };
+  });
+}
 
 /**
  * Discover and build metadata for all scriptable apps
@@ -101,12 +172,7 @@ async function discoverAppMetadata(): Promise<AppMetadata[]> {
         console.error(`[discoverAppMetadata] ${app.appName} parsed with ${warnings.length} warnings`);
         metadata.parsingStatus = {
           status: 'partial',
-          warnings: warnings.map((w) => ({
-            code: w.code,
-            message: w.message,
-            element: w.location.element,
-            suite: w.location.suite,
-          })),
+          warnings: aggregateWarnings(warnings),
         };
       } else {
         metadata.parsingStatus = { status: 'success' };
