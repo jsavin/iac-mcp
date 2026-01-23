@@ -579,30 +579,75 @@ export class SDEFParser {
     // Track current suite for warning context
     this.currentSuite = name;
 
-    // Parse commands
+    // Parse commands - skip malformed ones in lenient mode
     const commands: SDEFCommand[] = [];
     const commandElements = this.ensureArray(suite.command);
     for (const cmdEl of commandElements) {
       if (cmdEl) {
-        commands.push(this.parseCommand(cmdEl));
+        try {
+          commands.push(this.parseCommand(cmdEl));
+        } catch (error) {
+          if (this.mode === 'strict') throw error;
+
+          const cmdName = cmdEl['@_name'] || 'unnamed';
+          this.warn({
+            code: 'INVALID_CODE_SKIPPED',
+            message: `Skipping malformed command "${cmdName}": ${error instanceof Error ? error.message : String(error)}`,
+            location: {
+              element: 'command',
+              name: cmdName,
+              suite: this.currentSuite || '',
+            },
+          });
+        }
       }
     }
 
-    // Parse classes
+    // Parse classes - skip malformed ones in lenient mode
     const classes: SDEFClass[] = [];
     const classElements = this.ensureArray(suite.class);
     for (const classEl of classElements) {
       if (classEl) {
-        classes.push(this.parseClass(classEl));
+        try {
+          classes.push(this.parseClass(classEl));
+        } catch (error) {
+          if (this.mode === 'strict') throw error;
+
+          const className = classEl['@_name'] || 'unnamed';
+          this.warn({
+            code: 'INVALID_CODE_SKIPPED',
+            message: `Skipping malformed class "${className}": ${error instanceof Error ? error.message : String(error)}`,
+            location: {
+              element: 'class',
+              name: className,
+              suite: this.currentSuite || '',
+            },
+          });
+        }
       }
     }
 
-    // Parse enumerations
+    // Parse enumerations - skip malformed ones in lenient mode
     const enumerations: SDEFEnumeration[] = [];
     const enumElements = this.ensureArray(suite.enumeration);
     for (const enumEl of enumElements) {
       if (enumEl) {
-        enumerations.push(this.parseEnumeration(enumEl));
+        try {
+          enumerations.push(this.parseEnumeration(enumEl));
+        } catch (error) {
+          if (this.mode === 'strict') throw error;
+
+          const enumName = enumEl['@_name'] || 'unnamed';
+          this.warn({
+            code: 'INVALID_CODE_SKIPPED',
+            message: `Skipping malformed enumeration "${enumName}": ${error instanceof Error ? error.message : String(error)}`,
+            location: {
+              element: 'enumeration',
+              name: enumName,
+              suite: this.currentSuite || '',
+            },
+          });
+        }
       }
     }
 
@@ -632,12 +677,28 @@ export class SDEFParser {
     // Track current command for warning context
     this.currentCommand = name;
 
-    // Parse parameters
+    // Parse parameters - skip malformed ones in lenient mode
     const parameters: SDEFParameter[] = [];
     const paramElements = this.ensureArray(cmd.parameter);
     for (const paramEl of paramElements) {
       if (paramEl) {
-        parameters.push(this.parseParameter(paramEl));
+        try {
+          parameters.push(this.parseParameter(paramEl));
+        } catch (error) {
+          if (this.mode === 'strict') throw error;
+
+          const paramName = paramEl['@_name'] || 'unnamed';
+          this.warn({
+            code: 'INVALID_CODE_SKIPPED',
+            message: `Skipping malformed parameter "${paramName}" in command "${name}": ${error instanceof Error ? error.message : String(error)}`,
+            location: {
+              element: 'parameter',
+              name: paramName,
+              suite: this.currentSuite || '',
+              command: this.currentCommand || '',
+            },
+          });
+        }
       }
     }
 
@@ -744,21 +805,51 @@ export class SDEFParser {
 
     this.validateFourCharCode(code, 'class', name);
 
-    // Parse properties
+    // Parse properties - skip malformed ones in lenient mode
     const properties: SDEFProperty[] = [];
     const propElements = this.ensureArray(cls.property);
     for (const propEl of propElements) {
       if (propEl) {
-        properties.push(this.parseProperty(propEl));
+        try {
+          properties.push(this.parseProperty(propEl));
+        } catch (error) {
+          if (this.mode === 'strict') throw error;
+
+          const propName = propEl['@_name'] || 'unnamed';
+          this.warn({
+            code: 'INVALID_CODE_SKIPPED',
+            message: `Skipping malformed property "${propName}" in class "${name}": ${error instanceof Error ? error.message : String(error)}`,
+            location: {
+              element: 'property',
+              name: propName,
+              suite: this.currentSuite || '',
+            },
+          });
+        }
       }
     }
 
-    // Parse elements
+    // Parse elements - skip malformed ones in lenient mode
     const elements: SDEFElement[] = [];
     const elemElements = this.ensureArray(cls.element);
     for (const elemEl of elemElements) {
       if (elemEl) {
-        elements.push(this.parseElement(elemEl));
+        try {
+          elements.push(this.parseElement(elemEl));
+        } catch (error) {
+          if (this.mode === 'strict') throw error;
+
+          const elemName = elemEl['@_type'] || 'unnamed';
+          this.warn({
+            code: 'INVALID_CODE_SKIPPED',
+            message: `Skipping malformed element "${elemName}" in class "${name}": ${error instanceof Error ? error.message : String(error)}`,
+            location: {
+              element: 'element',
+              name: elemName,
+              suite: this.currentSuite || '',
+            },
+          });
+        }
       }
     }
 
@@ -858,12 +949,27 @@ export class SDEFParser {
 
     this.validateFourCharCode(code, 'enumeration', name);
 
-    // Parse enumerators
+    // Parse enumerators - skip malformed ones in lenient mode
     const enumerators: SDEFEnumerator[] = [];
     const enumeratorElements = this.ensureArray(enumEl.enumerator);
     for (const enumrEl of enumeratorElements) {
       if (enumrEl) {
-        enumerators.push(this.parseEnumerator(enumrEl));
+        try {
+          enumerators.push(this.parseEnumerator(enumrEl));
+        } catch (error) {
+          if (this.mode === 'strict') throw error;
+
+          const enumrName = enumrEl['@_name'] || 'unnamed';
+          this.warn({
+            code: 'INVALID_CODE_SKIPPED',
+            message: `Skipping malformed enumerator "${enumrName}" in enumeration "${name}": ${error instanceof Error ? error.message : String(error)}`,
+            location: {
+              element: 'enumerator',
+              name: enumrName,
+              suite: this.currentSuite || '',
+            },
+          });
+        }
       }
     }
 
@@ -1316,24 +1422,38 @@ export class SDEFParser {
    *
    * Note: Commands use 8-character codes (two 4-char codes combined),
    * while other elements use 4-character codes
+   *
+   * Always throws errors for validation failures. Callers in lenient mode
+   * should catch these errors and emit warnings before skipping elements.
    */
   private validateFourCharCode(code: string, elementType: string, elementName: string): void {
+    // CRITICAL: Empty code always throws (regardless of mode)
+    if (!code || code.length === 0) {
+      throw new Error(`${elementType} "${elementName}" has empty code`);
+    }
+
+    // CRITICAL: Null bytes always throw (security issue)
+    if (code.includes('\0')) {
+      throw new Error(`${elementType} "${elementName}" code contains non-printable character (null byte)`);
+    }
+
     // Commands can have 8-character codes (e.g., "aevtodoc" = "aevt" + "odoc")
     // Other elements have 4-character codes
     const validLength = elementType === 'command' ? 8 : 4;
 
+    // LENGTH validation
     if (code.length !== validLength) {
       throw new Error(
-        `Invalid code "${code}" for ${elementType} "${elementName}": must be exactly ${validLength} characters`
+        `Invalid code "${code}" for ${elementType} "${elementName}": invalid length - must be exactly ${validLength} characters (got ${code.length})`
       );
     }
 
-    // Codes should be ASCII printable characters (no null bytes or control chars)
+    // NON-PRINTABLE chars validation
     for (let i = 0; i < code.length; i++) {
       const charCode = code.charCodeAt(i);
-      if (charCode === 0 || charCode < 32 || charCode > 126) {
+      if (charCode < 32 || charCode > 126) {
         throw new Error(
-          `Invalid code "${code}" for ${elementType} "${elementName}": contains non-printable character`
+          `Invalid code "${code}" for ${elementType} "${elementName}": contains non-printable character at position ${i}`
         );
       }
     }
