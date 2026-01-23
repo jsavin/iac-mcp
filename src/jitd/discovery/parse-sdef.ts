@@ -110,6 +110,11 @@ function removeDOCTYPE(content: string): string {
 
         i++;
       }
+
+      // Item 3: Validate that DOCTYPE was properly closed
+      if (bracketDepth !== 0 && i >= content.length) {
+        throw new Error('Malformed DOCTYPE: unclosed internal subset');
+      }
     } else {
       // Regular character - add to result
       result += content[i];

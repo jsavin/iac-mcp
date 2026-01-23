@@ -11,7 +11,7 @@
  * - getSDEFPath: Construct expected SDEF path from app bundle path
  */
 
-import { readdir, access, stat } from 'fs/promises';
+import { readdir, access, stat, realpath } from 'fs/promises';
 import { constants } from 'fs';
 import { join, basename, resolve, normalize } from 'path';
 import { homedir } from 'os';
@@ -21,6 +21,7 @@ import { homedir } from 'os';
  */
 export interface Logger {
   error(message: string, ...args: unknown[]): void;
+  debug?(message: string, ...args: unknown[]): void;
 }
 
 /**
@@ -35,6 +36,7 @@ const noOpLogger: Logger = {
  */
 export const consoleLogger: Logger = {
   error: console.error.bind(console),
+  debug: console.debug.bind(console),
 };
 
 /**
@@ -287,6 +289,13 @@ interface VisitedPaths {
 }
 
 /**
+ * Tracks statistics about permission errors during discovery
+ */
+interface PermissionErrorStats {
+  count: number;
+}
+
+/**
  * Directories that should be skipped during recursive search
  * These are known to not contain .app bundles or are too large/deep
  */
@@ -329,7 +338,8 @@ async function findAppBundlesRecursive(
   logger: Logger = noOpLogger,
   visited: VisitedPaths = { paths: new Set() },
   depth: number = 0,
-  maxDepth: number = 5
+  maxDepth: number = 5,
+  permissionErrorStats: PermissionErrorStats = { count: 0 }
 ): Promise<string[]> {
   // Safety: Prevent excessive recursion
   if (depth > maxDepth) {
@@ -387,14 +397,22 @@ async function findAppBundlesRecursive(
               logger,
               visited,
               depth + 1,
-              maxDepth
+              maxDepth,
+              permissionErrorStats
             );
             appBundles.push(...nestedApps);
           }
         }
       } catch (error) {
-        // Permission denied or other error - log and continue
-        // Don't log every permission error to avoid spam
+        // Item 2: Add debug-level logging for suppressed permission errors
+        // Track permission errors for observability without spamming logs
+        permissionErrorStats.count++;
+
+        // Only log if debug logging is enabled
+        if (logger.debug) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.debug(`Permission error #${permissionErrorStats.count} in ${fullPath}: ${errorMessage}`);
+        }
         continue;
       }
     }
@@ -438,9 +456,13 @@ async function processAppBundles(
 
   // Filter out null results and add to discovered apps (avoiding duplicates)
   for (const result of sdefResults) {
-    if (result && !seenPaths.has(result.bundlePath)) {
-      seenPaths.add(result.bundlePath);
-      discoveredApps.push(result);
+    if (result) {
+      // Item 4: Normalize paths to catch duplicates with different representations (symlinks, etc.)
+      const normalizedPath = await realpath(result.bundlePath).catch(() => result.bundlePath);
+      if (!seenPaths.has(normalizedPath)) {
+        seenPaths.add(normalizedPath);
+        discoveredApps.push(result);
+      }
     }
   }
 }
