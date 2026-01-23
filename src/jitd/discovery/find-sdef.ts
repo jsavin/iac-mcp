@@ -122,6 +122,21 @@ async function isReadableDirectory(dirPath: string): Promise<boolean> {
 }
 
 /**
+ * Checks if a directory exists (without checking readability)
+ *
+ * @param path - Directory path to check
+ * @returns true if directory exists, false otherwise
+ */
+async function directoryExists(path: string): Promise<boolean> {
+  try {
+    const stats = await stat(path);
+    return stats.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Validates that a path is within the expected boundary directory
  * Prevents path traversal attacks by ensuring resolved path stays within bounds
  *
@@ -331,6 +346,7 @@ const SKIP_DIRECTORIES = new Set([
  * @param visited - Tracks visited paths to prevent infinite loops
  * @param depth - Current recursion depth (for safety limits)
  * @param maxDepth - Maximum recursion depth (default: 5)
+ * @param permissionErrorStats - Tracks permission errors for observability
  * @returns Array of absolute paths to .app bundles
  */
 async function findAppBundlesRecursive(
@@ -510,13 +526,27 @@ export async function findAllScriptableApps(
   const discoveredApps: AppWithSDEF[] = [];
   const seenPaths = new Set<string>(); // Track seen paths to prevent duplicates
 
-  // Search /System/Library/CoreServices (non-recursive, as it's a flat directory)
+  // Search /System/Library/CoreServices (recursive to find apps in subdirectories like Applications/)
   try {
     const directory = '/System/Library/CoreServices';
-    const appBundles = await findAppBundles(directory, logger);
+    const appBundles = await findAppBundlesRecursive(directory, logger, { paths: new Set() }, 0, 5);
     await processAppBundles(appBundles, logger, seenPaths, discoveredApps);
+    logger.debug?.(`Found ${appBundles.length} apps in ${directory}`);
   } catch (error) {
     logger.error('Error processing /System/Library/CoreServices:', error);
+  }
+
+  // Search Cryptex System Applications (Safari on macOS 13.5+)
+  try {
+    const cryptexDir = '/System/Volumes/Preboot/Cryptexes/App/System/Applications';
+    if (await directoryExists(cryptexDir)) {
+      const cryptexBundles = await findAppBundles(cryptexDir, logger);
+      await processAppBundles(cryptexBundles, logger, seenPaths, discoveredApps);
+      logger.debug?.(`Found ${cryptexBundles.length} apps in Cryptex System Applications`);
+    }
+  } catch (error) {
+    // Cryptex path may not exist on older macOS or may have permission issues
+    logger.debug?.('Cryptex path not accessible', { error });
   }
 
   // Search recursive directories
@@ -529,6 +559,29 @@ export async function findAllScriptableApps(
     } catch (error) {
       // Log but continue with other directories
       logger.error(`Error processing directory ${directory}:`, error);
+    }
+  }
+
+  // Search Xcode nested applications (developer tools)
+  if (await directoryExists('/Applications/Xcode.app')) {
+    try {
+      // Search Xcode.app/Contents/Applications (Instruments, etc.)
+      const xcodeAppsDir = '/Applications/Xcode.app/Contents/Applications';
+      if (await directoryExists(xcodeAppsDir)) {
+        const xcodeAppBundles = await findAppBundles(xcodeAppsDir, logger);
+        await processAppBundles(xcodeAppBundles, logger, seenPaths, discoveredApps);
+        logger.debug?.(`Found ${xcodeAppBundles.length} apps in Xcode/Contents/Applications`);
+      }
+
+      // Search Xcode.app/Contents/Developer/Applications (Simulator, etc.)
+      const xcodeDeveloperDir = '/Applications/Xcode.app/Contents/Developer/Applications';
+      if (await directoryExists(xcodeDeveloperDir)) {
+        const xcodeDeveloperBundles = await findAppBundles(xcodeDeveloperDir, logger);
+        await processAppBundles(xcodeDeveloperBundles, logger, seenPaths, discoveredApps);
+        logger.debug?.(`Found ${xcodeDeveloperBundles.length} apps in Xcode/Contents/Developer/Applications`);
+      }
+    } catch (error) {
+      logger.debug?.('Error searching Xcode nested applications', { error });
     }
   }
 
@@ -568,6 +621,30 @@ export async function findAllScriptableApps(
     }
   } catch (error) {
     logger.error('Error processing ~/Library/Application Support:', error);
+  }
+
+  // Search System Frameworks for embedded apps (Wish.app, etc.) and SDEF files
+  // Note: We only search specific known framework Resources directories to avoid
+  // excessive recursion through thousands of framework directories
+  try {
+    const knownFrameworkAppPaths = [
+      // Tk.framework contains Wish.app and Wish Shell.app
+      '/System/Library/Frameworks/Tk.framework/Resources'
+    ];
+
+    for (const frameworkPath of knownFrameworkAppPaths) {
+      if (await directoryExists(frameworkPath)) {
+        try {
+          const frameworkBundles = await findAppBundles(frameworkPath, logger);
+          await processAppBundles(frameworkBundles, logger, seenPaths, discoveredApps);
+          logger.debug?.(`Found ${frameworkBundles.length} apps in ${frameworkPath}`);
+        } catch (error) {
+          logger.debug?.(`Error searching ${frameworkPath}`, { error });
+        }
+      }
+    }
+  } catch (error) {
+    logger.debug?.('Error searching Framework directories', { error });
   }
 
   // Update cache
