@@ -408,6 +408,44 @@ async function findAppBundlesRecursive(
 }
 
 /**
+ * Processes app bundles to find those with SDEF files
+ *
+ * @param appBundles - Array of app bundle paths to process
+ * @param logger - Optional logger for error reporting
+ * @param seenPaths - Set of already processed paths to avoid duplicates
+ * @param discoveredApps - Array to add discovered apps to
+ */
+async function processAppBundles(
+  appBundles: string[],
+  logger: Logger,
+  seenPaths: Set<string>,
+  discoveredApps: AppWithSDEF[]
+): Promise<void> {
+  // Check each app bundle for SDEF file (parallelized for performance)
+  const sdefResults = await Promise.all(
+    appBundles.map(async (bundlePath) => {
+      const sdefPath = await findSDEFFile(bundlePath, logger);
+      if (sdefPath) {
+        return {
+          appName: basename(bundlePath, '.app'),
+          bundlePath,
+          sdefPath,
+        };
+      }
+      return null;
+    })
+  );
+
+  // Filter out null results and add to discovered apps (avoiding duplicates)
+  for (const result of sdefResults) {
+    if (result && !seenPaths.has(result.bundlePath)) {
+      seenPaths.add(result.bundlePath);
+      discoveredApps.push(result);
+    }
+  }
+}
+
+/**
  * Finds all scriptable applications (apps with SDEF files) on the system
  *
  * This function searches common application directories for .app bundles
@@ -454,29 +492,7 @@ export async function findAllScriptableApps(
   try {
     const directory = '/System/Library/CoreServices';
     const appBundles = await findAppBundles(directory, logger);
-
-    // Check each app bundle for SDEF file (parallelized for performance)
-    const sdefResults = await Promise.all(
-      appBundles.map(async (bundlePath) => {
-        const sdefPath = await findSDEFFile(bundlePath, logger);
-        if (sdefPath) {
-          return {
-            appName: basename(bundlePath, '.app'),
-            bundlePath,
-            sdefPath,
-          };
-        }
-        return null;
-      })
-    );
-
-    // Filter out null results and add to discovered apps
-    for (const result of sdefResults) {
-      if (result && !seenPaths.has(result.bundlePath)) {
-        seenPaths.add(result.bundlePath);
-        discoveredApps.push(result);
-      }
-    }
+    await processAppBundles(appBundles, logger, seenPaths, discoveredApps);
   } catch (error) {
     logger.error('Error processing /System/Library/CoreServices:', error);
   }
@@ -487,29 +503,7 @@ export async function findAllScriptableApps(
 
     try {
       const appBundles = await findAppBundlesRecursive(directory, logger);
-
-      // Check each app bundle for SDEF file (parallelized for performance)
-      const sdefResults = await Promise.all(
-        appBundles.map(async (bundlePath) => {
-          const sdefPath = await findSDEFFile(bundlePath, logger);
-          if (sdefPath) {
-            return {
-              appName: basename(bundlePath, '.app'),
-              bundlePath,
-              sdefPath,
-            };
-          }
-          return null;
-        })
-      );
-
-      // Filter out null results and add to discovered apps (avoiding duplicates)
-      for (const result of sdefResults) {
-        if (result && !seenPaths.has(result.bundlePath)) {
-          seenPaths.add(result.bundlePath);
-          discoveredApps.push(result);
-        }
-      }
+      await processAppBundles(appBundles, logger, seenPaths, discoveredApps);
     } catch (error) {
       // Log but continue with other directories
       logger.error(`Error processing directory ${directory}:`, error);
@@ -522,29 +516,7 @@ export async function findAllScriptableApps(
 
     try {
       const appBundles = await findAppBundles(directory, logger);
-
-      // Check each app bundle for SDEF file (parallelized for performance)
-      const sdefResults = await Promise.all(
-        appBundles.map(async (bundlePath) => {
-          const sdefPath = await findSDEFFile(bundlePath, logger);
-          if (sdefPath) {
-            return {
-              appName: basename(bundlePath, '.app'),
-              bundlePath,
-              sdefPath,
-            };
-          }
-          return null;
-        })
-      );
-
-      // Filter out null results and add to discovered apps (avoiding duplicates)
-      for (const result of sdefResults) {
-        if (result && !seenPaths.has(result.bundlePath)) {
-          seenPaths.add(result.bundlePath);
-          discoveredApps.push(result);
-        }
-      }
+      await processAppBundles(appBundles, logger, seenPaths, discoveredApps);
     } catch (error) {
       logger.error(`Error processing top-level directory ${directory}:`, error);
     }
@@ -564,27 +536,7 @@ export async function findAllScriptableApps(
           // Only check subdirectories that might contain apps
           if (await isReadableDirectory(subdirPath)) {
             const appBundles = await findAppBundles(subdirPath, logger);
-
-            const sdefResults = await Promise.all(
-              appBundles.map(async (bundlePath) => {
-                const sdefPath = await findSDEFFile(bundlePath, logger);
-                if (sdefPath) {
-                  return {
-                    appName: basename(bundlePath, '.app'),
-                    bundlePath,
-                    sdefPath,
-                  };
-                }
-                return null;
-              })
-            );
-
-            for (const result of sdefResults) {
-              if (result && !seenPaths.has(result.bundlePath)) {
-                seenPaths.add(result.bundlePath);
-                discoveredApps.push(result);
-              }
-            }
+            await processAppBundles(appBundles, logger, seenPaths, discoveredApps);
           }
         } catch (error) {
           // Skip inaccessible subdirectories
