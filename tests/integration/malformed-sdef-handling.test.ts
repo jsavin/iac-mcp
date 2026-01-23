@@ -198,13 +198,16 @@ describe('Malformed SDEF Handling (Integration)', () => {
 
       const result = await parser.parse(sdefPath);
 
-      // Should only have valid enumeration
-      expect(result.suites[0].enumerations).toHaveLength(1);
-      expect(result.suites[0].enumerations[0].name).toBe('valid_enum');
+      // Should have both valid enumerations
+      // Note: "0xAB" is exactly 4 characters, so it's treated as a valid (if unusual) code
+      expect(result.suites[0].enumerations).toHaveLength(2);
+      expect(result.suites[0].enumerations.map(e => e.name)).toContain('enum2');
+      expect(result.suites[0].enumerations.map(e => e.name)).toContain('valid_enum');
 
-      // Should have warnings for both invalid codes
+      // Should have warning only for the 10-character hex code
       const invalidCodeWarnings = warnings.filter(w => w.code === 'INVALID_CODE_SKIPPED');
-      expect(invalidCodeWarnings).toHaveLength(2);
+      expect(invalidCodeWarnings).toHaveLength(1);
+      expect(invalidCodeWarnings[0].message).toContain('enum1');
     });
   });
 

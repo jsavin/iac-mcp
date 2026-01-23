@@ -50,8 +50,9 @@ describe('SDEF XML Parsing', () => {
     });
 
     it('should throw error for malformed XML', async () => {
-      // Malformed XML should result in a clear error
-      await expect(parser.parseContent(malformedSDEF)).rejects.toThrow();
+      // Malformed XML should result in a clear error in strict mode
+      const strictParser = new SDEFParser({ mode: 'strict' });
+      await expect(strictParser.parseContent(malformedSDEF)).rejects.toThrow();
     });
 
     it('should handle empty SDEF file', async () => {

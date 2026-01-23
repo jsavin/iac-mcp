@@ -36,6 +36,8 @@ import { buildMetadata } from '../jitd/discovery/app-metadata-builder.js';
 import { loadAppTools } from '../jitd/discovery/app-tools-loader.js';
 import type { AppMetadata } from '../types/app-metadata.js';
 import type { PerAppCache } from '../jitd/cache/per-app-cache.js';
+import { SDEFParser, type ParseWarning } from '../jitd/discovery/parse-sdef.js';
+import { buildFallbackMetadata } from '../jitd/discovery/app-metadata-builder.js';
 
 /**
  * Maximum length for app_name parameter to prevent DoS attacks
@@ -79,22 +81,49 @@ async function discoverAppMetadata(): Promise<AppMetadata[]> {
   // Build metadata in parallel for performance
   const metadataPromises = apps.map(async (app) => {
     try {
-      console.error(`[discoverAppMetadata] Building metadata for ${app.appName}`);
-      const dictionary = await sdefParser.parse(app.sdefPath);
-      return await buildMetadata(app, dictionary);
+      console.error(`[discoverAppMetadata] Parsing SDEF for ${app.appName} in lenient mode`);
+
+      // Create parser with lenient mode and warning collection
+      const warnings: ParseWarning[] = [];
+      const parser = new SDEFParser({
+        mode: 'lenient',
+        onWarning: (warning) => warnings.push(warning),
+      });
+
+      // Parse SDEF with lenient mode
+      const dictionary = await parser.parse(app.sdefPath);
+
+      // Build metadata from parsed dictionary
+      const metadata = await buildMetadata(app, dictionary);
+
+      // Set parsing status based on warnings
+      if (warnings.length > 0) {
+        console.error(`[discoverAppMetadata] ${app.appName} parsed with ${warnings.length} warnings`);
+        metadata.parsingStatus = {
+          status: 'partial',
+          warnings: warnings.map((w) => ({
+            code: w.code,
+            message: w.message,
+            element: w.location.element,
+            suite: w.location.suite,
+          })),
+        };
+      } else {
+        metadata.parsingStatus = { status: 'success' };
+      }
+
+      return metadata;
     } catch (error) {
+      // SDEF completely unparseable - use fallback metadata
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[discoverAppMetadata] Failed to build metadata for ${app.appName}: ${errorMsg}`);
-      return null;
+      console.error(`[discoverAppMetadata] Failed to parse SDEF for ${app.appName}: ${errorMsg}`);
+
+      // Return fallback metadata instead of null - ensures app is still visible
+      return buildFallbackMetadata(app, error instanceof Error ? error : new Error(String(error)));
     }
   });
 
-  const metadataResults = await Promise.all(metadataPromises);
-
-  // Filter out failed apps
-  const appMetadataList = metadataResults.filter(
-    (metadata): metadata is AppMetadata => metadata !== null
-  );
+  const appMetadataList = await Promise.all(metadataPromises);
 
   // Sort alphabetically for consistent ordering
   appMetadataList.sort((a, b) => a.appName.localeCompare(b.appName));
