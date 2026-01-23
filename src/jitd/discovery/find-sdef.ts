@@ -11,7 +11,7 @@
  * - getSDEFPath: Construct expected SDEF path from app bundle path
  */
 
-import { readdir, access, stat } from 'fs/promises';
+import { readdir, access, stat, realpath } from 'fs/promises';
 import { constants } from 'fs';
 import { join, basename, resolve, normalize } from 'path';
 import { homedir } from 'os';
@@ -21,6 +21,7 @@ import { homedir } from 'os';
  */
 export interface Logger {
   error(message: string, ...args: unknown[]): void;
+  debug?(message: string, ...args: unknown[]): void;
 }
 
 /**
@@ -35,6 +36,7 @@ const noOpLogger: Logger = {
  */
 export const consoleLogger: Logger = {
   error: console.error.bind(console),
+  debug: console.debug.bind(console),
 };
 
 /**
@@ -58,13 +60,21 @@ let sdefCache: SDEFCache | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Common directories where macOS applications are installed
+ * Directories to search recursively for applications (limited depth)
  */
-const COMMON_APP_DIRECTORIES = [
-  '/System/Library/CoreServices',
+const RECURSIVE_SEARCH_DIRECTORIES = [
   '/System/Applications',
   '/Applications',
-  () => join(homedir(), 'Applications'), // User-specific apps
+  () => join(homedir(), 'Applications'),
+];
+
+/**
+ * Directories to search non-recursively (top-level only)
+ * These are known to potentially contain apps but recursing would be too expensive
+ */
+const TOP_LEVEL_ONLY_DIRECTORIES = [
+  () => join(homedir(), 'Library', 'PreferencePanes'),
+  () => join(homedir(), 'Library', 'Screen Savers'),
 ];
 
 /**
@@ -272,20 +282,211 @@ async function findAppBundles(directory: string, logger: Logger = noOpLogger): P
 }
 
 /**
+ * Tracks visited paths to prevent infinite loops from circular symlinks
+ */
+interface VisitedPaths {
+  paths: Set<string>;
+}
+
+/**
+ * Tracks statistics about permission errors during discovery
+ */
+interface PermissionErrorStats {
+  count: number;
+}
+
+/**
+ * Directories that should be skipped during recursive search
+ * These are known to not contain .app bundles or are too large/deep
+ */
+const SKIP_DIRECTORIES = new Set([
+  '.git',
+  'node_modules',
+  '.npm',
+  '.cache',
+  'Cache',
+  'Caches',
+  'Frameworks',
+  'Resources',
+  'Contents', // Inside .app bundles
+  'Logs',
+  'tmp',
+  'temp',
+  '.Trash',
+  'Trash',
+]);
+
+/**
+ * Recursively scans a directory and its subdirectories for .app bundles
+ *
+ * This function searches through all subdirectories to find application bundles
+ * that might be nested in folder hierarchies. It handles:
+ * - Circular symlinks (tracks visited paths to prevent infinite loops)
+ * - Permission errors (logs and continues)
+ * - Deep nesting (handles gracefully)
+ * - .localized directory names
+ *
+ * @param directory - Directory to scan recursively
+ * @param logger - Optional logger for error reporting
+ * @param visited - Tracks visited paths to prevent infinite loops
+ * @param depth - Current recursion depth (for safety limits)
+ * @param maxDepth - Maximum recursion depth (default: 5)
+ * @returns Array of absolute paths to .app bundles
+ */
+async function findAppBundlesRecursive(
+  directory: string,
+  logger: Logger = noOpLogger,
+  visited: VisitedPaths = { paths: new Set() },
+  depth: number = 0,
+  maxDepth: number = 5,
+  permissionErrorStats: PermissionErrorStats = { count: 0 }
+): Promise<string[]> {
+  // Safety: Prevent excessive recursion
+  if (depth > maxDepth) {
+    return [];
+  }
+
+  try {
+    // Check if directory is readable
+    if (!(await isReadableDirectory(directory))) {
+      return [];
+    }
+
+    // Get real path to handle symlinks
+    const realPath = await import('fs/promises').then(fs => fs.realpath(directory).catch(() => directory));
+
+    // Check for circular symlinks
+    if (visited.paths.has(realPath)) {
+      return [];
+    }
+
+    // Mark this path as visited
+    visited.paths.add(realPath);
+
+    const entries = await readdir(directory);
+    const appBundles: string[] = [];
+
+    for (const entry of entries) {
+      const fullPath = join(directory, entry);
+
+      // Security: Verify path is within expected boundary
+      if (!isPathWithinBoundary(fullPath, directory)) {
+        logger.error(`Path traversal attempt detected in recursive search: ${entry}`);
+        continue;
+      }
+
+      try {
+        // Check if it's an app bundle
+        if (entry.endsWith('.app')) {
+          // Verify it's actually a directory (app bundle)
+          if (await isReadableDirectory(fullPath)) {
+            appBundles.push(fullPath);
+            // Don't recurse into .app bundles
+          }
+        } else {
+          // Skip directories that are known to not contain apps
+          if (SKIP_DIRECTORIES.has(entry)) {
+            continue;
+          }
+
+          // If it's a regular directory (not .app), recurse into it
+          const stats = await stat(fullPath);
+          if (stats.isDirectory()) {
+            const nestedApps = await findAppBundlesRecursive(
+              fullPath,
+              logger,
+              visited,
+              depth + 1,
+              maxDepth,
+              permissionErrorStats
+            );
+            appBundles.push(...nestedApps);
+          }
+        }
+      } catch (error) {
+        // Item 2: Add debug-level logging for suppressed permission errors
+        // Track permission errors for observability without spamming logs
+        permissionErrorStats.count++;
+
+        // Only log if debug logging is enabled
+        if (logger.debug) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.debug(`Permission error #${permissionErrorStats.count} in ${fullPath}: ${errorMessage}`);
+        }
+        continue;
+      }
+    }
+
+    return appBundles;
+  } catch (error) {
+    // Log error but continue with other directories
+    logger.error(`Error in recursive search of ${directory}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Processes app bundles to find those with SDEF files
+ *
+ * @param appBundles - Array of app bundle paths to process
+ * @param logger - Optional logger for error reporting
+ * @param seenPaths - Set of already processed paths to avoid duplicates
+ * @param discoveredApps - Array to add discovered apps to
+ */
+async function processAppBundles(
+  appBundles: string[],
+  logger: Logger,
+  seenPaths: Set<string>,
+  discoveredApps: AppWithSDEF[]
+): Promise<void> {
+  // Check each app bundle for SDEF file (parallelized for performance)
+  const sdefResults = await Promise.all(
+    appBundles.map(async (bundlePath) => {
+      const sdefPath = await findSDEFFile(bundlePath, logger);
+      if (sdefPath) {
+        return {
+          appName: basename(bundlePath, '.app'),
+          bundlePath,
+          sdefPath,
+        };
+      }
+      return null;
+    })
+  );
+
+  // Filter out null results and add to discovered apps (avoiding duplicates)
+  for (const result of sdefResults) {
+    if (result) {
+      // Item 4: Normalize paths to catch duplicates with different representations (symlinks, etc.)
+      const normalizedPath = await realpath(result.bundlePath).catch(() => result.bundlePath);
+      if (!seenPaths.has(normalizedPath)) {
+        seenPaths.add(normalizedPath);
+        discoveredApps.push(result);
+      }
+    }
+  }
+}
+
+/**
  * Finds all scriptable applications (apps with SDEF files) on the system
  *
  * This function searches common application directories for .app bundles
  * and checks each one for an SDEF file. It handles:
- * - Multiple search directories
+ * - Multiple search directories (both top-level and recursive)
  * - Permission errors (skips inaccessible directories)
  * - Apps without SDEF files (filters them out)
  * - Caching for performance
+ * - Circular symlinks (prevents infinite loops)
+ * - Deep nesting (handles gracefully)
  *
  * Common search locations:
- * - /System/Library/CoreServices
- * - /System/Applications
- * - /Applications
- * - ~/Applications
+ * - /System/Library/CoreServices (top-level only)
+ * - /System/Applications (recursive)
+ * - /Applications (recursive)
+ * - ~/Applications (recursive)
+ * - ~/Library/Application Support (recursive)
+ * - ~/Library/PreferencePanes (recursive)
+ * - ~/Library/Screen Savers (recursive)
  *
  * @param options - Optional configuration
  * @param options.useCache - Whether to use cached results (default: true)
@@ -307,39 +508,66 @@ export async function findAllScriptableApps(
   }
 
   const discoveredApps: AppWithSDEF[] = [];
+  const seenPaths = new Set<string>(); // Track seen paths to prevent duplicates
 
-  // Search each common directory
-  for (const dir of COMMON_APP_DIRECTORIES) {
+  // Search /System/Library/CoreServices (non-recursive, as it's a flat directory)
+  try {
+    const directory = '/System/Library/CoreServices';
+    const appBundles = await findAppBundles(directory, logger);
+    await processAppBundles(appBundles, logger, seenPaths, discoveredApps);
+  } catch (error) {
+    logger.error('Error processing /System/Library/CoreServices:', error);
+  }
+
+  // Search recursive directories
+  for (const dir of RECURSIVE_SEARCH_DIRECTORIES) {
     const directory = typeof dir === 'function' ? dir() : dir;
 
     try {
-      const appBundles = await findAppBundles(directory, logger);
-
-      // Check each app bundle for SDEF file (parallelized for performance)
-      const sdefResults = await Promise.all(
-        appBundles.map(async (bundlePath) => {
-          const sdefPath = await findSDEFFile(bundlePath, logger);
-          if (sdefPath) {
-            return {
-              appName: basename(bundlePath, '.app'),
-              bundlePath,
-              sdefPath,
-            };
-          }
-          return null;
-        })
-      );
-
-      // Filter out null results and add to discovered apps
-      for (const result of sdefResults) {
-        if (result) {
-          discoveredApps.push(result);
-        }
-      }
+      const appBundles = await findAppBundlesRecursive(directory, logger);
+      await processAppBundles(appBundles, logger, seenPaths, discoveredApps);
     } catch (error) {
       // Log but continue with other directories
       logger.error(`Error processing directory ${directory}:`, error);
     }
+  }
+
+  // Search top-level only directories (no recursion to avoid performance issues)
+  for (const dir of TOP_LEVEL_ONLY_DIRECTORIES) {
+    const directory = typeof dir === 'function' ? dir() : dir;
+
+    try {
+      const appBundles = await findAppBundles(directory, logger);
+      await processAppBundles(appBundles, logger, seenPaths, discoveredApps);
+    } catch (error) {
+      logger.error(`Error processing top-level directory ${directory}:`, error);
+    }
+  }
+
+  // Search ~/Library/Application Support with limited recursion (only 1 level deep)
+  // This is necessary to find apps in subdirectories like Chrome Apps
+  try {
+    const libraryAppSupport = join(homedir(), 'Library', 'Application Support');
+    if (await isReadableDirectory(libraryAppSupport)) {
+      const subdirs = await readdir(libraryAppSupport);
+
+      for (const subdir of subdirs) {
+        const subdirPath = join(libraryAppSupport, subdir);
+
+        try {
+          // Only check subdirectories that might contain apps
+          if (await isReadableDirectory(subdirPath)) {
+            const appBundles = await findAppBundles(subdirPath, logger);
+            await processAppBundles(appBundles, logger, seenPaths, discoveredApps);
+          }
+        } catch (error) {
+          // Skip inaccessible subdirectories
+          continue;
+        }
+      }
+    }
+  } catch (error) {
+    logger.error('Error processing ~/Library/Application Support:', error);
   }
 
   // Update cache
