@@ -250,6 +250,7 @@ export class SDEFParser {
       textNodeName: '#text',
       parseAttributeValue: false, // Keep as strings for type safety
       trimValues: false, // Don't trim - four-character codes may have trailing spaces
+      processEntities: false, // Security: Prevent XML entity expansion attacks (billion laughs)
       // Security: Ignore XML declarations and processing instructions
       // to prevent XXE (XML External Entity) attacks
       ignoreDeclaration: true,
@@ -1446,6 +1447,9 @@ export class SDEFParser {
    *
    * Always throws errors for validation failures. Callers in lenient mode
    * should catch these errors and emit warnings before skipping elements.
+   *
+   * Security: Only allow alphanumeric characters, underscores, spaces, and
+   * safe special chars (? + #) to prevent shell injection attacks via metacharacters
    */
   private validateFourCharCode(code: string, elementType: string, elementName: string): void {
     // CRITICAL: Empty code always throws (regardless of mode)
@@ -1485,6 +1489,15 @@ export class SDEFParser {
           `Invalid code "${code}" for ${elementType} "${elementName}": contains non-printable character at position ${i}`
         );
       }
+    }
+
+    // Security: Restrict to safe characters used in real SDEF files
+    // Allowed: A-Z a-z 0-9 _ (space) ? + #
+    // Prevented shell metacharacters: $ | ; & ` > < () [] {} \ " '
+    if (!/^[A-Za-z0-9_ ?+#]+$/.test(code)) {
+      throw new Error(
+        `Invalid code "${code}" for ${elementType} "${elementName}": contains disallowed characters (only alphanumeric, underscore, space, ?, +, # allowed)`
+      );
     }
   }
 
