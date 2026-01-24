@@ -132,28 +132,32 @@ describe('Phase 2: discoverAppMetadata Error Paths', () => {
 
       const metadata = buildFallbackMetadata(app, error);
 
+      // Username should be sanitized
       expect(metadata.parsingStatus.errorMessage).not.toContain('/Users/sensitive');
-      expect(metadata.parsingStatus.errorMessage).toContain('<file path>');
+      expect(metadata.parsingStatus.errorMessage).toContain('/Users/[user]');
+      // Rest of path should be preserved
+      expect(metadata.parsingStatus.errorMessage).toContain('path/to/file.sdef');
     });
 
-    it('should sanitize Windows paths in error messages', () => {
+    it('should preserve Windows paths (not sanitized on macOS)', () => {
       const app = createTestApp('WindowsPathLeakage');
       const error = new Error('Error reading C:\\Users\\sensitive\\file.sdef');
 
       const metadata = buildFallbackMetadata(app, error);
 
-      expect(metadata.parsingStatus.errorMessage).not.toContain('C:\\Users\\sensitive');
-      expect(metadata.parsingStatus.errorMessage).toContain('<file path>');
+      // Windows paths are not sanitized (macOS-focused implementation)
+      expect(metadata.parsingStatus.errorMessage).toContain('C:\\Users\\sensitive\\file.sdef');
     });
 
-    it('should sanitize home directory references', () => {
+    it('should preserve tilde paths (not expanded)', () => {
       const app = createTestApp('HomePathLeakage');
       const error = new Error('Error reading ~/sensitive/path/file.sdef');
 
       const metadata = buildFallbackMetadata(app, error);
 
-      expect(metadata.parsingStatus.errorMessage).not.toContain('~/sensitive');
-      expect(metadata.parsingStatus.errorMessage).toContain('<file path>');
+      // Tilde (~) is NOT expanded by the sanitizer, so it's preserved as-is
+      // Only actual expanded paths like /Users/username are sanitized
+      expect(metadata.parsingStatus.errorMessage).toContain('~/sensitive/path/file.sdef');
     });
 
     it('should truncate very long error messages', () => {

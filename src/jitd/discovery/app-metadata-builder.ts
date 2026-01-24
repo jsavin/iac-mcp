@@ -13,6 +13,7 @@
 import type { AppWithSDEF } from './find-sdef.js';
 import type { SDEFDictionary } from '../../types/sdef.js';
 import type { AppMetadata } from '../../types/app-metadata.js';
+import { sanitizeErrorMessage as sanitizeErrorMessageUtil } from '../../utils/error-sanitization.js';
 
 /**
  * Infers bundle ID from app bundle path
@@ -188,12 +189,12 @@ function categorizeError(message: string): string {
 /**
  * Sanitizes error messages to prevent information leakage
  *
- * Removes sensitive information from error messages:
- * - File system paths (absolute paths, user directories)
- * - Stack traces (only keeps first line)
- * - Long messages (truncates to max 200 chars)
- *
- * Maps common error patterns to generic messages for security.
+ * Uses the error-sanitization utility which:
+ * - Preserves system paths (/Applications, /System, /Library) for debugging
+ * - Sanitizes user paths (/Users/[user], /home/[user])
+ * - Removes stack traces (only keeps first line)
+ * - Truncates long messages (max 200 chars)
+ * - Categorizes common error patterns
  *
  * @param error - Error object or unknown error
  * @returns Sanitized error message safe for external exposure
@@ -201,14 +202,8 @@ function categorizeError(message: string): string {
 function sanitizeErrorMessage(error: Error | unknown): string {
   const message = error instanceof Error ? error.message : String(error);
 
-  // Remove absolute file paths (any string starting with /)
-  let sanitized = message.replace(/\/[^\s]+/g, '<file path>');
-
-  // Remove Windows paths (C:\...)
-  sanitized = sanitized.replace(/[A-Z]:\\[^\s]+/g, '<file path>');
-
-  // Remove user home directory references
-  sanitized = sanitized.replace(/~\/[^\s]+/g, '<file path>');
+  // Use utility for path sanitization (preserves /Applications, sanitizes /Users)
+  let sanitized = sanitizeErrorMessageUtil(message);
 
   // Take only first line (removes stack traces)
   sanitized = sanitized.split('\n')[0] || sanitized;

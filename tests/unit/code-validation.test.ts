@@ -19,7 +19,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -33,7 +33,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -47,7 +47,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -61,7 +61,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -75,7 +75,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -89,7 +89,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -103,7 +103,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -117,7 +117,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -131,7 +131,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -145,7 +145,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -159,7 +159,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -173,7 +173,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
   });
@@ -189,7 +189,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       const result = await parser.parseContent(validSDEF);
 
       expect(result.suites).toHaveLength(1);
@@ -207,7 +207,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       const result = await parser.parseContent(validSDEF);
 
       expect(result.suites).toHaveLength(1);
@@ -225,7 +225,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       const result = await parser.parseContent(validSDEF);
 
       expect(result.suites).toHaveLength(1);
@@ -243,7 +243,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       const result = await parser.parseContent(validSDEF);
 
       expect(result.suites).toHaveLength(1);
@@ -261,7 +261,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       const result = await parser.parseContent(validSDEF);
 
       expect(result.suites).toHaveLength(1);
@@ -279,7 +279,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       const result = await parser.parseContent(validSDEF);
 
       expect(result.suites).toHaveLength(1);
@@ -299,7 +299,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/non-printable character/i);
     });
   });
@@ -315,7 +315,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -329,7 +329,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -343,7 +343,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -357,7 +357,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -372,7 +372,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
 
@@ -387,7 +387,7 @@ describe('Four-Character Code Validation Security', () => {
   </suite>
 </dictionary>`;
 
-      const parser = new SDEFParser();
+      const parser = new SDEFParser({ mode: 'strict' });
       await expect(parser.parseContent(maliciousSDEF)).rejects.toThrow(/disallowed characters/i);
     });
   });
