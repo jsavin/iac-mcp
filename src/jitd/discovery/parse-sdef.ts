@@ -29,6 +29,12 @@ import type {
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 /**
+ * Maximum allowed element name length
+ * Prevents ReDoS attacks via pathological element names
+ */
+const MAX_ELEMENT_NAME_LENGTH = 100;
+
+/**
  * Remove XML comments using a linear-time state machine
  *
  * WHY: Regex-based comment removal like /<!--[\s\S]*?-->/g is vulnerable to ReDoS
@@ -1068,6 +1074,21 @@ export class SDEFParser {
     elementCode?: string,
     context?: 'parameter' | 'property' | 'direct-parameter' | 'result'
   ): SDEFType {
+    // ReDoS protection: Reject excessively long element names before regex operations
+    if (elementName.length > MAX_ELEMENT_NAME_LENGTH) {
+      this.warn({
+        code: 'ELEMENT_NAME_TOO_LONG',
+        message: `Element name exceeds maximum length (${MAX_ELEMENT_NAME_LENGTH} chars)`,
+        location: {
+          element: context || 'unknown',
+          name: elementName.substring(0, 50) + '...',
+          suite: this.currentSuite,
+          command: this.currentCommand,
+        },
+      });
+      return { kind: 'primitive', type: 'text' };
+    }
+
     let inferredType: SDEFType | null = null;
 
     // Always emit MISSING_TYPE warning first

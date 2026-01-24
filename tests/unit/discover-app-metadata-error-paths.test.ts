@@ -226,11 +226,11 @@ describe('Phase 2: discoverAppMetadata Error Paths', () => {
 
 describe('Phase 2: aggregateWarnings Edge Cases', () => {
   describe('Warning cap behavior', () => {
-    it('should handle exactly 100 unique warning types (at cap)', () => {
+    it('should handle exactly 80 unique regular warning types (at cap)', () => {
       const warnings: ParseWarning[] = [];
 
-      // Create exactly 100 unique warning types
-      for (let i = 0; i < 100; i++) {
+      // Create exactly 80 unique regular warning types (regular warnings cap)
+      for (let i = 0; i < 80; i++) {
         warnings.push(createTestWarning(
           `CODE_${i}`,
           `Warning message ${i}`,
@@ -242,8 +242,8 @@ describe('Phase 2: aggregateWarnings Edge Cases', () => {
 
       const aggregated = aggregateWarnings(warnings);
 
-      // Should have all 100 warnings
-      expect(aggregated.length).toBe(100);
+      // Should have all 80 warnings (regular warnings cap)
+      expect(aggregated.length).toBe(80);
 
       // Each should appear once (no duplicates in input)
       aggregated.forEach((w, i) => {
@@ -252,10 +252,10 @@ describe('Phase 2: aggregateWarnings Edge Cases', () => {
       });
     });
 
-    it('should cap at 100 unique warning types when given 101+ warnings', () => {
+    it('should cap at 80 unique regular warning types when given 81+ warnings', () => {
       const warnings: ParseWarning[] = [];
 
-      // Create 150 unique warning types
+      // Create 150 unique regular warning types
       for (let i = 0; i < 150; i++) {
         warnings.push(createTestWarning(
           `CODE_${i}`,
@@ -268,12 +268,12 @@ describe('Phase 2: aggregateWarnings Edge Cases', () => {
 
       const aggregated = aggregateWarnings(warnings);
 
-      // Should cap at 100 warnings
-      expect(aggregated.length).toBe(100);
+      // Should cap at 80 warnings (regular warnings cap)
+      expect(aggregated.length).toBe(80);
 
-      // Should have first 100 warnings (warnings 100-149 dropped)
+      // Should have first 80 warnings (warnings 80-149 dropped)
       expect(aggregated[0].code).toBe('CODE_0');
-      expect(aggregated[99].code).toBe('CODE_99');
+      expect(aggregated[79].code).toBe('CODE_79');
     });
 
     it('should deduplicate warnings of the same type', () => {
@@ -455,8 +455,8 @@ describe('Phase 2: Performance Tests', () => {
       // Should not throw or hang
       const aggregated = aggregateWarnings(warnings);
 
-      // Should cap at 100 warnings
-      expect(aggregated.length).toBe(100);
+      // Should cap at 80 warnings (regular warnings limit, no security warnings in this test)
+      expect(aggregated.length).toBe(80);
     });
 
     it('should handle 10,000+ duplicate warnings efficiently', () => {
@@ -506,7 +506,7 @@ describe('Phase 2: Performance Tests', () => {
       testSizes.forEach(size => {
         const warnings: ParseWarning[] = [];
 
-        // Create many warnings (all unique codes, will be capped at 100)
+        // Create many warnings (all unique codes, will be capped at 80 for regular warnings)
         for (let i = 0; i < size; i++) {
           warnings.push(createTestWarning(
             `CODE_${i}`,
@@ -518,8 +518,8 @@ describe('Phase 2: Performance Tests', () => {
 
         const aggregated = aggregateWarnings(warnings);
 
-        // Should always cap at 100 regardless of input size
-        expect(aggregated.length).toBe(100);
+        // Should always cap at 80 regardless of input size (regular warnings only)
+        expect(aggregated.length).toBe(80);
       });
     });
   });
@@ -541,8 +541,8 @@ describe('Phase 2: Performance Tests', () => {
 
       const aggregated = aggregateWarnings(warnings);
 
-      // Should have 100 warnings
-      expect(aggregated.length).toBe(100);
+      // Should have 80 warnings (regular warnings cap, no security warnings)
+      expect(aggregated.length).toBe(80);
 
       // Each should have count of 101 (original + 100 duplicates)
       aggregated.forEach(w => {
