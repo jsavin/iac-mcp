@@ -1,4 +1,7 @@
 ---
+
+**⚠️ MANDATORY OUTPUT LIMIT**: ALL tool results MUST be <100KB. Use `head -100`, `tail -100`, `grep -m 50` with line limits. Summarize findings instead of embedding raw data. Exceeding this limit will corrupt the session file.
+
 name: macos-automation-expert
 description: |
   Use this agent when you need expertise on macOS automation technologies. This includes: SDEF file parsing, AppleScript/JXA execution, AppleEvents, scriptable app discovery, automation permissions, or debugging automation issues.
