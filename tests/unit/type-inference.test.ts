@@ -1505,10 +1505,13 @@ describe('Type Inference - Lenient Mode', () => {
       const duration = Date.now() - startTime;
 
       const param = result.suites[0].commands[0].parameters[0];
-      // Should match /(Date|Time|Timestamp)/ pattern (capitalized Date at end)
-      // Code "unkn" has no mapping, so falls through to name-based inference
-      expect(param.type.kind).toBe('date');
-      expect(duration).toBeLessThan(1000); // Should complete in < 1 second
+      // ReDoS protection: Names > 100 chars are rejected before regex operations
+      // Returns 'text' (primitive type) as safe fallback
+      expect(param.type.kind).toBe('primitive');
+      if (param.type.kind === 'primitive') {
+        expect(param.type.type).toBe('text');
+      }
+      expect(duration).toBeLessThan(1000); // Should complete in < 1 second (ReDoS protection prevents hang)
     });
   });
 

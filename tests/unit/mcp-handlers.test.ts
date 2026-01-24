@@ -21,6 +21,8 @@ import type {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { MCPTool, ToolMetadata } from '../../src/types/mcp-tool.js';
 import type { PermissionDecision } from '../../src/permissions/types.js';
+import { aggregateWarnings } from '../../src/mcp/handlers.js';
+import type { ParseWarning } from '../../src/jitd/discovery/parse-sdef.js';
 
 /**
  * NOTE: MCP Handlers implementation does not exist yet.
@@ -2424,7 +2426,419 @@ describe('MCP Handlers', () => {
   });
 
   // ============================================================================
-  // SECTION 8: Integration Points
+  // SECTION 8: Warning Aggregation
+  // ============================================================================
+
+  describe('Warning Aggregation', () => {
+    it('should limit warnings to 100 maximum', () => {
+      // Create 150 warnings (all with different names to avoid deduplication)
+      const warnings: ParseWarning[] = Array.from({ length: 150 }, (_, i) => ({
+        code: `MISSING_TYPE_${i}`, // Different codes to avoid grouping
+        message: `Missing type for parameter ${i}`,
+        location: {
+          element: 'parameter',
+          name: `param_${i}`,
+          suite: 'Standard Suite',
+          command: 'test_command',
+        },
+      }));
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have at most 100 entries
+      expect(aggregated.length).toBeLessThanOrEqual(100);
+    });
+
+    it('should deduplicate identical warnings', () => {
+      // Create 10 identical warnings
+      const warnings: ParseWarning[] = Array.from({ length: 10 }, () => ({
+        code: 'MISSING_TYPE',
+        message: 'Missing type for parameter',
+        location: {
+          element: 'parameter',
+          name: 'test_param',
+          suite: 'Standard Suite',
+          command: 'test_command',
+        },
+      }));
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // After aggregation, should have 1 warning with count in message
+      expect(aggregated.length).toBe(1);
+      expect(aggregated[0].code).toBe('MISSING_TYPE');
+      expect(aggregated[0].message).toContain('and 9 more similar warnings');
+    });
+
+    it('should add count suffix when count > 1', () => {
+      // Create multiple identical warnings
+      const warnings: ParseWarning[] = Array.from({ length: 5 }, () => ({
+        code: 'MISSING_TYPE',
+        message: 'Missing type for parameter',
+        location: {
+          element: 'parameter',
+          name: 'test_param',
+          suite: 'Standard Suite',
+        },
+      }));
+
+      const aggregated = aggregateWarnings(warnings);
+
+      expect(aggregated.length).toBe(1);
+      expect(aggregated[0].message).toBe('Missing type for parameter (and 4 more similar warnings)');
+    });
+
+    it('should not add count suffix when count = 1', () => {
+      // Single warning
+      const warnings: ParseWarning[] = [{
+        code: 'MISSING_TYPE',
+        message: 'Missing type for parameter',
+        location: {
+          element: 'parameter',
+          name: 'test_param',
+          suite: 'Standard Suite',
+        },
+      }];
+
+      const aggregated = aggregateWarnings(warnings);
+
+      expect(aggregated.length).toBe(1);
+      expect(aggregated[0].message).toBe('Missing type for parameter');
+      expect(aggregated[0]).not.toHaveProperty('count');
+    });
+
+    it('should not group warnings with different codes', () => {
+      // Different warning codes
+      const warnings: ParseWarning[] = [
+        {
+          code: 'MISSING_TYPE',
+          message: 'Missing type',
+          location: {
+            element: 'parameter',
+            name: 'param1',
+            suite: 'Standard Suite',
+          },
+        },
+        {
+          code: 'UNION_TYPE_SIMPLIFIED',
+          message: 'Union type simplified',
+          location: {
+            element: 'parameter',
+            name: 'param1',
+            suite: 'Standard Suite',
+          },
+        },
+      ];
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have 2 separate warnings
+      expect(aggregated.length).toBe(2);
+      expect(aggregated.find(w => w.code === 'MISSING_TYPE')).toBeDefined();
+      expect(aggregated.find(w => w.code === 'UNION_TYPE_SIMPLIFIED')).toBeDefined();
+    });
+
+    it('should not group warnings from different suites', () => {
+      // Same code, different suites
+      const warnings: ParseWarning[] = [
+        {
+          code: 'MISSING_TYPE',
+          message: 'Missing type',
+          location: {
+            element: 'parameter',
+            name: 'param1',
+            suite: 'Standard Suite',
+          },
+        },
+        {
+          code: 'MISSING_TYPE',
+          message: 'Missing type',
+          location: {
+            element: 'parameter',
+            name: 'param1',
+            suite: 'Finder Suite',
+          },
+        },
+      ];
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have 2 separate warnings
+      expect(aggregated.length).toBe(2);
+      expect(aggregated.find(w => w.suite === 'Standard Suite')).toBeDefined();
+      expect(aggregated.find(w => w.suite === 'Finder Suite')).toBeDefined();
+    });
+
+    it('should not group warnings from different element types', () => {
+      // Same code, different element types
+      const warnings: ParseWarning[] = [
+        {
+          code: 'MISSING_TYPE',
+          message: 'Missing type',
+          location: {
+            element: 'parameter',
+            name: 'param1',
+            suite: 'Standard Suite',
+          },
+        },
+        {
+          code: 'MISSING_TYPE',
+          message: 'Missing type',
+          location: {
+            element: 'property',
+            name: 'prop1',
+            suite: 'Standard Suite',
+          },
+        },
+      ];
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have 2 separate warnings
+      expect(aggregated.length).toBe(2);
+      expect(aggregated.find(w => w.element === 'parameter')).toBeDefined();
+      expect(aggregated.find(w => w.element === 'property')).toBeDefined();
+    });
+
+    it('should handle undefined suite gracefully', () => {
+      // Warning without suite
+      const warnings: ParseWarning[] = [
+        {
+          code: 'MISSING_TYPE',
+          message: 'Missing type',
+          location: {
+            element: 'parameter',
+            name: 'param1',
+          },
+        },
+        {
+          code: 'MISSING_TYPE',
+          message: 'Missing type',
+          location: {
+            element: 'parameter',
+            name: 'param2',
+          },
+        },
+      ];
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should group warnings with undefined suite together
+      expect(aggregated.length).toBe(1);
+      expect(aggregated[0].suite).toBeUndefined();
+      expect(aggregated[0].message).toContain('and 1 more similar warnings');
+    });
+
+    // ========================================================================
+    // Security Warning Prioritization Tests
+    // ========================================================================
+
+    it('should prioritize security warnings over regular warnings', () => {
+      // Create mix of security and regular warnings
+      const warnings: ParseWarning[] = [];
+
+      // Add 50 regular warnings (vary element to avoid deduplication)
+      for (let i = 0; i < 50; i++) {
+        warnings.push({
+          code: 'MISSING_TYPE',
+          message: `Missing type ${i}`,
+          location: {
+            element: `parameter_${i}`, // Vary element to create unique warnings
+            name: `param_${i}`,
+            suite: 'Standard Suite',
+          },
+        });
+      }
+
+      // Add 10 security warnings (vary element to avoid deduplication)
+      for (let i = 0; i < 10; i++) {
+        warnings.push({
+          code: 'NULL_BYTE_DETECTED',
+          message: `Null byte detected ${i}`,
+          location: {
+            element: `sec_element_${i}`, // Vary element to create unique warnings
+            name: `sec_param_${i}`,
+            suite: 'Standard Suite',
+          },
+        });
+      }
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // First 10 should be security warnings
+      const first10 = aggregated.slice(0, 10);
+      expect(first10.every(w => w.code === 'NULL_BYTE_DETECTED')).toBe(true);
+
+      // Remaining should be regular warnings (up to 50)
+      const remaining = aggregated.slice(10);
+      expect(remaining.every(w => w.code === 'MISSING_TYPE')).toBe(true);
+    });
+
+    it('should cap security warnings at 20 maximum', () => {
+      // Create 30 security warnings (all different to avoid deduplication)
+      const warnings: ParseWarning[] = [];
+
+      for (let i = 0; i < 30; i++) {
+        warnings.push({
+          code: `SECURITY_ISSUE_${i}`, // Different codes to avoid grouping
+          message: `Security issue ${i}`,
+          location: {
+            element: 'parameter',
+            name: `sec_param_${i}`,
+            suite: 'Standard Suite',
+          },
+        });
+      }
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have exactly 20 security warnings
+      const securityWarnings = aggregated.filter(w => w.code.startsWith('SECURITY_'));
+      expect(securityWarnings.length).toBe(20);
+    });
+
+    it('should cap regular warnings at 80 maximum', () => {
+      // Create 5 security warnings + 100 regular warnings
+      const warnings: ParseWarning[] = [];
+
+      // Add 5 security warnings
+      for (let i = 0; i < 5; i++) {
+        warnings.push({
+          code: `NULL_BYTE_${i}`, // Different codes to avoid grouping
+          message: `Null byte ${i}`,
+          location: {
+            element: 'parameter',
+            name: `sec_param_${i}`,
+            suite: 'Standard Suite',
+          },
+        });
+      }
+
+      // Add 100 regular warnings
+      for (let i = 0; i < 100; i++) {
+        warnings.push({
+          code: `MISSING_TYPE_${i}`, // Different codes to avoid grouping
+          message: `Missing type ${i}`,
+          location: {
+            element: 'parameter',
+            name: `param_${i}`,
+            suite: 'Standard Suite',
+          },
+        });
+      }
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have 5 security + 80 regular = 85 total
+      expect(aggregated.length).toBe(85);
+
+      // First 5 should be security warnings
+      const securityWarnings = aggregated.slice(0, 5);
+      expect(securityWarnings.every(w => w.code.startsWith('NULL_BYTE_'))).toBe(true);
+
+      // Remaining 80 should be regular warnings
+      const regularWarnings = aggregated.slice(5);
+      expect(regularWarnings.length).toBe(80);
+      expect(regularWarnings.every(w => w.code.startsWith('MISSING_TYPE_'))).toBe(true);
+    });
+
+    it('should not hide security warnings with regular warning cap', () => {
+      // Create 90 regular warnings + 15 security warnings
+      const warnings: ParseWarning[] = [];
+
+      // Add 90 regular warnings
+      for (let i = 0; i < 90; i++) {
+        warnings.push({
+          code: `MISSING_TYPE_${i}`, // Different codes to avoid grouping
+          message: `Missing type ${i}`,
+          location: {
+            element: 'parameter',
+            name: `param_${i}`,
+            suite: 'Standard Suite',
+          },
+        });
+      }
+
+      // Add 15 security warnings
+      for (let i = 0; i < 15; i++) {
+        warnings.push({
+          code: `SECURITY_ISSUE_${i}`, // Different codes to avoid grouping
+          message: `Security issue ${i}`,
+          location: {
+            element: 'parameter',
+            name: `sec_param_${i}`,
+            suite: 'Standard Suite',
+          },
+        });
+      }
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // All 15 security warnings should be present
+      const securityWarnings = aggregated.filter(w => w.code.startsWith('SECURITY_'));
+      expect(securityWarnings.length).toBe(15);
+
+      // Regular warnings should be capped at 80
+      const regularWarnings = aggregated.filter(w => w.code.startsWith('MISSING_TYPE_'));
+      expect(regularWarnings.length).toBe(80);
+
+      // Total: 15 + 80 = 95
+      expect(aggregated.length).toBe(95);
+    });
+
+    it('should detect security warnings by code prefix', () => {
+      // Test various security-related prefixes
+      const securityCodes = [
+        'SECURITY_VULNERABILITY',
+        'INJECTION_ATTACK',
+        'NULL_BYTE_DETECTED',
+        'XXE_ATTEMPT',
+        'ENTITY_EXPANSION',
+        'REDOS_RISK',
+      ];
+
+      const warnings: ParseWarning[] = securityCodes.map(code => ({
+        code,
+        message: `Security warning: ${code}`,
+        location: {
+          element: 'parameter',
+          name: 'test_param',
+          suite: 'Standard Suite',
+        },
+      }));
+
+      // Add regular warnings
+      warnings.push({
+        code: 'MISSING_TYPE',
+        message: 'Regular warning',
+        location: {
+          element: 'parameter',
+          name: 'test_param',
+          suite: 'Standard Suite',
+        },
+      });
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // First 6 should be security warnings
+      const first6 = aggregated.slice(0, 6);
+      expect(first6.every(w =>
+        w.code.startsWith('SECURITY_') ||
+        w.code.startsWith('INJECTION_') ||
+        w.code.startsWith('NULL_BYTE') ||
+        w.code.startsWith('XXE_') ||
+        w.code.startsWith('ENTITY_') ||
+        w.code.startsWith('REDOS_')
+      )).toBe(true);
+
+      // Last should be regular warning
+      const last = aggregated[aggregated.length - 1];
+      expect(last.code).toBe('MISSING_TYPE');
+    });
+  });
+
+  // ============================================================================
+  // SECTION 9: Integration Points
   // ============================================================================
 
   describe('Integration Points', () => {
