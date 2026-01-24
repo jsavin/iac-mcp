@@ -1,4 +1,7 @@
 ---
+
+**⚠️ MANDATORY OUTPUT LIMIT**: ALL tool results MUST be <100KB. Use `head -100`, `tail -100`, `grep -m 50` with line limits. Summarize findings instead of embedding raw data. Exceeding this limit will corrupt the session file.
+
 name: mcp-protocol-expert
 description: |
   Use this agent when you need expertise on the Model Context Protocol (MCP). This includes: implementing MCP servers, designing tool schemas, understanding MCP transport mechanisms, handling resources vs tools decisions, debugging MCP protocol issues, or ensuring compliance with MCP specifications.
