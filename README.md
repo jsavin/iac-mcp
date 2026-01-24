@@ -36,8 +36,6 @@ This project is in early development. The goal of Phase 0 is to prove the JITD c
 3. Executing commands via JXA
 4. Testing with Claude Desktop
 
-See [planning/ROADMAP.md](planning/ROADMAP.md) for the complete 18-month plan including multi-platform expansion.
-
 ## Prerequisites
 
 **For macOS (Phase 1):**
