@@ -83,7 +83,7 @@ function generateDescription(dictionary: SDEFDictionary): string {
 }
 
 /**
- * Builds lightweight app metadata from AppWithSDEF and SDEF dictionary
+ * Core metadata construction logic shared by both sync and async versions
  *
  * Extracts metadata WITHOUT generating full tool definitions:
  * - App name
@@ -92,6 +92,30 @@ function generateDescription(dictionary: SDEFDictionary): string {
  * - Tool count (total commands across all suites)
  * - Suite names (list of suite names in order)
  *
+ * @param app - Application with SDEF file information
+ * @param dictionary - Parsed SDEF dictionary
+ * @returns AppMetadata object
+ */
+function buildMetadataCore(
+  app: AppWithSDEF,
+  dictionary: SDEFDictionary
+): AppMetadata {
+  return {
+    appName: app.appName,
+    bundleId: inferBundleId(app.appName, app.bundlePath),
+    description: generateDescription(dictionary),
+    toolCount: countTotalCommands(dictionary),
+    suiteNames: extractSuiteNames(dictionary),
+    parsingStatus: {
+      status: 'success',
+    },
+  };
+}
+
+/**
+ * Builds lightweight app metadata from AppWithSDEF and SDEF dictionary
+ *
+ * Async version for use with Promise-based workflows.
  * Performance: Should complete in <30ms per app
  *
  * @param app - Application with SDEF file information
@@ -102,13 +126,7 @@ export async function buildMetadata(
   app: AppWithSDEF,
   dictionary: SDEFDictionary
 ): Promise<AppMetadata> {
-  return {
-    appName: app.appName,
-    bundleId: inferBundleId(app.appName, app.bundlePath),
-    description: generateDescription(dictionary),
-    toolCount: countTotalCommands(dictionary),
-    suiteNames: extractSuiteNames(dictionary),
-  };
+  return buildMetadataCore(app, dictionary);
 }
 
 /**
@@ -142,11 +160,92 @@ export function buildMetadataSync(
   app: AppWithSDEF,
   dictionary: SDEFDictionary
 ): AppMetadata {
+  return buildMetadataCore(app, dictionary);
+}
+
+/**
+ * Standard error categories for SDEF parsing failures
+ */
+enum ParseErrorCategory {
+  FILE_NOT_FOUND = 'SDEF file not found or inaccessible',
+  PERMISSION_DENIED = 'Permission denied reading SDEF file',
+  XML_PARSE_ERROR = 'XML parsing error in SDEF file',
+}
+
+/**
+ * Categorizes error message into standard error category
+ *
+ * @param message - Sanitized error message
+ * @returns Standard error category or original message
+ */
+function categorizeError(message: string): string {
+  if (/enoent/i.test(message)) return ParseErrorCategory.FILE_NOT_FOUND;
+  if (/permission denied/i.test(message)) return ParseErrorCategory.PERMISSION_DENIED;
+  if (/parse|xml/i.test(message)) return ParseErrorCategory.XML_PARSE_ERROR;
+  return message; // already sanitized
+}
+
+/**
+ * Sanitizes error messages to prevent information leakage
+ *
+ * Removes sensitive information from error messages:
+ * - File system paths (absolute paths, user directories)
+ * - Stack traces (only keeps first line)
+ * - Long messages (truncates to max 200 chars)
+ *
+ * Maps common error patterns to generic messages for security.
+ *
+ * @param error - Error object or unknown error
+ * @returns Sanitized error message safe for external exposure
+ */
+function sanitizeErrorMessage(error: Error | unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+
+  // Remove absolute file paths (any string starting with /)
+  let sanitized = message.replace(/\/[^\s]+/g, '<file path>');
+
+  // Remove Windows paths (C:\...)
+  sanitized = sanitized.replace(/[A-Z]:\\[^\s]+/g, '<file path>');
+
+  // Remove user home directory references
+  sanitized = sanitized.replace(/~\/[^\s]+/g, '<file path>');
+
+  // Take only first line (removes stack traces)
+  sanitized = sanitized.split('\n')[0] || sanitized;
+
+  // Truncate if too long (max 200 chars)
+  if (sanitized.length > 200) {
+    sanitized = sanitized.substring(0, 197) + '...';
+  }
+
+  // Categorize into standard error types
+  return categorizeError(sanitized);
+}
+
+/**
+ * Builds fallback metadata for apps with unparseable SDEF files
+ *
+ * When SDEF parsing completely fails (XML errors, missing files, etc.),
+ * this function creates basic metadata with status 'failed' rather than
+ * hiding the app completely.
+ *
+ * @param app - Application with SDEF file information
+ * @param error - Error that occurred during SDEF parsing
+ * @returns AppMetadata object with failed status
+ */
+export function buildFallbackMetadata(
+  app: AppWithSDEF,
+  error: Error
+): AppMetadata {
   return {
     appName: app.appName,
     bundleId: inferBundleId(app.appName, app.bundlePath),
-    description: generateDescription(dictionary),
-    toolCount: countTotalCommands(dictionary),
-    suiteNames: extractSuiteNames(dictionary),
+    description: 'Unable to parse SDEF file',
+    toolCount: 0,
+    suiteNames: [],
+    parsingStatus: {
+      status: 'failed',
+      errorMessage: sanitizeErrorMessage(error),
+    },
   };
 }

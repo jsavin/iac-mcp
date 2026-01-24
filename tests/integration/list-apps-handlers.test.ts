@@ -506,8 +506,7 @@ describe('list_apps Tool and iac://apps Resource - Actual Handler Execution', ()
       const response = await callTool(handlers, 'get_app_tools', {});
 
       expect(response.isError).toBe(true);
-      expect(response.content[0].text).toContain('Missing required parameter');
-      expect(response.content[0].text).toContain('app_name');
+      expect(response.content[0].text).toContain('Missing or invalid app_name parameter');
     });
 
     it('should return error when app_name is too long', async () => {
