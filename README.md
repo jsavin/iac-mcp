@@ -272,7 +272,6 @@ tools/                    # Development helper scripts
 
 ## Documentation
 
-- [Vision](planning/VISION.md) - Project vision and philosophy
 - [Start Here](planning/START-HERE.md) - Quick start guide
 - [Decisions](planning/DECISIONS.md) - Architectural decisions
 - [CLAUDE.md](CLAUDE.md) - Development workflow and patterns
