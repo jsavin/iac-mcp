@@ -207,5 +207,53 @@ describe('XML Entity Expansion Security', () => {
       expect(result).toBeDefined();
       expect(duration).toBeLessThan(5000); // Should complete in < 5 seconds
     });
+
+    it('should NOT decode HTML entities with processEntities: false (security)', async () => {
+      const sdefWithHTMLEntities = `<?xml version="1.0"?>
+<dictionary title="TestApp">
+  <suite name="TestSuite" code="test" description="Suite with &lt;HTML&gt; entities">
+    <command name="test" code="testtest" description="Command with &amp; and &quot;quotes&quot;">
+      <parameter name="arg" code="arg1" type="text" description="Param with &lt;angle&gt; brackets"/>
+    </command>
+  </suite>
+</dictionary>`;
+
+      const parser = new SDEFParser();
+      const result = await parser.parseContent(sdefWithHTMLEntities);
+
+      // Verify HTML entities are NOT decoded (security feature)
+      // With processEntities: false, all entities (including HTML ones) remain unexpanded
+      expect(result.suites[0].description).toContain('&lt;');
+      expect(result.suites[0].description).toContain('&gt;');
+      expect(result.suites[0].description).not.toContain('<HTML>');
+      expect(result.suites[0].commands[0].description).toContain('&amp;');
+      expect(result.suites[0].commands[0].description).toContain('&quot;');
+      expect(result.suites[0].commands[0].parameters[0].description).toContain('&lt;');
+      expect(result.suites[0].commands[0].parameters[0].description).toContain('&gt;');
+    });
+
+    it('should safely handle DOCTYPE with parameter entities (iWork pattern)', async () => {
+      const sdefWithParameterEntities = `<?xml version="1.0"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd" [
+  <!ENTITY % text "CDATA">
+  <!ENTITY % code "CDATA">
+]>
+<dictionary title="TestApp">
+  <suite name="TestSuite" code="test">
+    <command name="test" code="testtest">
+      <parameter name="arg" code="arg1" type="text"/>
+    </command>
+  </suite>
+</dictionary>`;
+
+      const parser = new SDEFParser();
+
+      // Should parse successfully (DOCTYPE + entities stripped)
+      const result = await parser.parseContent(sdefWithParameterEntities);
+
+      expect(result.title).toBe('TestApp');
+      expect(result.suites).toHaveLength(1);
+      expect(result.suites[0].commands).toHaveLength(1);
+    });
   });
 });
