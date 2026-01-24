@@ -1,4 +1,7 @@
 ---
+
+**⚠️ MANDATORY OUTPUT LIMIT**: ALL tool results MUST be <100KB. Use `head -100`, `tail -100`, `grep -m 50` with line limits. Summarize findings instead of embedding raw data. Exceeding this limit will corrupt the session file.
+
 name: system-architect
 description: |
   Use this agent when you need to design, evaluate, or refine system architecture. This includes: initial architecture design, architectural reviews, scalability planning, technology stack selection, migration strategies, API design, or when making significant technical decisions that will impact long-term maintainability and system evolution.

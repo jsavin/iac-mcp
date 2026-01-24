@@ -1,4 +1,7 @@
 ---
+
+**⚠️ MANDATORY OUTPUT LIMIT**: ALL tool results MUST be <100KB. Use `head -100`, `tail -100`, `grep -m 50` with line limits. Summarize findings instead of embedding raw data. Exceeding this limit will corrupt the session file.
+
 name: typescript-engineer
 description: |
   Use this agent when you need expertise on TypeScript patterns, Node.js best practices, or modern JavaScript development. This includes: type system design, async patterns, error handling, testing strategies, or architectural patterns for TypeScript/Node.js applications.
