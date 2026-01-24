@@ -190,4 +190,26 @@ describe('Error Sanitization Utility', () => {
       expect(sanitized).toContain('Standard.sdef');
     });
   });
+
+  describe('Username with Spaces (Bot Review Fix)', () => {
+    it('should sanitize usernames with spaces correctly', () => {
+      const message = 'Error at /Users/john doe/Documents/file.txt';
+      const sanitized = sanitizeErrorMessage(message);
+
+      expect(sanitized).not.toContain('john doe');
+      expect(sanitized).not.toContain('john');
+      expect(sanitized).not.toContain('doe');
+      expect(sanitized).toContain('/Users/[user]/Documents/file.txt');
+    });
+
+    it('should sanitize Linux usernames with spaces', () => {
+      const message = 'Failed at /home/jane doe/projects/app.js';
+      const sanitized = sanitizeErrorMessage(message);
+
+      expect(sanitized).not.toContain('jane doe');
+      expect(sanitized).not.toContain('jane');
+      expect(sanitized).not.toContain('doe');
+      expect(sanitized).toContain('/home/[user]/projects/app.js');
+    });
+  });
 });

@@ -37,14 +37,16 @@ export function sanitizeErrorMessage(message: string): string {
   // Step 1: Sanitize /Users/username paths (macOS)
   // Match /Users/[username] where username is any non-slash characters
   // Replace with /Users/[user] to hide username
+  // Handles usernames with spaces (e.g., "john doe") and special chars
   // Note: Edge case paths like "/home/Users/alice" may be double-sanitized
   // to "/[user]/[user]". This is acceptable as the goal is anonymization.
-  sanitized = sanitized.replace(/\/Users\/[^\/\s]+/g, '/Users/[user]');
+  sanitized = sanitized.replace(/\/Users\/[^\/]+/g, '/Users/[user]');
 
   // Step 2: Sanitize /home/username paths (Linux)
   // Match /home/[username] where username is any non-slash characters
   // Replace with /home/[user] to hide username
-  sanitized = sanitized.replace(/\/home\/[^\/\s]+/g, '/home/[user]');
+  // Handles usernames with spaces and special chars
+  sanitized = sanitized.replace(/\/home\/[^\/]+/g, '/home/[user]');
 
   // Step 3: Sanitize $HOME environment variable paths
   // If $HOME is set, replace all occurrences with [HOME]
