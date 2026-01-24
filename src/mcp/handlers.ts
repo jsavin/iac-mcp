@@ -36,16 +36,193 @@ import { buildMetadata } from '../jitd/discovery/app-metadata-builder.js';
 import { loadAppTools } from '../jitd/discovery/app-tools-loader.js';
 import type { AppMetadata } from '../types/app-metadata.js';
 import type { PerAppCache } from '../jitd/cache/per-app-cache.js';
+import { SDEFParser, type ParseWarning } from '../jitd/discovery/parse-sdef.js';
+import { buildFallbackMetadata } from '../jitd/discovery/app-metadata-builder.js';
 
 /**
  * Maximum length for app_name parameter to prevent DoS attacks
  */
 const MAX_APP_NAME_LENGTH = 100;
 
+/**
+ * Maximum security warnings per app (prioritized in output)
+ */
+const MAX_SECURITY_WARNINGS = 20;
+
+/**
+ * Maximum regular warnings per app (after security warnings)
+ */
+const MAX_REGULAR_WARNINGS = 80;
+
+/**
+ * Type guard to validate app_name parameter
+ * Ensures value is a non-empty string at runtime
+ *
+ * @param value - Value to check
+ * @returns true if value is a non-empty string
+ */
+function isValidAppName(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+/**
+ * Check if a warning is security-related
+ *
+ * @param warning - Parse warning to check
+ * @returns true if warning is security-related
+ */
+function isSecurityWarning(warning: ParseWarning): boolean {
+  const securityCodes = [
+    'SECURITY_',
+    'INJECTION_',
+    'NULL_BYTE',
+    'XXE_',
+    'ENTITY_',
+    'REDOS_',
+  ];
+  return securityCodes.some(prefix => warning.code.startsWith(prefix));
+}
+
 // Server-side cache for app metadata
 let cachedAppMetadata: AppMetadata[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 60000; // 1 minute TTL
+
+/**
+ * Streaming warning aggregator with O(1) memory per warning
+ *
+ * Aggregates warnings during collection (not after) to prevent unbounded memory growth.
+ * If an SDEF file has 10,000 malformed elements, the Maps never exceed 100 total entries.
+ *
+ * Groups by: code:suite:element
+ * Caps at: 20 security warnings + 80 regular warnings = 100 total unique warning types
+ *
+ * Security warning prioritization: First 20 slots reserved for security warnings to prevent
+ * them from being hidden by regular warnings. Security warnings always appear first in output.
+ */
+class WarningAggregator {
+  private securityWarnings = new Map<string, { warning: ParseWarning; count: number }>();
+  private regularWarnings = new Map<string, { warning: ParseWarning; count: number }>();
+  private securityCapped = false;
+  private regularCapped = false;
+
+  /**
+   * Add a warning to the aggregator
+   *
+   * Security warnings are prioritized and capped at MAX_SECURITY_WARNINGS.
+   * Regular warnings are capped at MAX_REGULAR_WARNINGS.
+   * This ensures security warnings are never hidden by regular warnings.
+   *
+   * @param warning - Parse warning to aggregate
+   */
+  add(warning: ParseWarning): void {
+    const isSecurity = isSecurityWarning(warning);
+
+    // Create key for deduplication (code:suite:element)
+    const key = `${warning.code}:${warning.location.suite || 'unknown'}:${warning.location.element}`;
+
+    if (isSecurity) {
+      // Route to security warnings collection
+      const existing = this.securityWarnings.get(key);
+
+      if (existing) {
+        // Increment count for existing warning type
+        existing.count++;
+      } else {
+        // Only add new warning types if under the limit
+        if (this.securityWarnings.size < MAX_SECURITY_WARNINGS) {
+          this.securityWarnings.set(key, { warning, count: 1 });
+        } else {
+          // Mark as capped when we hit the limit
+          this.securityCapped = true;
+        }
+      }
+    } else {
+      // Route to regular warnings collection
+      const existing = this.regularWarnings.get(key);
+
+      if (existing) {
+        // Increment count for existing warning type
+        existing.count++;
+      } else {
+        // Only add new warning types if under the limit
+        if (this.regularWarnings.size < MAX_REGULAR_WARNINGS) {
+          this.regularWarnings.set(key, { warning, count: 1 });
+        } else {
+          // Mark as capped when we hit the limit
+          this.regularCapped = true;
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if warning cap was reached
+   *
+   * @returns true if warnings were capped (either security or regular)
+   */
+  isCapped(): boolean {
+    return this.securityCapped || this.regularCapped;
+  }
+
+  /**
+   * Convert aggregated warnings to output format
+   *
+   * Security warnings appear first, followed by regular warnings.
+   * This ensures security issues are never hidden by warning caps.
+   *
+   * @returns Array of warnings with count suffix for duplicates
+   */
+  toArray(): Array<{
+    code: string;
+    message: string;
+    element?: string;
+    suite?: string;
+  }> {
+    const formatWarning = ({ warning, count }: { warning: ParseWarning; count: number }) => ({
+      code: warning.code,
+      message: count > 1
+        ? `${warning.message} (and ${count - 1} more similar warnings)`
+        : warning.message,
+      element: warning.location.element,
+      suite: warning.location.suite,
+    });
+
+    // Security warnings first, then regular warnings
+    const securityArray = Array.from(this.securityWarnings.values()).map(formatWarning);
+    const regularArray = Array.from(this.regularWarnings.values()).map(formatWarning);
+
+    return [...securityArray, ...regularArray];
+  }
+}
+
+/**
+ * Aggregate similar warnings to prevent overwhelming users
+ *
+ * @deprecated Use WarningAggregator class directly for streaming aggregation with O(1) memory.
+ * This function is kept for backward compatibility with tests.
+ *
+ * Groups warnings by code, suite, and element type, then counts duplicates.
+ * Limits total warnings to 100 (20 security + 80 regular).
+ *
+ * @param warnings - Array of parse warnings from SDEF parser
+ * @returns Aggregated warnings with counts for duplicates
+ */
+export function aggregateWarnings(warnings: ParseWarning[]): Array<{
+  code: string;
+  message: string;
+  element?: string;
+  suite?: string;
+}> {
+  const aggregator = new WarningAggregator();
+
+  // Add all warnings (aggregator will cap at 20 security + 80 regular)
+  for (const warning of warnings) {
+    aggregator.add(warning);
+  }
+
+  return aggregator.toArray();
+}
 
 /**
  * Discover and build metadata for all scriptable apps
@@ -79,22 +256,46 @@ async function discoverAppMetadata(): Promise<AppMetadata[]> {
   // Build metadata in parallel for performance
   const metadataPromises = apps.map(async (app) => {
     try {
-      console.error(`[discoverAppMetadata] Building metadata for ${app.appName}`);
-      const dictionary = await sdefParser.parse(app.sdefPath);
-      return await buildMetadata(app, dictionary);
+      console.error(`[discoverAppMetadata] Parsing SDEF for ${app.appName} in lenient mode`);
+
+      // Create aggregator with O(1) memory per warning (caps at 20 security + 80 regular)
+      const aggregator = new WarningAggregator();
+      const parser = new SDEFParser({
+        mode: 'lenient',
+        onWarning: (warning) => aggregator.add(warning),
+      });
+
+      // Parse SDEF with lenient mode
+      const dictionary = await parser.parse(app.sdefPath);
+
+      // Build metadata from parsed dictionary
+      const metadata = await buildMetadata(app, dictionary);
+
+      // Set parsing status based on aggregated warnings
+      const aggregatedWarnings = aggregator.toArray();
+      if (aggregatedWarnings.length > 0) {
+        console.error(`[discoverAppMetadata] ${app.appName} parsed with ${aggregatedWarnings.length} warning types`);
+        metadata.parsingStatus = {
+          status: 'partial',
+          warnings: aggregatedWarnings,
+          warningsCapped: aggregator.isCapped(),
+        };
+      } else {
+        metadata.parsingStatus = { status: 'success' };
+      }
+
+      return metadata;
     } catch (error) {
+      // SDEF completely unparseable - use fallback metadata
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[discoverAppMetadata] Failed to build metadata for ${app.appName}: ${errorMsg}`);
-      return null;
+      console.error(`[discoverAppMetadata] Failed to parse SDEF for ${app.appName}: ${errorMsg}`);
+
+      // Return fallback metadata instead of null - ensures app is still visible
+      return buildFallbackMetadata(app, error instanceof Error ? error : new Error(String(error)));
     }
   });
 
-  const metadataResults = await Promise.all(metadataPromises);
-
-  // Filter out failed apps
-  const appMetadataList = metadataResults.filter(
-    (metadata): metadata is AppMetadata => metadata !== null
-  );
+  const appMetadataList = await Promise.all(metadataPromises);
 
   // Sort alphabetically for consistent ordering
   appMetadataList.sort((a, b) => a.appName.localeCompare(b.appName));
@@ -319,15 +520,15 @@ export async function setupHandlers(
       if (toolName === 'get_app_tools') {
         console.error('[CallTool/get_app_tools] Executing get_app_tools tool');
 
-        // Validate app_name parameter
-        const appName = args?.app_name as string | undefined;
+        // Validate app_name parameter with type guard
+        const appName = isValidAppName(args?.app_name) ? args.app_name : undefined;
 
         if (!appName) {
-          console.error('[CallTool/get_app_tools] Error: Missing app_name parameter');
+          console.error('[CallTool/get_app_tools] Error: Missing or invalid app_name parameter');
           return {
             content: [{
               type: 'text' as const,
-              text: 'Error: Missing required parameter \'app_name\'',
+              text: 'Error: Missing or invalid app_name parameter',
             }],
             isError: true,
           };

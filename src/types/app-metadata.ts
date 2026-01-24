@@ -40,6 +40,55 @@ export interface AppMetadata {
    * Names of SDEF suites (command groups)
    */
   suiteNames: string[];
+
+  /**
+   * SDEF parsing status and diagnostics
+   *
+   * Indicates whether the app's SDEF file was parsed successfully,
+   * partially (with warnings), or failed completely.
+   */
+  parsingStatus: {
+    /**
+     * Overall parsing result:
+     * - 'success': Fully parsed, no errors or warnings
+     * - 'partial': Parsed with warnings (some elements skipped)
+     * - 'failed': Unable to parse SDEF file
+     */
+    status: 'success' | 'partial' | 'failed';
+
+    /**
+     * Warnings emitted during parsing (only for 'partial' status)
+     *
+     * Contains information about malformed elements that were skipped
+     * in lenient mode parsing.
+     */
+    warnings?: Array<{
+      /** Warning code (e.g., 'INVALID_CODE_LENGTH') */
+      code: string;
+      /** Human-readable warning message */
+      message: string;
+      /** Element type that caused warning (e.g., 'command', 'enumerator') */
+      element?: string;
+      /** Suite containing the problematic element */
+      suite?: string;
+    }>;
+
+    /**
+     * Whether warnings were capped at MAX_WARNINGS_PER_APP limit
+     *
+     * If true, additional warnings beyond the cap were silently dropped.
+     * This indicates the SDEF file has extensive malformations.
+     */
+    warningsCapped?: boolean;
+
+    /**
+     * Error message if parsing failed completely (only for 'failed' status)
+     *
+     * Explains why the SDEF could not be parsed. This helps users
+     * report bugs to app vendors.
+     */
+    errorMessage?: string;
+  };
 }
 
 /**

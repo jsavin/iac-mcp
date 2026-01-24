@@ -162,6 +162,34 @@ export class ParameterMarshaler {
   }
 
   /**
+   * Execute a callback with circular reference detection and cleanup
+   *
+   * This helper function wraps marshaling operations to:
+   * 1. Check if the value has already been seen (circular reference)
+   * 2. Add the value to the seen set before processing
+   * 3. Execute the callback to marshal the value
+   * 4. Remove the value from the seen set after processing (cleanup)
+   *
+   * @param value - The value being marshaled
+   * @param seen - Set of objects already being processed
+   * @param callback - Function to execute if no circular reference detected
+   * @returns The result of the callback
+   * @throws Error if circular reference is detected
+   */
+  private withCircularReferenceCheck<T>(value: any, seen: Set<any>, callback: () => T): T {
+    if (seen.has(value)) {
+      throw new Error('Circular reference detected');
+    }
+    seen.add(value);
+
+    try {
+      return callback();
+    } finally {
+      seen.delete(value);
+    }
+  }
+
+  /**
    * Marshal a string value
    */
   private marshalString(value: string, schema: JSONSchemaProperty): string {
@@ -223,13 +251,7 @@ export class ParameterMarshaler {
    * Marshal an array value
    */
   private marshalArray(value: any, schema: JSONSchemaProperty, seen: Set<any>, depth: number): string {
-    // Check for circular reference
-    if (seen.has(value)) {
-      throw new Error('Circular reference detected');
-    }
-    seen.add(value);
-
-    try {
+    return this.withCircularReferenceCheck(value, seen, () => {
       const arr = Array.isArray(value) ? value : Array.from(value as any);
 
       if (arr.length === 0) {
@@ -250,22 +272,14 @@ export class ParameterMarshaler {
       }
 
       return `[${marshaledItems.join(', ')}]`;
-    } finally {
-      seen.delete(value);
-    }
+    });
   }
 
   /**
    * Marshal an object value
    */
   private marshalObject(value: any, schema: JSONSchemaProperty, seen: Set<any>, depth: number): string {
-    // Check for circular reference
-    if (seen.has(value)) {
-      throw new Error('Circular reference detected');
-    }
-    seen.add(value);
-
-    try {
+    return this.withCircularReferenceCheck(value, seen, () => {
       const properties = schema.properties || {};
 
       // Get object keys, filtering out dangerous keys
@@ -304,9 +318,7 @@ export class ParameterMarshaler {
       }
 
       return `{${pairs.join(', ')}}`;
-    } finally {
-      seen.delete(value);
-    }
+    });
   }
 
   /**
