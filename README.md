@@ -267,7 +267,7 @@ src/
 ├── permissions/          # Permission system
 └── types/                # TypeScript type definitions
 
-planning/                 # Vision, strategy, roadmap
+planning/                 # Technical planning
 tests/                    # Unit and integration tests
 tools/                    # Development helper scripts
 ```
@@ -275,7 +275,6 @@ tools/                    # Development helper scripts
 ## Documentation
 
 - [Vision](planning/VISION.md) - Project vision and philosophy
-- [Roadmap](planning/ROADMAP.md) - 18-month development plan
 - [Start Here](planning/START-HERE.md) - Quick start guide
 - [Decisions](planning/DECISIONS.md) - Architectural decisions
 - [CLAUDE.md](CLAUDE.md) - Development workflow and patterns
