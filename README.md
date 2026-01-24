@@ -297,18 +297,10 @@ MIT - see [LICENSE](LICENSE) for details
 
 This project is in early development. Contributions welcome once Phase 0 is complete.
 
-## Roadmap
+## Open Source Roadmap
 
 - **Phase 0** (Month 1): Technical validation - prove JITD works on macOS
 - **Phase 1** (Months 2-5): Open source MCP bridge (macOS scriptable apps)
-- **Phase 2** (Months 6-9): Native Swift UI (macOS)
-- **Phase 3** (Months 10-12): Public launch (macOS)
-- **Phase 4** (Months 13-18): Grow to sustainability
-- **Phase 5** (18+ months): **Multi-platform expansion**
-  - Windows (VBA, COM, Windows Messaging) - 14x market opportunity
-  - Accessibility APIs (non-scriptable macOS apps)
-  - Linux/cross-platform support
-  - Vision AI integration
 
 See [planning/ROADMAP.md](planning/ROADMAP.md) for details.
 
