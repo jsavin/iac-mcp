@@ -286,6 +286,23 @@ describe('Four-Character Code Validation Security', () => {
       expect(result.suites[0].code).toBe('T_3t');
       expect(result.suites[0].commands[0].code).toBe('A1_bC2_d');
     });
+
+    it('should accept 8-character command codes with safe special chars', async () => {
+      const validSDEF = `<?xml version="1.0"?>
+<dictionary title="TestApp">
+  <suite name="TestSuite" code="test">
+    <command name="valid" code="test?+#x">
+      <parameter name="arg" code="arg1" type="text"/>
+    </command>
+  </suite>
+</dictionary>`;
+
+      const parser = new SDEFParser({ mode: 'strict' });
+      const result = await parser.parseContent(validSDEF);
+
+      expect(result.suites[0].commands[0].name).toBe('valid');
+      expect(result.suites[0].commands[0].code).toBe('test?+#x');
+    });
   });
 
   describe('Null Byte Protection (Existing)', () => {

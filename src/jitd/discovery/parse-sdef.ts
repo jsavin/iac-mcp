@@ -1494,6 +1494,8 @@ export class SDEFParser {
     // Security: Restrict to safe characters used in real SDEF files
     // Allowed: A-Z a-z 0-9 _ (space) ? + #
     // Prevented shell metacharacters: $ | ; & ` > < () [] {} \ " '
+    // Note: All-space codes (e.g., "    ") are technically valid per Apple Event spec
+    // and are intentionally allowed by this validation.
     if (!/^[A-Za-z0-9_ ?+#]+$/.test(code)) {
       throw new Error(
         `Invalid code "${code}" for ${elementType} "${elementName}": contains disallowed characters (only alphanumeric, underscore, space, ?, +, # allowed)`
