@@ -83,6 +83,48 @@ git push origin feature/<name>  # Push feature branch (NEVER push to origin/main
 
 ---
 
+## 📂 Private Business Documentation
+
+**CRITICAL: Keep business-sensitive information out of the public repository.**
+
+### Storage Location for Private Docs
+
+**ALL private business documents MUST be stored at:**
+```
+~/Documents/Personal/Coules Labs/IAC-MCP/
+```
+
+### What Belongs in Private Docs (NOT in repo)
+
+- ❌ Business strategy details (pricing, monetization, competitive analysis)
+- ❌ User-facing product roadmap (phases involving end-users, not developers)
+- ❌ Marketing plans and go-to-market strategy
+- ❌ Partnership discussions and negotiations
+- ❌ Financial projections and funding plans
+- ❌ Customer research and feedback
+- ❌ Competitive intelligence
+- ❌ Any information that could reveal business strategy to competitors
+
+### What Belongs in Public Repo
+
+- ✅ Technical architecture and design decisions
+- ✅ Developer-facing implementation plans
+- ✅ Code quality standards and testing requirements
+- ✅ API documentation and protocol specifications
+- ✅ Open source contribution guidelines
+- ✅ Technical roadmap (implementation phases, not business phases)
+
+### Protocol for Removing Sensitive Content
+
+If sensitive business content accidentally appears in:
+1. **README or public docs**: Remove immediately, update with technical-only content
+2. **Commit messages**: Be cautious - commits are permanent in git history
+3. **Planning docs**: Move to `~/Documents/Personal/Coules Labs/IAC-MCP/`
+
+**When in doubt**: If it reveals business strategy, pricing, or market positioning → keep it private.
+
+---
+
 ## ⚠️ MANDATORY: Code Quality Standards
 
 **READ THIS FIRST:** [CODE-QUALITY.md](CODE-QUALITY.md)
