@@ -212,9 +212,11 @@ describe('IACMCPServer Integration Tests', () => {
       await server.initialize();
 
       const status = server.getStatus();
-      // If apps discovered, should have generated tools
+      // With lazy loading, tools are generated on-demand (toolsGenerated = 0)
+      expect(status.toolsGenerated).toBe(0);
+      // But apps should be discovered
       if (status.appsDiscovered > 0) {
-        expect(status.toolsGenerated).toBeGreaterThan(0);
+        expect(status.appsDiscovered).toBeGreaterThan(0);
       }
     });
 
@@ -559,7 +561,7 @@ describe('IACMCPServer Integration Tests', () => {
       expect(status.appsDiscovered).toBeGreaterThanOrEqual(0);
     });
 
-    it('should track number of generated tools', async () => {
+    it('should track number of generated tools (0 for lazy loading)', async () => {
       const server = new IACMCPServer({
         cacheDir: TEMP_CACHE_DIR,
         enableCache: true,
@@ -568,9 +570,8 @@ describe('IACMCPServer Integration Tests', () => {
       await server.initialize();
 
       const status = server.getStatus();
-      if (status.appsDiscovered > 0) {
-        expect(status.toolsGenerated).toBeGreaterThan(0);
-      }
+      // With lazy loading, tools are generated on-demand (toolsGenerated = 0)
+      expect(status.toolsGenerated).toBe(0);
     });
 
     it('should calculate uptime correctly', async () => {

@@ -17,21 +17,14 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-  TextContent,
-  Tool,
-} from '@modelcontextprotocol/sdk/types.js';
 
-import { findAllScriptableApps, SDEFParser } from '../jitd/discovery/index.js';
+import { findAllScriptableApps } from '../jitd/discovery/index.js';
 import { ToolGenerator } from '../jitd/tool-generator/generator.js';
 import { MacOSAdapter } from '../adapters/macos/macos-adapter.js';
 import { PermissionChecker } from '../permissions/permission-checker.js';
 import { ErrorHandler } from '../error-handler.js';
 import { PerAppCache } from '../jitd/cache/per-app-cache.js';
-import { setupHandlers, validateToolArguments } from './handlers.js';
-import type { MCPTool } from '../types/mcp-tool.js';
+import { setupHandlers } from './handlers.js';
 
 /**
  * Server configuration options
@@ -81,7 +74,7 @@ export interface ServerStatus {
   running: boolean;
   initialized: boolean;
   appsDiscovered: number;
-  toolsGenerated: number;
+  toolsGenerated: number; // 0 for lazy loading (tools generated on-demand)
   uptime: number; // milliseconds
   startTime?: Date;
 }
@@ -97,7 +90,6 @@ export class IACMCPServer {
   private transport?: StdioServerTransport;
   private options: Required<ServerOptions>;
   private discoverer = findAllScriptableApps;
-  private parser = new SDEFParser();
   private generator: ToolGenerator;
   private adapter: MacOSAdapter;
   private permissionChecker: PermissionChecker;
@@ -118,7 +110,6 @@ export class IACMCPServer {
     bundlePath: string;
     sdefPath: string;
   }> = [];
-  private generatedTools: MCPTool[] = [];
   private startTime: number = 0;
 
   /**
@@ -197,38 +188,8 @@ export class IACMCPServer {
         console.error(`[IACMCPServer] Discovered ${this.discoveredApps.length} apps with SDEF files`);
       }
 
-      // Parse SDEF files and generate tools for each app
-      for (const app of this.discoveredApps) {
-        try {
-          // Parse SDEF file
-          const dictionary = await this.parser.parse(app.sdefPath);
-
-          // Generate tools from parsed SDEF
-          const tools = this.generator.generateTools(dictionary, {
-            appName: app.appName,
-            bundleId: this.extractBundleId(app.bundlePath),
-            bundlePath: app.bundlePath,
-            sdefPath: app.sdefPath,
-          });
-
-          this.generatedTools.push(...tools);
-        } catch (error) {
-          // Log app parse error but continue with others
-          if (this.options.enableLogging) {
-            console.error(`[IACMCPServer] Failed to parse ${app.appName}:`, error);
-          }
-        }
-      }
-
-      this.status.toolsGenerated = this.generatedTools.length;
-
-      if (this.options.enableLogging) {
-        console.error(
-          `[IACMCPServer] Generated ${this.generatedTools.length} tools from ${this.discoveredApps.length} apps`
-        );
-      }
-
-      // Setup MCP request handlers
+      // Setup MCP request handlers (lazy loading approach)
+      // Handlers will discover and generate tools on-demand when called
       await setupHandlers(
         this.server,
         this.generator,
@@ -237,22 +198,6 @@ export class IACMCPServer {
         this.errorHandler,
         this.perAppCache
       );
-
-      // Override ListTools handler to return generated tools
-      await this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-        return {
-          tools: this.generatedTools.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            inputSchema: tool.inputSchema,
-          })) as Tool[],
-        };
-      });
-
-      // Override CallTool handler to execute tools with full pipeline
-      await this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-        return this.handleToolCall(request.params.name, request.params.arguments as Record<string, any>);
-      });
 
       this.status.initialized = true;
 
@@ -303,7 +248,7 @@ export class IACMCPServer {
       this.status.startTime = new Date();
 
       console.error(
-        `[IACMCPServer] Started successfully with ${this.generatedTools.length} tools from ${this.discoveredApps.length} apps`
+        `[IACMCPServer] Started successfully with ${this.discoveredApps.length} apps (tools generated on-demand)`
       );
     } catch (error) {
       if (this.options.enableLogging) {
@@ -370,148 +315,6 @@ export class IACMCPServer {
     return { ...this.status };
   }
 
-  /**
-   * Handle a tool call request
-   *
-   * Performs full pipeline:
-   * 1. Lookup tool by name
-   * 2. Validate arguments against schema
-   * 3. Check permissions
-   * 4. Execute via adapter
-   * 5. Return result or error
-   *
-   * @param toolName - Name of tool to execute
-   * @param args - Tool arguments
-   * @returns MCP response with result or error
-   */
-  private async handleToolCall(
-    toolName: string,
-    args: Record<string, any>
-  ): Promise<{
-    content: TextContent[];
-    isError?: boolean;
-  }> {
-    try {
-      // Step 1: Lookup tool
-      const tool = this.generatedTools.find((t) => t.name === toolName);
-      if (!tool) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                error: `Tool not found: ${toolName}`,
-                code: 'NOT_FOUND',
-              }),
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      // Step 2: Validate arguments
-      const validation = validateToolArguments(args, tool.inputSchema);
-      if (!validation.valid) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                error: 'Invalid arguments',
-                code: 'INVALID_ARGUMENT',
-                details: validation.errors,
-              }),
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      // Step 3: Check permissions (skip if DISABLE_PERMISSIONS is set)
-      const permissionsDisabled = process.env.DISABLE_PERMISSIONS === 'true';
-      let permission = permissionsDisabled
-        ? { allowed: true, level: 'ALWAYS_SAFE' as const, reason: 'Permissions disabled', requiresPrompt: false }
-        : await this.permissionChecker.check(tool, args);
-
-      if (!permissionsDisabled && !permission.allowed) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                error: 'Permission denied',
-                code: 'PERMISSION_DENIED',
-                reason: permission.reason,
-                level: permission.level,
-              }),
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      // Step 4: Execute tool
-      const result = await this.adapter.execute(tool, args);
-
-      // Step 5: Record in audit log (skip if permissions disabled)
-      if (!permissionsDisabled) {
-        await this.permissionChecker.recordDecision({
-          allowed: true,
-          level: permission.level,
-          reason: permission.reason,
-          requiresPrompt: false,
-        });
-      }
-
-      // Return success response
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              data: result,
-            }),
-          },
-        ],
-      };
-    } catch (error) {
-      // Handle execution errors
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              error: 'Execution failed',
-              code: 'EXECUTION_ERROR',
-              message,
-            }),
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
-
-  /**
-   * Extract bundle ID from bundle path
-   *
-   * @param bundlePath - Path to application bundle
-   * @returns Extracted bundle ID or 'unknown'
-   */
-  private extractBundleId(bundlePath: string): string {
-    try {
-      // Parse bundle path like /Applications/MyApp.app
-      const match = bundlePath.match(/([^/]+)\.app$/);
-      if (match && match[1]) {
-        return `com.local.${match[1].toLowerCase().replace(/\s+/g, '.')}`;
-      }
-      return 'com.local.unknown';
-    } catch {
-      return 'com.local.unknown';
-    }
-  }
 }
 
 /**
