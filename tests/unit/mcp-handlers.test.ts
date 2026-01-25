@@ -3167,7 +3167,263 @@ describe('MCP Handlers', () => {
   });
 
   // ============================================================================
-  // SECTION 9: Integration Points
+  // SECTION 10: Additional Edge Cases and Code Path Coverage
+  // ============================================================================
+
+  describe('Argument Validation - Edge Cases', () => {
+    it('should accept arguments with special characters in values', () => {
+      const schema = {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+        },
+        required: ['path'],
+      };
+
+      const args = {
+        path: '/Users/test-dir@#$/file.txt',
+      };
+
+      const result = validateToolArguments(args, schema);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should accept zero as a valid number argument', () => {
+      const schema = {
+        type: 'object',
+        properties: {
+          count: { type: 'number' },
+        },
+      };
+
+      const args = {
+        count: 0,
+      };
+
+      const result = validateToolArguments(args, schema);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should accept false as a valid boolean argument', () => {
+      const schema = {
+        type: 'object',
+        properties: {
+          enabled: { type: 'boolean' },
+        },
+      };
+
+      const args = {
+        enabled: false,
+      };
+
+      const result = validateToolArguments(args, schema);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should accept empty array as valid array argument', () => {
+      const schema = {
+        type: 'object',
+        properties: {
+          items: { type: 'array' },
+        },
+      };
+
+      const args = {
+        items: [],
+      };
+
+      const result = validateToolArguments(args, schema);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should accept empty object as valid object argument', () => {
+      const schema = {
+        type: 'object',
+        properties: {
+          config: { type: 'object' },
+        },
+      };
+
+      const args = {
+        config: {},
+      };
+
+      const result = validateToolArguments(args, schema);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should handle schema with no properties field', () => {
+      const schema = {
+        type: 'object',
+      };
+
+      const args = {
+        anyField: 'anyValue',
+      };
+
+      const result = validateToolArguments(args, schema);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should handle schema with no required field', () => {
+      const schema = {
+        type: 'object',
+        properties: {
+          optional: { type: 'string' },
+        },
+      };
+
+      const args = {};
+
+      const result = validateToolArguments(args, schema);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should reject when extra arguments with wrong type are provided', () => {
+      const schema = {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          age: { type: 'number' },
+        },
+        required: ['name'],
+      };
+
+      const args = {
+        name: 'John',
+        age: 'thirty', // Wrong type
+      };
+
+      const result = validateToolArguments(args, schema);
+      expect(result.valid).toBe(false);
+    });
+  });
+
+  describe('Success Response Formatting - Edge Cases', () => {
+    it('should preserve array result exactly', () => {
+      const data = [1, 2, 3, 4, 5];
+      const response = formatSuccessResponse(data);
+
+      expect(response.success).toBe(true);
+      expect(Array.isArray(response.data)).toBe(true);
+      expect(response.data).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it('should preserve string result exactly', () => {
+      const data = 'Test string with special chars: !@#$%';
+      const response = formatSuccessResponse(data);
+
+      expect(response.success).toBe(true);
+      expect(response.data).toBe(data);
+    });
+
+    it('should preserve numeric result (zero)', () => {
+      const data = 0;
+      const response = formatSuccessResponse(data);
+
+      expect(response.success).toBe(true);
+      expect(response.data).toBe(0);
+    });
+
+    it('should preserve boolean result (false)', () => {
+      const data = false;
+      const response = formatSuccessResponse(data);
+
+      expect(response.success).toBe(true);
+      expect(response.data).toBe(false);
+    });
+
+    it('should handle deeply nested objects', () => {
+      const data = {
+        level1: {
+          level2: {
+            level3: {
+              value: 'deep',
+            },
+          },
+        },
+      };
+      const response = formatSuccessResponse(data);
+
+      expect(response.success).toBe(true);
+      expect(response.data.level1.level2.level3.value).toBe('deep');
+    });
+
+    it('should handle metadata with multiple fields', () => {
+      const data = { result: 'success' };
+      const metadata = {
+        executionTime: 123,
+        timestamp: '2024-01-25T00:00:00Z',
+        executedBy: 'test-user',
+        version: '1.0.0',
+      };
+      const response = formatSuccessResponse(data, metadata);
+
+      expect(response.metadata).toEqual(metadata);
+      expect(Object.keys(response.metadata)).toHaveLength(4);
+    });
+  });
+
+  describe('Permission Response - Edge Cases', () => {
+    it('should preserve reason field exactly as provided', () => {
+      const reason = 'Cannot execute: Dangerous operation that modifies system state';
+      const decision: PermissionDecision = {
+        allowed: false,
+        reason,
+        level: 'blocked',
+        requiresPrompt: false,
+      };
+
+      const response = formatPermissionDeniedResponse(decision);
+      expect(response.reason).toBe(reason);
+    });
+
+    it('should handle very long reason messages', () => {
+      const reason = 'A'.repeat(1000); // Very long reason
+      const decision: PermissionDecision = {
+        allowed: false,
+        reason,
+        level: 'requires-confirmation',
+        requiresPrompt: true,
+      };
+
+      const response = formatPermissionDeniedResponse(decision);
+      expect(response.reason).toBe(reason);
+      expect(response.reason.length).toBe(1000);
+    });
+
+    it('should preserve level field exactly', () => {
+      const levels = ['safe', 'requires-confirmation', 'blocked'];
+
+      for (const level of levels) {
+        const decision: PermissionDecision = {
+          allowed: false,
+          reason: 'Test',
+          level: level as any,
+          requiresPrompt: false,
+        };
+
+        const response = formatPermissionDeniedResponse(decision);
+        expect(response.level).toEqual(level);
+      }
+    });
+
+    it('should always include timestamp in ISO format', () => {
+      const decision: PermissionDecision = {
+        allowed: false,
+        reason: 'Test',
+        level: 'blocked',
+        requiresPrompt: false,
+      };
+
+      const response = formatPermissionDeniedResponse(decision);
+      const timestamp = new Date(response.timestamp);
+      expect(timestamp.toISOString()).toBe(response.timestamp);
+    });
+  });
+
+  // ============================================================================
+  // SECTION 11: Integration Points
   // ============================================================================
 
   describe('Integration Points', () => {
