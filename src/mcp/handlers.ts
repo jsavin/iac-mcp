@@ -86,7 +86,9 @@ function isSecurityWarning(warning: ParseWarning): boolean {
 // Server-side cache for app metadata
 let cachedAppMetadata: AppMetadata[] | null = null;
 let cacheTimestamp = 0;
-const CACHE_TTL_MS = 60000; // 1 minute TTL
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minute TTL
+// TODO: Add manual cache invalidation mechanism (e.g., mcp_cache_invalidate tool)
+// TODO: Add automatic cache invalidation on app install/uninstall (filesystem watch)
 
 /**
  * Streaming warning aggregator with O(1) memory per warning
@@ -660,6 +662,8 @@ export async function setupHandlers(
       }
 
       // 3. Check permissions (skip if DISABLE_PERMISSIONS is set)
+      // ⚠️ SECURITY WARNING: DISABLE_PERMISSIONS should ONLY be used for testing!
+      // This bypasses all permission checks and should NEVER be enabled in production.
       const permissionsDisabled = process.env.DISABLE_PERMISSIONS === 'true';
       if (!permissionsDisabled) {
         const permissionDecision = await permissionChecker.check(tool, args || {});
@@ -681,7 +685,8 @@ export async function setupHandlers(
 
         console.error(`[CallTool] Permission granted, executing via adapter`);
       } else {
-        console.error(`[CallTool] Permissions disabled (DISABLE_PERMISSIONS=true), executing via adapter`);
+        console.error(`[CallTool] ⚠️ SECURITY WARNING: Permissions disabled (DISABLE_PERMISSIONS=true), executing via adapter`);
+        console.error(`[CallTool] ⚠️ This should ONLY be used for testing! All permission checks are bypassed!`);
       }
 
       // 4. Execute via MacOSAdapter
