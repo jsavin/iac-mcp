@@ -1751,9 +1751,11 @@ describe('MCP Handlers', () => {
         'Calendar<script>alert(1)</script>',
       ];
 
+      // Stricter regex: must start/end with alphanumeric, single period for extension only
+      const strictRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
       for (const name of maliciousNames) {
         // These should all fail character validation
-        expect(/^[a-zA-Z0-9\s\-_.]+$/.test(name)).toBe(false);
+        expect(strictRegex.test(name)).toBe(false);
       }
     });
 
@@ -1777,32 +1779,44 @@ describe('MCP Handlers', () => {
         '../../../etc/passwd',
         '..\\..\\windows\\system32',
         'App/../../secret',
+        'App..Name', // consecutive periods
+        '...', // multiple periods
       ];
 
+      const strictRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
       for (const name of pathTraversalNames) {
-        // These should fail character validation (contain '/')
-        expect(/^[a-zA-Z0-9\s\-_.]+$/.test(name)).toBe(false);
+        // These should fail either regex or path traversal checks
+        const failsRegex = !strictRegex.test(name);
+        const hasPathChars = name.includes('/') || name.includes('\\') || name.includes('..');
+        expect(failsRegex || hasPathChars).toBe(true);
       }
     });
 
     it('should accept valid app_name with common characters', () => {
-      // Valid app names should pass validation
+      // Valid app names should pass stricter validation
+      // - Must start/end with alphanumeric
+      // - Single period for extension only
+      // - No path traversal patterns
       const validNames = [
         'Finder',
         'Safari',
         'Microsoft Word',
         'Adobe_Photoshop',
         'App-Name',
-        'App.Name',
-        'App Name 2.0',
-        'MyApp_v1.2-beta',
+        'MyApp.app',
+        'App Name 2',
+        'MyApp_v1-beta',
       ];
 
+      const strictRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
       for (const name of validNames) {
         // These should all pass validation
         expect(name.length).toBeLessThanOrEqual(100);
-        expect(/^[a-zA-Z0-9\s\-_.]+$/.test(name)).toBe(true);
+        expect(strictRegex.test(name)).toBe(true);
         expect(name.includes('\0')).toBe(false);
+        expect(name.includes('/')).toBe(false);
+        expect(name.includes('\\')).toBe(false);
+        expect(name.includes('..')).toBe(false);
       }
     });
 

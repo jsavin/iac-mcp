@@ -549,17 +549,33 @@ export async function setupHandlers(
         }
 
         // 2. Character whitelist (alphanumeric + common app name characters)
-        if (!/^[a-zA-Z0-9\s\-_.]+$/.test(appName)) {
+        // Security: Stricter regex to prevent path traversal and command injection
+        // - Must start and end with alphanumeric
+        // - Allows single spaces, hyphens, underscores internally
+        // - Allows single period for file extensions only
+        // - No consecutive periods (prevents ../ traversal)
+        if (!/^[a-zA-Z0-9]([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/.test(appName)) {
           return {
             content: [{
               type: 'text' as const,
-              text: 'Error: app_name contains invalid characters. Only alphanumeric, spaces, hyphens, underscores, and periods allowed.',
+              text: 'Error: app_name contains invalid characters. Must be alphanumeric with optional spaces, hyphens, underscores, and single period for extension.',
             }],
             isError: true,
           };
         }
 
-        // 3. Null byte rejection (prevent null byte injection)
+        // 3. Path traversal prevention (reject any path-like patterns)
+        if (appName.includes('/') || appName.includes('\\') || appName.includes('..')) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'Error: app_name contains path traversal patterns. Use app name only, not a path.',
+            }],
+            isError: true,
+          };
+        }
+
+        // 4. Null byte rejection (prevent null byte injection)
         if (appName.includes('\0')) {
           return {
             content: [{
