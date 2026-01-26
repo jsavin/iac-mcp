@@ -12,8 +12,9 @@ import type { JSONSchemaProperty } from '../../src/types/mcp-tool';
 import { mkdirSync, symlinkSync, unlinkSync, rmdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { isMacOS } from '../utils/test-helpers';
 
-describe('ParameterMarshaler - Symlink Attack Prevention', () => {
+describe.skipIf(!isMacOS())('ParameterMarshaler - Symlink Attack Prevention', () => {
   const marshaler = new ParameterMarshaler();
   let testDir: string;
   let symlinkToSystem: string;
