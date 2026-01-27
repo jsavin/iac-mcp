@@ -1,17 +1,27 @@
 /**
- * Unit tests for index.ts - CLI Entry Point
+ * Pattern tests for index.ts - CLI Entry Point
  *
- * Tests the main MCP server entry point that:
- * - Initializes all components (ToolGenerator, MacOSAdapter, etc.)
- * - Sets up MCP handlers
- * - Connects to stdio transport
- * - Handles graceful shutdown on signals (SIGINT, SIGTERM)
- * - Logs appropriate messages at each stage
- * - Handles errors gracefully without crashing
+ * WHY THIS FILE IS NAMED "index-patterns.test.ts":
+ * ================================================
+ * This file tests the PATTERNS and logic used in src/index.ts, not the actual
+ * file itself. The actual index.ts remains at 0% coverage because it's a CLI
+ * entry point that:
+ * 1. Immediately executes on import (not testable in isolation)
+ * 2. Connects to stdio (requires full process environment)
+ * 3. Runs indefinitely until killed (can't be unit tested)
  *
- * NOTE: index.ts is the CLI entry point that immediately calls main().catch().
- * This test suite covers the logging utility and shutdown logic patterns
- * used in the file by testing equivalent implementations.
+ * WHAT WE TEST HERE:
+ * ==================
+ * - Logging utility patterns (ISO timestamps, error formatting)
+ * - Shutdown handler registration patterns
+ * - Signal handling logic (SIGINT, SIGTERM)
+ * - Error handling patterns
+ * - Message formatting conventions
+ *
+ * This approach verifies the correctness of the logic patterns without
+ * requiring a full integration test environment.
+ *
+ * See INDEX-TEST-SUMMARY.md for complete coverage analysis.
  *
  * Reference: src/index.ts (lines 1-109)
  */

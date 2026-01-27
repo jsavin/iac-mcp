@@ -86,6 +86,13 @@ function isSecurityWarning(warning: ParseWarning): boolean {
 // Server-side cache for app metadata
 let cachedAppMetadata: AppMetadata[] | null = null;
 let cacheTimestamp = 0;
+
+// Cache TTL: 15 minutes
+// Rationale: App installation/removal is relatively infrequent on user systems.
+// A longer TTL optimizes MCP server performance by reducing expensive discovery
+// operations (SDEF parsing, filesystem traversal) during normal usage.
+// Trade-off: New apps take up to 15 minutes to be discoverable (acceptable UX).
+// Future: Manual invalidation tool + filesystem watching (see issues #30)
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minute TTL
 // TODO: Add manual cache invalidation mechanism (e.g., mcp_cache_invalidate tool)
 // TODO: Add automatic cache invalidation on app install/uninstall (filesystem watch)
@@ -550,11 +557,12 @@ export async function setupHandlers(
 
         // 2. Character whitelist (alphanumeric + common app name characters)
         // Security: Stricter regex to prevent path traversal and command injection
-        // - Must start and end with alphanumeric
-        // - Allows single spaces, hyphens, underscores internally
-        // - Allows single period for file extensions only
+        // - Must start with alphanumeric (allows single-char apps like "X" or "R")
+        // - Optionally followed by spaces, hyphens, underscores, alphanumerics
+        // - Must end with alphanumeric before optional extension
+        // - Allows single period for file extensions only (e.g., ".app")
         // - No consecutive periods (prevents ../ traversal)
-        if (!/^[a-zA-Z0-9]([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/.test(appName)) {
+        if (!/^[a-zA-Z0-9]+([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/.test(appName)) {
           return {
             content: [{
               type: 'text' as const,

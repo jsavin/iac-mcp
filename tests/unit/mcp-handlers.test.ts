@@ -1751,8 +1751,8 @@ describe('MCP Handlers', () => {
         'Calendar<script>alert(1)</script>',
       ];
 
-      // Stricter regex: must start/end with alphanumeric, single period for extension only
-      const strictRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
+      // Stricter regex: must start with alphanumeric (1+ chars), single period for extension only
+      const strictRegex = /^[a-zA-Z0-9]+([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
       for (const name of maliciousNames) {
         // These should all fail character validation
         expect(strictRegex.test(name)).toBe(false);
@@ -1783,7 +1783,7 @@ describe('MCP Handlers', () => {
         '...', // multiple periods
       ];
 
-      const strictRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
+      const strictRegex = /^[a-zA-Z0-9]+([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
       for (const name of pathTraversalNames) {
         // These should fail either regex or path traversal checks
         const failsRegex = !strictRegex.test(name);
@@ -1794,7 +1794,9 @@ describe('MCP Handlers', () => {
 
     it('should accept valid app_name with common characters', () => {
       // Valid app names should pass stricter validation
-      // - Must start/end with alphanumeric
+      // - Must start with alphanumeric (1+ chars)
+      // - Optionally followed by spaces, hyphens, underscores
+      // - Must end with alphanumeric before optional extension
       // - Single period for extension only
       // - No path traversal patterns
       const validNames = [
@@ -1806,9 +1808,21 @@ describe('MCP Handlers', () => {
         'MyApp.app',
         'App Name 2',
         'MyApp_v1-beta',
+        // Edge case: Single-character app names
+        'X',
+        'R',
+        'A',
+        // Edge case: Apps starting with numbers
+        '1Password',
+        '2Do',
+        '4K Video Downloader',
+        // Edge case: Apps with extensions
+        'BBEdit.app',
+        'TextEdit.app',
+        'Visual Studio Code.app',
       ];
 
-      const strictRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
+      const strictRegex = /^[a-zA-Z0-9]+([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
       for (const name of validNames) {
         // These should all pass validation
         expect(name.length).toBeLessThanOrEqual(100);
@@ -3544,6 +3558,102 @@ describe('MCP Handlers', () => {
       // Security warnings should appear in output (prioritized)
       const securityInOutput = aggregated.some(w => w.code === 'SECURITY_ISSUE');
       expect(securityInOutput).toBe(true);
+    });
+
+    it('should cap at exactly 20 security + 80 regular warnings', () => {
+      // Test boundary condition: exactly at cap
+      const warnings: ParseWarning[] = [
+        // Exactly 20 unique security warnings
+        ...Array.from({ length: 20 }, (_, i) => ({
+          code: 'SECURITY_ISSUE',
+          message: `Security issue ${i}`,
+          location: { element: `sec_elem_${i}`, name: `sec_${i}`, suite: 'Suite' },
+        })),
+        // Exactly 80 unique regular warnings
+        ...Array.from({ length: 80 }, (_, i) => ({
+          code: 'MISSING_FIELD',
+          message: `Missing field ${i}`,
+          location: { element: `reg_elem_${i}`, name: `reg_${i}`, suite: 'Suite' },
+        })),
+      ];
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have exactly 100 warnings (20 + 80)
+      expect(aggregated.length).toBe(100);
+
+      // Count security vs regular
+      const securityCount = aggregated.filter(w => w.code === 'SECURITY_ISSUE').length;
+      const regularCount = aggregated.filter(w => w.code === 'MISSING_FIELD').length;
+
+      expect(securityCount).toBe(20);
+      expect(regularCount).toBe(80);
+    });
+
+    it('should drop 21st security warning when over security cap', () => {
+      // Test one over security cap
+      const warnings: ParseWarning[] = [
+        // 21 unique security warnings (1 over cap)
+        ...Array.from({ length: 21 }, (_, i) => ({
+          code: 'SECURITY_ISSUE',
+          message: `Security issue ${i}`,
+          location: { element: `sec_elem_${i}`, name: `sec_${i}`, suite: 'Suite' },
+        })),
+      ];
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have only 20 security warnings (21st dropped)
+      const securityCount = aggregated.filter(w => w.code === 'SECURITY_ISSUE').length;
+      expect(securityCount).toBe(20);
+      expect(aggregated.length).toBe(20);
+    });
+
+    it('should drop 81st regular warning when over regular cap', () => {
+      // Test one over regular cap (with security warnings taking priority)
+      const warnings: ParseWarning[] = [
+        // 5 security warnings
+        ...Array.from({ length: 5 }, (_, i) => ({
+          code: 'SECURITY_ISSUE',
+          message: `Security issue ${i}`,
+          location: { element: `sec_elem_${i}`, name: `sec_${i}`, suite: 'Suite' },
+        })),
+        // 81 unique regular warnings (1 over cap)
+        ...Array.from({ length: 81 }, (_, i) => ({
+          code: 'MISSING_FIELD',
+          message: `Missing field ${i}`,
+          location: { element: `reg_elem_${i}`, name: `reg_${i}`, suite: 'Suite' },
+        })),
+      ];
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have 5 security + 80 regular = 85 total (81st regular dropped)
+      expect(aggregated.length).toBe(85);
+
+      const securityCount = aggregated.filter(w => w.code === 'SECURITY_ISSUE').length;
+      const regularCount = aggregated.filter(w => w.code === 'MISSING_FIELD').length;
+
+      expect(securityCount).toBe(5);
+      expect(regularCount).toBe(80);
+    });
+
+    it('should still increment count for duplicate warnings after cap', () => {
+      // Add same warning 25 times (exceeds security cap of 20)
+      const warnings: ParseWarning[] = Array.from({ length: 25 }, () => ({
+        code: 'SECURITY_DUPLICATE',
+        message: 'Same security warning',
+        location: { element: 'param', name: 'test', suite: 'Suite' },
+      }));
+
+      const aggregated = aggregateWarnings(warnings);
+
+      // Should have 1 aggregated warning (all duplicates grouped)
+      expect(aggregated.length).toBe(1);
+
+      // But the count should show "and 24 more similar warnings"
+      const warning = aggregated[0];
+      expect(warning.message).toContain('and 24 more similar warnings');
     });
   });
 });
