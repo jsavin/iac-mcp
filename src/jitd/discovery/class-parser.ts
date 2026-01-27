@@ -14,6 +14,13 @@ import type {
   ParsedEnumeration,
   ClassExtension,
 } from './types.js';
+import type {
+  SDEFXMLRoot,
+  SDEFClass,
+  SDEFEnumeration,
+  SDEFClassExtension,
+  SDEFTypeElement,
+} from './xml-types.js';
 
 /**
  * Parse SDEF XML and extract all classes, enumerations, and class extensions
@@ -47,9 +54,9 @@ export function parseSDEFClasses(sdefXML: string): {
     stopNodes: [], // Parse all nodes
   });
 
-  let parsed: any;
+  let parsed: SDEFXMLRoot;
   try {
-    parsed = parser.parse(sdefXML);
+    parsed = parser.parse(sdefXML) as SDEFXMLRoot;
   } catch (error) {
     throw new Error(
       `Failed to parse SDEF XML: ${error instanceof Error ? error.message : String(error)}`
@@ -138,7 +145,7 @@ export function parseSDEFClasses(sdefXML: string): {
 /**
  * Parse properties from a class definition
  */
-function parseProperties(classData: any): ParsedProperty[] {
+function parseProperties(classData: SDEFClass | SDEFClassExtension): ParsedProperty[] {
   const properties: ParsedProperty[] = [];
 
   const propsData = Array.isArray(classData.property)
@@ -171,9 +178,9 @@ function parseProperties(classData: any): ParsedProperty[] {
       }
     } else if (prop.type) {
       // Child type element(s)
-      const typeElements = Array.isArray(prop.type) ? prop.type : [prop.type];
+      const typeElements: SDEFTypeElement[] = Array.isArray(prop.type) ? prop.type : [prop.type];
 
-      if (typeElements.length === 1) {
+      if (typeElements.length === 1 && typeElements[0]) {
         // Single type
         const typeEl = typeElements[0];
         type = typeEl['@_type'] || 'any';
@@ -181,13 +188,16 @@ function parseProperties(classData: any): ParsedProperty[] {
         if (typeEl['@_list'] === 'yes') {
           list = true;
         }
-      } else {
+      } else if (typeElements.length > 1) {
         // Union type (multiple type elements)
-        type = typeElements.map((t: any) => t['@_type'] || 'any');
+        type = typeElements.map((t) => t['@_type'] || 'any');
         // For union types, check if any has list="yes"
-        if (typeElements.some((t: any) => t['@_list'] === 'yes')) {
+        if (typeElements.some((t) => t['@_list'] === 'yes')) {
           list = true;
         }
+      } else {
+        // Empty type array, default to 'any'
+        type = 'any';
       }
     } else {
       // No type specified, default to 'any'
@@ -215,7 +225,7 @@ function parseProperties(classData: any): ParsedProperty[] {
 /**
  * Parse elements from a class definition
  */
-function parseElements(classData: any): ParsedElement[] {
+function parseElements(classData: SDEFClass | SDEFClassExtension): ParsedElement[] {
   const elements: ParsedElement[] = [];
 
   const elemsData = Array.isArray(classData.element)
@@ -246,7 +256,7 @@ function parseElements(classData: any): ParsedElement[] {
 /**
  * Parse an enumeration definition
  */
-function parseEnumeration(enumData: any): ParsedEnumeration | null {
+function parseEnumeration(enumData: SDEFEnumeration): ParsedEnumeration | null {
   if (!enumData['@_name'] || !enumData['@_code']) {
     return null;
   }
@@ -281,7 +291,7 @@ function parseEnumeration(enumData: any): ParsedEnumeration | null {
 /**
  * Parse a class extension definition
  */
-function parseClassExtension(extData: any): ClassExtension | null {
+function parseClassExtension(extData: SDEFClassExtension): ClassExtension | null {
   if (!extData['@_extends']) {
     return null;
   }

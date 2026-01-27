@@ -473,7 +473,7 @@ describe('QueryExecutor', () => {
 
       const promise = executor.executeQuery(params);
 
-      await expect(promise).rejects.toThrow(SyntaxError);
+      await expect(promise).rejects.toThrow(/Failed to parse Calendar.app response as JSON/);
     });
 
     it('should handle malformed JSON response', async () => {
@@ -486,7 +486,7 @@ describe('QueryExecutor', () => {
 
       const promise = executor.executeQuery(params);
 
-      await expect(promise).rejects.toThrow(SyntaxError);
+      await expect(promise).rejects.toThrow(/Failed to parse Calendar.app response as JSON/);
     });
 
     it('should parse valid JSON with complex event data', async () => {
@@ -540,12 +540,12 @@ describe('QueryExecutor', () => {
       const params: QueryParams = {
         app: 'Calendar',
         timeRange: 'today',
-        calendarName: 'Work "Special" Calendar',
+        calendarName: "John's Work Calendar",
       };
 
       const script = executor.generateJXAScript(params);
 
-      expect(script).toContain('Work "Special" Calendar');
+      expect(script).toContain("John's Work Calendar");
     });
 
     it('should handle events with missing location', async () => {

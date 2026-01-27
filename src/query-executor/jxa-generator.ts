@@ -5,15 +5,54 @@
 import { QueryParams } from './types.js';
 
 /**
+ * Maximum allowed length for calendar names
+ */
+const MAX_CALENDAR_NAME_LENGTH = 100;
+
+/**
+ * Sanitize calendar name to prevent JXA injection attacks
+ * Only allows alphanumeric characters, spaces, hyphens, apostrophes, and underscores
+ * 
+ * @param calendarName - The calendar name to sanitize
+ * @returns Sanitized calendar name
+ * @throws Error if calendar name contains invalid characters or exceeds length limit
+ */
+export function sanitizeCalendarName(calendarName: string): string {
+  // Check length limit
+  if (calendarName.length > MAX_CALENDAR_NAME_LENGTH) {
+    throw new Error(
+      `Calendar name too long (max ${MAX_CALENDAR_NAME_LENGTH} characters, got ${calendarName.length})`
+    );
+  }
+
+  // Character whitelist: alphanumeric, space, hyphen, apostrophe, underscore
+  // This prevents injection via quotes, semicolons, backslashes, control characters
+  const validPattern = /^[a-zA-Z0-9 \-'_]+$/;
+  
+  if (!validPattern.test(calendarName)) {
+    throw new Error(
+      `Invalid characters in calendar name. Only alphanumeric characters, spaces, hyphens, apostrophes, and underscores are allowed. Got: "${calendarName}"`
+    );
+  }
+
+  return calendarName;
+}
+
+/**
  * Generate JXA script for querying Calendar.app
  */
 export function generateJXAScript(params: QueryParams): string {
   const now = new Date();
   const filterDate = getFilterDate(params.timeRange, now);
 
+  // Sanitize calendar name if provided to prevent injection
+  const sanitizedCalendarName = params.calendarName
+    ? sanitizeCalendarName(params.calendarName)
+    : undefined;
+
   // Access all calendars or specific calendar
-  const calendarAccess = params.calendarName
-    ? `app.calendars.byName("${params.calendarName}")`
+  const calendarAccess = sanitizedCalendarName
+    ? `app.calendars.byName("${sanitizedCalendarName}")`
     : 'app.calendars';
 
   return `
@@ -22,7 +61,7 @@ export function generateJXAScript(params: QueryParams): string {
     const allEvents = [];
 
     // Get events from calendar(s)
-    ${params.calendarName ? `
+    ${sanitizedCalendarName ? `
       const events = calendars.events();
       allEvents.push(...events);
     ` : `
