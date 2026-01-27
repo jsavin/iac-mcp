@@ -110,6 +110,10 @@ export class TypeSchemaCacheManager {
    * @throws Error if SDEF file is not readable or parsing fails
    */
   private async parseAndGenerate(sdefPath: string): Promise<TypeSchemaCache> {
+    // Get SDEF file mtime for staleness checking
+    const stats = await stat(sdefPath);
+    const sdefMtime = stats.mtime;
+
     // Read SDEF file
     const sdefXML = await readFile(sdefPath, 'utf-8');
 
@@ -153,7 +157,7 @@ export class TypeSchemaCacheManager {
       classes,
       enumerations,
       typescriptCode,
-      lastParsed: new Date(),
+      lastParsed: sdefMtime,
     };
   }
 
