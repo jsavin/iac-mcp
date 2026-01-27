@@ -86,7 +86,16 @@ function isSecurityWarning(warning: ParseWarning): boolean {
 // Server-side cache for app metadata
 let cachedAppMetadata: AppMetadata[] | null = null;
 let cacheTimestamp = 0;
-const CACHE_TTL_MS = 60000; // 1 minute TTL
+
+// Cache TTL: 15 minutes
+// Rationale: App installation/removal is relatively infrequent on user systems.
+// A longer TTL optimizes MCP server performance by reducing expensive discovery
+// operations (SDEF parsing, filesystem traversal) during normal usage.
+// Trade-off: New apps take up to 15 minutes to be discoverable (acceptable UX).
+// Future: Manual invalidation tool + filesystem watching (see issues #30)
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minute TTL
+// TODO: Add manual cache invalidation mechanism (e.g., mcp_cache_invalidate tool)
+// TODO: Add automatic cache invalidation on app install/uninstall (filesystem watch)
 
 /**
  * Streaming warning aggregator with O(1) memory per warning
@@ -547,17 +556,34 @@ export async function setupHandlers(
         }
 
         // 2. Character whitelist (alphanumeric + common app name characters)
-        if (!/^[a-zA-Z0-9\s\-_.]+$/.test(appName)) {
+        // Security: Stricter regex to prevent path traversal and command injection
+        // - Must start with alphanumeric (allows single-char apps like "X" or "R")
+        // - Optionally followed by spaces, hyphens, underscores, alphanumerics
+        // - Must end with alphanumeric before optional extension
+        // - Allows single period for file extensions only (e.g., ".app")
+        // - No consecutive periods (prevents ../ traversal)
+        if (!/^[a-zA-Z0-9]+([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/.test(appName)) {
           return {
             content: [{
               type: 'text' as const,
-              text: 'Error: app_name contains invalid characters. Only alphanumeric, spaces, hyphens, underscores, and periods allowed.',
+              text: 'Error: app_name contains invalid characters. Must be alphanumeric with optional spaces, hyphens, underscores, and single period for extension.',
             }],
             isError: true,
           };
         }
 
-        // 3. Null byte rejection (prevent null byte injection)
+        // 3. Path traversal prevention (reject any path-like patterns)
+        if (appName.includes('/') || appName.includes('\\') || appName.includes('..')) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: 'Error: app_name contains path traversal patterns. Use app name only, not a path.',
+            }],
+            isError: true,
+          };
+        }
+
+        // 4. Null byte rejection (prevent null byte injection)
         if (appName.includes('\0')) {
           return {
             content: [{
@@ -660,6 +686,8 @@ export async function setupHandlers(
       }
 
       // 3. Check permissions (skip if DISABLE_PERMISSIONS is set)
+      // ⚠️ SECURITY WARNING: DISABLE_PERMISSIONS should ONLY be used for testing!
+      // This bypasses all permission checks and should NEVER be enabled in production.
       const permissionsDisabled = process.env.DISABLE_PERMISSIONS === 'true';
       if (!permissionsDisabled) {
         const permissionDecision = await permissionChecker.check(tool, args || {});
@@ -681,7 +709,8 @@ export async function setupHandlers(
 
         console.error(`[CallTool] Permission granted, executing via adapter`);
       } else {
-        console.error(`[CallTool] Permissions disabled (DISABLE_PERMISSIONS=true), executing via adapter`);
+        console.error(`[CallTool] ⚠️ SECURITY WARNING: Permissions disabled (DISABLE_PERMISSIONS=true), executing via adapter`);
+        console.error(`[CallTool] ⚠️ This should ONLY be used for testing! All permission checks are bypassed!`);
       }
 
       // 4. Execute via MacOSAdapter

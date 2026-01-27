@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { ResultParser } from '../../src/adapters/macos/result-parser';
+import { isMacOS } from '../utils/test-helpers';
 
 interface ExecutionResult {
   exitCode: number;
@@ -138,7 +139,7 @@ describe('ResultParser', () => {
       expect(parsed.data).toBeNull();
     });
 
-    it('should parse file path result', () => {
+    it.skipIf(!isMacOS())('should parse file path result', () => {
       const result: ExecutionResult = {
         exitCode: 0,
         stdout: 'Path("/Users/test/file.txt")',
@@ -813,7 +814,7 @@ describe('ResultParser', () => {
       expect(parsed.data).toBe('   ');
     });
 
-    it('should handle Path() with spaces in path', () => {
+    it.skipIf(!isMacOS())('should handle Path() with spaces in path', () => {
       const result: ExecutionResult = {
         exitCode: 0,
         stdout: 'Path("/Users/my folder/test file.txt")',

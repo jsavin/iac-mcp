@@ -34,6 +34,7 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { MCPTool } from '../../src/types/mcp-tool.js';
 import type { SDEFDictionary } from '../../src/types/sdef.js';
 import type { AppInfo } from '../../src/types/tool-generator.js';
+import { isMacOS } from '../utils/test-helpers.js';
 
 /**
  * Mock SDEF content for testing without requiring installed apps
@@ -129,7 +130,7 @@ function cleanupTempSdef(sdefPath: string): void {
   }
 }
 
-describe('MCP Handlers - Integration Tests', () => {
+describe.skipIf(!isMacOS())('MCP Handlers - Integration Tests', () => {
   let mockServer: MockServer;
   let toolGenerator: ToolGenerator;
   let adapter: MacOSAdapter;
