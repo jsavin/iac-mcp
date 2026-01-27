@@ -37,14 +37,14 @@
 - **Deliverable:** Beta-ready product
 
 ### Phase 3: Launch & Validate (Months 10-12)
-- Public launch (freemium: free tier + subscription pricing pro)
-- First initial users
-- **Target:** growth targets = validation
+- Public launch and community feedback
+- Initial user adoption
+- **Target:** Validation and product-market fit
 
-### Phase 4: Grow to Sustainability (Months 13-18)
+### Phase 4: Growth (Months 13-18)
 - Improve product, add features
 - Content marketing, organic growth
-- **Target:** growth targets (1,000 customers) = sustainable
+- **Target:** Growing community and adoption
 
 ### Phase 5: Expand (18+ months)
 - Accessibility APIs (non-scriptable apps)
@@ -57,10 +57,9 @@
 ### This Week
 1. **Read the vision documents** (if you haven't fully)
    - `planning/VISION.md` - Overview
-   - `planning/ideas/the-complete-vision.md` - Complete story
 
 2. **Review the roadmap**
-   - `planning/ROADMAP.md` - Detailed 18-month plan
+   - `planning/ROADMAP.md` - Detailed development plan
 
 3. **Start Phase 0 prototype**
    - Set up dev environment
@@ -112,7 +111,6 @@ Your planning directory now contains:
 - **VISION.md** - Executive summary (read first)
 - **BOOTSTRAP-STRATEGY.md** - Why/how to bootstrap
 - **STRATEGY.md** - Fundraising approach (if you change mind about VCs)
-- **ideas/** - Detailed vision documents
 
 ### Execution
 - **DECISIONS.md** - All key decisions documented
@@ -131,10 +129,10 @@ Your planning directory now contains:
 - [ ] Claude Desktop installed (for testing)
 - [ ] Dev journal/notes (track progress)
 
-### Business (Later)
+### Community (Later)
 - [ ] Landing page domain
-- [ ] Stripe account (when ready to charge)
 - [ ] Email list (for launch announcements)
+- [ ] Community channels (Discord, forums)
 
 ## Success Metrics to Track
 
@@ -145,20 +143,20 @@ Your planning directory now contains:
 
 ### Phase 1 (Months 2-5)
 - MCP bridge supports 10-15 apps
-- 100+ GitHub stars
-- 10+ developers using it
+- Community interest (GitHub stars, issues)
+- Developer adoption
 
 ### Phase 2 (Months 6-9)
 - Native app works well
-- 50 beta testers
+- Beta testers providing feedback
 
 ### Phase 3 (Months 10-12)
-- 50+ users
-- growth targets
+- Growing user base
+- Product-market fit validation
 
 ### Phase 4 (Months 13-18)
-- growing user base
-- growth targets = sustainable!
+- Sustainable community adoption
+- Feature-complete product
 
 ## When Things Get Hard
 
@@ -204,7 +202,7 @@ Your planning directory now contains:
 **You have:**
 - Clear vision (bridge AI to native apps)
 - Strategic decisions made (bootstrap, hybrid stack, open core)
-- Concrete roadmap (18 months to sustainability)
+- Concrete roadmap (phased development plan)
 - Immediate next steps (SDEF parsing prototype)
 
 **Now:** Start building Phase 0 and prove JITD works.

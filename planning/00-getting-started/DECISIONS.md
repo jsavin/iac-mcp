@@ -17,7 +17,7 @@
 - Proves JITD concept completely
 - Faster to build and ship
 - Still highly valuable
-- Can add broader coverage later, ongoing development
+- Can add broader coverage later
 **Status:** ✅ Decided
 
 ## Technology Stack
@@ -65,37 +65,36 @@
 - Can't be easily forked as complete product
 **Status:** ✅ Decided
 
-## Business Model
-**Decision:** Freemium SaaS
-**Tiers:**
-- **Free:** 3 apps (Finder, Safari, Mail), 5 saved workflows
-- **Pro:** subscription pricing or subscription pricing, unlimited apps/workflows
-- **Lifetime (optional):** one-time pricing, limited availability
+## Distribution Model
+**Decision:** Open source core with proprietary UI
+**Approach:**
+- **Free:** Open source MCP bridge, unlimited apps
+- **Paid:** Native UI wrapper with enhanced features
 **Status:** ✅ Decided
 
 ## Frontier Integration
 **Decision:** Build independently, integrate later
 **Rationale:**
 - Don't wait for Frontier modernization to complete
-- Prove bridge concept and business independently
-- Integration happens when both are ready and revenue-positive
+- Prove bridge concept independently
+- Integration happens when both projects are ready
 **Status:** ✅ Decided
 
 ## Go-to-Market
 **Decision:** Developer-first, then expand to non-technical users
 **Phase 1:** Open source MCP bridge for developers (validation)
-**Phase 2:** Paid UI wrapper for broader audience (revenue)
+**Phase 2:** Native UI wrapper for broader audience
 **Rationale:**
 - Developers validate technical approach
 - Feedback informs UI design
 - Community builds around open core
-- Then expand market with paid product
+- Then expand market with native app
 **Status:** ✅ Decided
 
 ## Future Expansion (Not MVP)
-**Deferred to post-launch, ongoing development:**
-- ❌ Accessibility API support (Tier 2)
-- ❌ Vision AI for non-scriptable apps (Tier 3)
+**Deferred to post-launch:**
+- ❌ Accessibility API support (non-scriptable apps)
+- ❌ Vision AI for GUI automation
 - ❌ Windows version
 - ❌ Linux version
 - ❌ Visual workflow canvas (conversational UI sufficient for v1)
@@ -201,9 +200,9 @@ This reverses the decision from PR #15 to remove all resource handlers. PR #15 r
 - Staggered (core first, UI 1-2 months later)
 **Consider:** Staggered gets early feedback, simultaneous has more impact
 
-### 5. Pricing Validation
-**Question:** Is subscription pricing right, or test different price points?
-**Consider:** Could do early bird pricing ($79 lifetime) to validate willingness to pay
+### 5. Native UI Features
+**Question:** What features should the native UI include beyond the open source core?
+**Consider:** Workflow builder, visual editor, scheduled automation, etc.
 
 ## Decision Log
 
@@ -213,7 +212,7 @@ This reverses the decision from PR #15 to remove all resource handlers. PR #15 r
 | 2026-01-15 | Scriptable apps only (MVP) | Faster to ship, proves concept |
 | 2026-01-15 | Hybrid tech stack | Native feel + code reuse |
 | 2026-01-15 | Core open, UI proprietary | Community + business model |
-| 2026-01-15 | Freemium subscription pricing | Proven pricing for Mac productivity apps |
+| 2026-01-15 | Open core + proprietary UI | Community building + sustainable model |
 | 2026-01-22 | Dual resource + tool for app discovery | Complementary use cases: session init + discoverability |
 
 ---

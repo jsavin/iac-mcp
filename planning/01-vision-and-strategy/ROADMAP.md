@@ -1,15 +1,15 @@
-# Development Roadmap
+# Technical Development Roadmap
 
 ## Overview
 
-**Goal:** Build sustainable, profitable bridge between AI and native Mac apps
-**Strategy:** Bootstrap with open source core + proprietary UI
-**Timeline:** 12-18 months to profitability (growth targets)
-**Availability:** 20-30 hours/week (part-time)
+**Goal:** Build a universal bridge between AI/LLMs and native Mac applications
+**Strategy:** Open source MCP bridge + native UI
+**Timeline:** Phased development approach
+**Availability:** Part-time development (20-30 hours/week)
 
 ## Phase 0: Technical Validation (Weeks 1-4)
 
-**Goal:** Prove JITD concept works
+**Goal:** Prove JITD (Just-In-Time Discovery) concept works
 
 ### Week 1-2: SDEF Parsing Prototype
 - [ ] Parse Finder.app SDEF file
@@ -40,7 +40,7 @@
 ## Phase 1: MCP Bridge Core (Months 2-5)
 
 **Goal:** Working MCP server that supports 10-15 apps
-**Timeline:** ~16 weeks (4 months @ 20-25 hrs/week)
+**Timeline:** ~16 weeks
 
 ### Month 2: Core Engine (Weeks 5-8)
 - [ ] JITD engine (discovery, caching, tool generation)
@@ -80,10 +80,10 @@
 
 ---
 
-## Phase 2: UI Wrapper (Months 6-9)
+## Phase 2: Native UI (Months 6-9)
 
 **Goal:** Native macOS app with basic workflow management
-**Timeline:** ~16 weeks (4 months @ 20-25 hrs/week)
+**Timeline:** ~16 weeks
 
 ### Month 6: Swift App Foundation (Weeks 21-24)
 - [ ] Xcode project setup
@@ -99,7 +99,7 @@
 - [ ] Workflow list (saved workflows)
 - [ ] Workflow editor (simple form-based, not visual canvas yet)
 - [ ] Run workflow (trigger execution, show results)
-- [ ] Settings (enable/disable apps, API keys if needed)
+- [ ] Settings (enable/disable apps, configuration)
 
 **Test:** Can create, save, and run workflows from UI
 
@@ -111,7 +111,7 @@
 
 **Test:** Safe to use, users feel in control
 
-### Month 9: Polish & Prepare Launch (Weeks 33-36)
+### Month 9: Polish & Prepare for Beta (Weeks 33-36)
 - [ ] Onboarding flow (first-time user experience)
 - [ ] Error handling and user-friendly messages
 - [ ] Help/documentation (in-app)
@@ -122,109 +122,97 @@
 
 ---
 
-## Phase 3: Launch & Validate (Months 10-12)
+## Phase 3: Launch & Initial Release (Months 10-12)
 
-**Goal:** Get first initial users, validate business model
-**Timeline:** ~12 weeks (3 months)
+**Goal:** Public release and validation
+**Timeline:** ~12 weeks
 
 ### Month 10: Public Launch (Weeks 37-40)
-- [ ] Landing page (value prop, pricing, download)
-- [ ] Stripe integration (payment processing)
-- [ ] Freemium limits (3 apps, 5 workflows)
-- [ ] License validation (check Pro status)
-- [ ] Product Hunt launch
-- [ ] Open source MCP bridge announcement (HN, Reddit, Twitter)
-
-**Target:** 1,000 downloads, 50 trial users
+- [ ] Landing page and documentation
+- [ ] Package distribution (Homebrew, npm, direct download)
+- [ ] Open source announcement (HN, Reddit, Twitter)
+- [ ] Community building (Discord, GitHub Discussions)
 
 ### Month 11: Community Feedback (Weeks 41-44)
-- [ ] Content marketing (blog posts, use cases)
-- [ ] YouTube demo video (3-5 minutes)
+- [ ] Content creation (blog posts, use cases, tutorials)
+- [ ] Video demonstrations
 - [ ] Outreach to Mac productivity communities
-- [ ] Support infrastructure (email, docs)
-- [ ] Bug fixes based on user feedback
+- [ ] Support infrastructure
+- [ ] Bug fixes based on feedback
 
-**Target:** initial users, 25 users (growth targets)
-
-### Month 12: Iterate & Improve (Weeks 45-48)
+### Month 12: Iterate & Stabilize (Weeks 45-48)
 - [ ] Feature improvements based on feedback
 - [ ] Better onboarding (reduce friction)
 - [ ] Performance optimization
 - [ ] Additional app support (based on requests)
-- [ ] Referral program (incentivize sharing)
+- [ ] Community workflow sharing
 
-**Target:** growing users, 50 users (growth targets)
-
-**Decision point:** If growth targets achieved, proves business model. Continue to Phase 4. If not, pivot or adjust.
+**Deliverable:** Stable 1.0 release
 
 ---
 
-## Phase 4: Growth & Scale (Months 13-18)
+## Phase 4: Advanced Features (Months 13-18)
 
-**Goal:** Reach growth targets (growing user base)
-**Timeline:** ~24 weeks (6 months)
+**Goal:** Enhanced capabilities and user experience
+**Timeline:** ~24 weeks
 
 ### Months 13-15: Product Improvements
 - [ ] Conversational workflow builder (AI assistant chat)
 - [ ] Workflow sharing (import/export)
-- [ ] Community workflows (library/marketplace)
+- [ ] Community workflows (library)
 - [ ] Scheduled workflows (run at specific times)
 - [ ] Mac App Store submission (broader reach)
 
-### Months 16-18: Marketing & Growth
-- [ ] SEO content (blog posts for each app)
-- [ ] YouTube tutorials (specific workflows)
-- [ ] Partnerships (Mac productivity bloggers/YouTubers)
-- [ ] Paid marketing (if profitable)
+### Months 16-18: Platform Growth
+- [ ] Content and tutorials (blog posts for each app)
+- [ ] Video tutorials (specific workflows)
+- [ ] Community partnerships
 - [ ] User testimonials and case studies
+- [ ] Developer API documentation
 
-**Target:** growing user base, growth targets
-
-**Milestone:** This is sustainability. Can work on project full-time if desired, or hire help.
+**Deliverable:** Feature-complete 2.0 release
 
 ---
 
 ## Phase 5: Platform Expansion (Months 19-24+)
 
-**Goal:** Multi-platform, advanced features, enterprise
-**Timeline:** Ongoing, ongoing development
+**Goal:** Multi-platform and advanced automation
+**Timeline:** Ongoing
 
 ### Accessibility API Support (Tier 2)
 - Support non-scriptable apps via macOS Accessibility APIs
 - Expand coverage from 30-40% to 60-70% of apps
-- Charge premium (subscription pricing tier)
+- Advanced automation capabilities
 
-### Windows Version
-- Port discovery layer (COM introspection, registry)
+### Cross-Platform Support
+- Port discovery layer (Windows COM introspection, Linux D-Bus)
 - Windows platform adapter (PowerShell, COM execution)
-- Windows UI (reuse Swift patterns or Electron)
-- 14x market expansion
+- Linux platform adapter (D-Bus, CLI tools)
+- Cross-platform UI considerations
 
 ### Vision AI Support (Tier 3)
 - Screenshot + vision AI for any visible app
-- Most expensive tier (subscription pricing)
+- GUI automation capabilities
 - Near-universal coverage (95%+ of apps)
 
-### Enterprise Features
+### Advanced Features
 - Team sharing and collaboration
-- Admin controls and compliance
-- SSO/SAML integration
-- Custom deployment
-- Enterprise pricing
+- Workflow templates and marketplace
+- Integration with other automation tools
+- API for third-party extensions
 
 ---
 
-## Key Milestones & Metrics
+## Key Technical Milestones
 
-| Milestone | Timeline | Metric | Target |
-|-----------|----------|--------|--------|
-| Technical validation | Month 1 | JITD proof of concept | Works with 1 app |
-| Open source core | Month 5 | MCP bridge released | 100+ GitHub stars |
-| Beta launch | Month 9 | Native app ready | 50 beta users |
-| Public launch | Month 10 | Initial adoption | Initial validation |
-| Product-market fit | Month 12 | Validation | 50 users, growth targets |
-| Sustainability | Month 18 | Profitability | growing user base, growth targets |
-| Scale | Month 24+ | Growth | 5,000 users, growth targets |
+| Milestone | Timeline | Success Criteria |
+|-----------|----------|------------------|
+| Technical validation | Month 1 | JITD proof of concept works with 1 app |
+| Open source core | Month 5 | MCP bridge released, community interest |
+| Beta launch | Month 9 | Native app functional, beta testers using it |
+| Public release | Month 10 | 1.0 release, stable and documented |
+| Feature complete | Month 18 | 2.0 release with advanced features |
+| Multi-platform | Month 24+ | Cross-platform support |
 
 ---
 
@@ -235,10 +223,10 @@
 - **Hybrid architecture too complex:** Have Electron fallback plan
 - **Apps don't work reliably:** Focus on most popular apps first
 
-### Market Risks
-- **No demand:** Free tier validates before building paid features
-- **Can't monetize:** Pivot to developer tools (narrower but proven)
-- **Too much competition:** Differentiate on native apps + local-first
+### Adoption Risks
+- **Developers don't adopt:** Ensure excellent documentation and examples
+- **Too complex:** Focus on usability and onboarding
+- **Performance issues:** Optimize discovery and caching early
 
 ### Execution Risks
 - **Timeline slips:** Adjust scope, not timeline (ship smaller but on time)
@@ -258,26 +246,26 @@
 ### Phase 1 Success
 - ✅ MCP bridge works with 10-15 apps
 - ✅ Claude Desktop users can use it
-- ✅ 100+ GitHub stars
-- ✅ 10+ developers using it
+- ✅ Community interest (GitHub stars, issues, PRs)
+- ✅ Developer adoption
 
 ### Phase 2 Success
 - ✅ Native macOS app works well
-- ✅ 50 beta users giving feedback
-- ✅ Positive response (users want to pay)
+- ✅ Beta testers providing feedback
+- ✅ Positive response from users
 - ✅ No critical bugs
 
 ### Phase 3 Success
-- ✅ 50+ users
-- ✅ product validation
-- ✅ 70%+ retention
-- ✅ Positive reviews/testimonials
+- ✅ Stable 1.0 release
+- ✅ Active community
+- ✅ Good documentation
+- ✅ Positive reviews
 
 ### Phase 4 Success
-- ✅ growth targets
-- ✅ growing user base
-- ✅ Sustainable business
-- ✅ Can work full-time or hire help
+- ✅ Feature-complete 2.0 release
+- ✅ Growing community
+- ✅ Community-contributed workflows
+- ✅ Strong adoption
 
 ---
 
@@ -300,4 +288,5 @@ Complete Phase 0 and make go/no-go decision on full buildout.
 
 ---
 
-**Status:** Ready to start Phase 0 (Technical Validation)
+**Status:** Phase 0 (Technical Validation)
+**Current Focus:** Proving JITD concept with Finder.app

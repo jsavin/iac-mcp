@@ -157,7 +157,7 @@ Power users build complex workflows combining AI + apps + Frontier.
 **Deliverable:** Community, marketplace, enterprise, cross-platform
 
 **Success metric:**
-100K+ active users, sustainable business, thriving ecosystem.
+Growing community, thriving ecosystem, broad adoption.
 
 ## Key Technical Decisions
 
@@ -172,7 +172,7 @@ Power users build complex workflows combining AI + apps + Frontier.
 1. **Phase 1 or Phase 2 first?** (MCP bridge for developers vs native app for users)
 2. **Electron vs Swift?** (If building native app)
 3. **Frontier integration timing?** (Design for it now or prove concept first?)
-4. **Business model?** (One-time purchase, subscription, freemium, or start free for developers?)
+4. **Distribution model?** (Open source core, proprietary UI, or fully open?)
 5. **Project naming?** (osa-mcp is too technical, need product name eventually)
 
 ## Success Metrics
@@ -189,11 +189,11 @@ Power users build complex workflows combining AI + apps + Frontier.
 - 70%+ retention after 3 months
 - Real workflows shared in community
 
-### Business Validation
-- Users willing to pay $49+ (or subscription pricing)
-- Sustainable revenue without VC funding
-- Profitable unit economics
-- Path to 10K+ users
+### Community Validation
+- Sustainable growth without VC funding
+- Active contributor community
+- Real-world adoption
+- Thriving ecosystem
 
 ## Why This Will Work
 
@@ -219,17 +219,9 @@ Enable interoperability: **Everything works with everything else.**
 
 ---
 
-## Document Structure
+## Related Documentation
 
-This vision is documented across several files:
-
-- **VISION.md** (this file) - High-level overview
-- **ideas/the-complete-vision.md** - Complete detailed vision
-- **ideas/frontier-vision.md** - Frontier legacy and democratization angle
-- **ideas/product-reframe.md** - Evolution from MCP server to complete product
-- **ideas/jitd-concept.md** - Technical foundation: Just-In-Time Discovery
-- **ideas/universal-iac-vision.md** - Cross-platform IAC architecture
-- **ideas/tool-explosion-solutions.md** - Handling thousands of tools
-- **ideas/architecture-overview.md** - System design and components
-
-Read `ideas/the-complete-vision.md` for the full story.
+See also:
+- **ROADMAP.md** - Technical development roadmap
+- **DECISIONS.md** - Key architectural and strategic decisions
+- **START-HERE.md** - Getting started guide
