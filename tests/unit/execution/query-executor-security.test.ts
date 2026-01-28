@@ -735,4 +735,108 @@ describe('QueryExecutor - Security: JXA Injection Prevention', () => {
       }
     });
   });
+
+  describe('App Parameter Injection Prevention', () => {
+    const validSpecifier: ElementSpecifier = {
+      type: 'element',
+      element: 'mailbox',
+      index: 0,
+      container: 'application'
+    };
+
+    describe('Valid App Names - Should Accept', () => {
+      it('should accept simple app names', async () => {
+        const ref = await queryExecutor.queryObject('Mail', validSpecifier);
+        expect(ref).toBeDefined();
+      });
+
+      it('should accept app names with spaces', async () => {
+        const ref = await queryExecutor.queryObject('Microsoft Word', validSpecifier);
+        expect(ref).toBeDefined();
+      });
+
+      it('should accept bundle ID format', async () => {
+        const ref = await queryExecutor.queryObject('com.apple.finder', validSpecifier);
+        expect(ref).toBeDefined();
+      });
+
+      it('should accept app names with hyphens and underscores', async () => {
+        const ref = await queryExecutor.queryObject('My-App_Name', validSpecifier);
+        expect(ref).toBeDefined();
+      });
+    });
+
+    describe('Injection Attacks - Should Reject', () => {
+      it('should reject app name with double quotes', async () => {
+        await expect(
+          queryExecutor.queryObject('Mail"); do shell script "rm -rf /', validSpecifier)
+        ).rejects.toThrow('invalid characters');
+      });
+
+      it('should reject app name with backticks', async () => {
+        await expect(
+          queryExecutor.queryObject('Mail`rm -rf /`', validSpecifier)
+        ).rejects.toThrow('invalid characters');
+      });
+
+      it('should reject app name with semicolons', async () => {
+        await expect(
+          queryExecutor.queryObject('Mail; rm -rf /', validSpecifier)
+        ).rejects.toThrow('invalid characters');
+      });
+
+      it('should reject app name with parentheses', async () => {
+        await expect(
+          queryExecutor.queryObject('Application("Finder")', validSpecifier)
+        ).rejects.toThrow('invalid characters');
+      });
+
+      it('should reject app name with shell substitution', async () => {
+        await expect(
+          queryExecutor.queryObject('$(whoami)', validSpecifier)
+        ).rejects.toThrow('invalid characters');
+      });
+
+      it('should reject app name with newlines', async () => {
+        await expect(
+          queryExecutor.queryObject('Mail\n; rm -rf /', validSpecifier)
+        ).rejects.toThrow('invalid characters');
+      });
+    });
+
+    describe('DoS Prevention - App Name Length', () => {
+      it('should reject app names exceeding 256 characters', async () => {
+        const longAppName = 'A'.repeat(300);
+        await expect(
+          queryExecutor.queryObject(longAppName, validSpecifier)
+        ).rejects.toThrow('exceeds maximum length');
+      });
+
+      it('should accept app names at exactly 256 characters', async () => {
+        const maxAppName = 'A'.repeat(256);
+        const ref = await queryExecutor.queryObject(maxAppName, validSpecifier);
+        expect(ref).toBeDefined();
+      });
+    });
+
+    describe('Edge Cases', () => {
+      it('should reject empty app name', async () => {
+        await expect(
+          queryExecutor.queryObject('', validSpecifier)
+        ).rejects.toThrow(/required|invalid/i);
+      });
+
+      it('should reject null-like app name', async () => {
+        await expect(
+          queryExecutor.queryObject(null as any, validSpecifier)
+        ).rejects.toThrow(/required|invalid/i);
+      });
+
+      it('should reject undefined app name', async () => {
+        await expect(
+          queryExecutor.queryObject(undefined as any, validSpecifier)
+        ).rejects.toThrow(/required|invalid/i);
+      });
+    });
+  });
 });

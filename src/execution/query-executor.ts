@@ -18,6 +18,13 @@ import { ReferenceStore } from "./reference-store.js";
 const SAFE_IDENTIFIER_REGEX = /^[a-zA-Z0-9_ \-]+$/;
 
 /**
+ * Regex for validating application names.
+ * More permissive than SAFE_IDENTIFIER_REGEX to allow dots in bundle IDs.
+ * Examples: "Mail", "com.apple.finder", "Microsoft Word"
+ */
+const SAFE_APP_NAME_REGEX = /^[a-zA-Z0-9_.\- ]+$/;
+
+/**
  * Maximum length for identifier strings to prevent DoS attacks.
  */
 const MAX_IDENTIFIER_LENGTH = 256;
@@ -42,9 +49,11 @@ export class QueryExecutor {
     app: string,
     specifier: ObjectSpecifier
   ): Promise<ObjectReference> {
-    // 0. Validate specifier type and values
+    // 0. Validate app name for JXA safety (prevent injection attacks)
+    this.validateAppName(app);
+    // 0a. Validate specifier type
     this.validateSpecifier(specifier);
-    // 0a. Validate specifier values for JXA safety (prevent injection attacks)
+    // 0b. Validate specifier values for JXA safety (prevent injection attacks)
     this.validateSpecifierValues(specifier);
 
     // 1. Build JXA code to resolve specifier
@@ -220,6 +229,46 @@ export class QueryExecutor {
   }
 
   /**
+   * Validate and sanitize application name parameter.
+   * App names can contain dots (for bundle IDs like "com.apple.finder")
+   * and other characters not allowed in specifier fields.
+   *
+   * @param app - The application name to validate
+   * @throws Error if the app name is invalid or potentially malicious
+   */
+  private validateAppName(app: string): void {
+    if (!app || typeof app !== 'string') {
+      throw new Error('App name is required and must be a string');
+    }
+
+    if (app.length > MAX_IDENTIFIER_LENGTH) {
+      throw new Error(`App name exceeds maximum length (${MAX_IDENTIFIER_LENGTH} characters)`);
+    }
+
+    if (!SAFE_APP_NAME_REGEX.test(app)) {
+      throw new Error('App name contains invalid characters. Only alphanumeric, spaces, dots, hyphens, and underscores are allowed.');
+    }
+  }
+
+  /**
+   * Escape a string for safe inclusion in JXA code as a string literal.
+   * This provides defense-in-depth even though the allowlist regex should
+   * prevent dangerous characters from ever reaching this point.
+   *
+   * @param value - The string to escape
+   * @returns The escaped string safe for JXA string interpolation
+   */
+  private escapeJxaString(value: string): string {
+    return value
+      .replace(/\\/g, '\\\\')  // Escape backslashes first
+      .replace(/"/g, '\\"')     // Escape double quotes
+      .replace(/'/g, "\\'")     // Escape single quotes
+      .replace(/\n/g, '\\n')    // Escape newlines
+      .replace(/\r/g, '\\r')    // Escape carriage returns
+      .replace(/\t/g, '\\t');   // Escape tabs
+  }
+
+  /**
    * Build JXA object path from specifier.
    * This generates the correct JXA syntax for accessing objects.
    *
@@ -252,7 +301,8 @@ export class QueryExecutor {
         ? appVar
         : this.buildObjectPath(specifier.container, appVar);
       // JXA: app.mailboxes.byName("inbox")
-      return `${containerPath}.${this.pluralize(sanitizedElement)}.byName("${sanitizedName}")`;
+      // Defense-in-depth: escape the name string even though sanitizeForJxa should prevent dangerous chars
+      return `${containerPath}.${this.pluralize(sanitizedElement)}.byName("${this.escapeJxaString(sanitizedName)}")`;
     }
 
     if (isIdSpecifier(specifier)) {
@@ -264,7 +314,8 @@ export class QueryExecutor {
         ? appVar
         : this.buildObjectPath(specifier.container, appVar);
       // JXA: app.messages.byId("abc123")
-      return `${containerPath}.${this.pluralize(sanitizedElement)}.byId("${sanitizedId}")`;
+      // Defense-in-depth: escape the id string even though sanitizeForJxa should prevent dangerous chars
+      return `${containerPath}.${this.pluralize(sanitizedElement)}.byId("${this.escapeJxaString(sanitizedId)}")`;
     }
 
     if (isPropertySpecifier(specifier)) {

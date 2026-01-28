@@ -70,6 +70,61 @@ function isValidAppName(value: unknown): value is string {
 }
 
 /**
+ * Type guard for iac_mcp_query_object parameters
+ * Runtime validation of parameter structure
+ */
+interface QueryObjectParams {
+  app: string;
+  specifier: ObjectSpecifier;
+}
+
+function isQueryObjectParams(value: unknown): value is QueryObjectParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.app === 'string' &&
+         typeof obj.specifier === 'object' && obj.specifier !== null;
+}
+
+/**
+ * Type guard for iac_mcp_get_properties parameters
+ * Runtime validation of parameter structure
+ */
+interface GetPropertiesParams {
+  reference: string;
+  properties?: string[];
+}
+
+function isGetPropertiesParams(value: unknown): value is GetPropertiesParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.reference !== 'string') return false;
+  if (obj.properties !== undefined && !Array.isArray(obj.properties)) return false;
+  return true;
+}
+
+/**
+ * Type guard for iac_mcp_get_elements parameters
+ * Runtime validation of parameter structure
+ */
+interface GetElementsParams {
+  container: string | ObjectSpecifier;
+  elementType: string;
+  app?: string;
+  limit?: number;
+}
+
+function isGetElementsParams(value: unknown): value is GetElementsParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.elementType !== 'string') return false;
+  // container can be string (reference ID) or object (specifier)
+  if (typeof obj.container !== 'string' && (typeof obj.container !== 'object' || obj.container === null)) return false;
+  if (obj.app !== undefined && typeof obj.app !== 'string') return false;
+  if (obj.limit !== undefined && typeof obj.limit !== 'number') return false;
+  return true;
+}
+
+/**
  * Check if a warning is security-related
  *
  * @param warning - Parse warning to check
@@ -620,16 +675,53 @@ export async function setupHandlers(
       }
 
       // Check for query tools (iac_mcp_query_object, iac_mcp_get_properties, iac_mcp_get_elements)
+      // Using type guards instead of unsafe type assertions for runtime safety
       if (toolName === 'iac_mcp_query_object') {
-        return await handleQueryObject(queryExecutor, args as { app: string; specifier: ObjectSpecifier });
+        if (!isQueryObjectParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_query_object. Expected: { app: string, specifier: object }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        return await handleQueryObject(queryExecutor, args);
       }
 
       if (toolName === 'iac_mcp_get_properties') {
-        return await handleGetProperties(queryExecutor, args as { reference: string; properties?: string[] });
+        if (!isGetPropertiesParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_get_properties. Expected: { reference: string, properties?: string[] }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        return await handleGetProperties(queryExecutor, args);
       }
 
       if (toolName === 'iac_mcp_get_elements') {
-        return await handleGetElements(queryExecutor, args as { container: string | ObjectSpecifier; elementType: string; app?: string; limit?: number });
+        if (!isGetElementsParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_get_elements. Expected: { container: string|object, elementType: string, app?: string, limit?: number }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        return await handleGetElements(queryExecutor, args);
       }
 
       // Check for get_app_tools (lazy loading)
