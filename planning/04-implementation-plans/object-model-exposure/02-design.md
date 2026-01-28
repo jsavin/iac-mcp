@@ -271,31 +271,18 @@ interface Attendee {
 - Include class names and property names in schema
 - Validate tool parameters
 
-**Phase 1 (Simple):** Predefined queries only
+**Implementation:** Generic query tools (JITD-compliant)
 
-```typescript
-{
-  name: "query_calendar_events",
-  description: "Query Calendar app events",
-  inputSchema: {
-    type: "object",
-    properties: {
-      timeRange: {
-        type: "string",
-        enum: ["today", "this_week", "this_month", "all"],
-        description: "Time range for events"
-      },
-      calendarName: {
-        type: "string",
-        description: "Filter by calendar name (optional)"
-      }
-    },
-    required: ["timeRange"]
-  }
-}
-```
+Rather than app-specific tools like `query_calendar_events` (which violate JITD policy),
+we implement generic query tools that work with any scriptable application:
 
-**Phase 2+ (Advanced):** JXA filter expressions
+- `iac_mcp_query_object` - Query any object by specifier
+- `iac_mcp_get_properties` - Get properties of a referenced object
+- `iac_mcp_get_elements` - Get child elements from a container
+
+See `src/jitd/tool-generator/query-tools.ts` for the actual implementation.
+
+**Future Enhancement:** JXA filter expressions
 
 ```typescript
 {

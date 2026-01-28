@@ -516,40 +516,12 @@ export async function setupHandlers(
         },
       };
 
-      /**
-       * query_calendar_events Tool Definition
-       *
-       * Queries Calendar.app events by time range.
-       * Returns events with summary, start/end dates, and other details.
-       *
-       * Phase 1 demonstration of object model exposure.
-       */
-      const queryCalendarEventsTool: Tool = {
-        name: 'query_calendar_events',
-        description: 'Query Calendar.app events by time range. Returns events with summary, start/end dates, and other details.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            timeRange: {
-              type: 'string',
-              enum: ['today', 'this_week', 'this_month', 'all'],
-              description: 'Time range to query: today (events starting today), this_week (events this week), this_month (events this month), or all (all future events)',
-            },
-            calendarName: {
-              type: 'string',
-              description: 'Optional: Filter events by calendar name (e.g., \'Work\', \'Personal\')',
-            },
-          },
-          required: ['timeRange'],
-        },
-      };
-
       // Generate query tools
       const queryTools = generateQueryTools();
 
-      // Return get_app_tools tool + list_apps tool + query_calendar_events tool + query tools + app metadata
+      // Return get_app_tools tool + list_apps tool + query tools + app metadata
       return {
-        tools: [getAppToolsTool, listAppsTool, queryCalendarEventsTool, ...queryTools],
+        tools: [getAppToolsTool, listAppsTool, ...queryTools],
         _app_metadata: appMetadataList,
       };
 
@@ -610,64 +582,6 @@ export async function setupHandlers(
             content: [{
               type: 'text' as const,
               text: `Error listing apps: ${message}`,
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      // Check for query_calendar_events (query Calendar.app events)
-      if (toolName === 'query_calendar_events') {
-        try {
-          console.error('[CallTool/query_calendar_events] Executing query_calendar_events tool');
-
-          // Validate arguments
-          const timeRange = args?.timeRange as 'today' | 'this_week' | 'this_month' | 'all' | undefined;
-          // const calendarName = args?.calendarName as string | undefined;
-
-          if (!timeRange) {
-            console.error('[CallTool/query_calendar_events] Error: Missing timeRange parameter');
-            return {
-              content: [{
-                type: 'text' as const,
-                text: 'Error: Missing required parameter "timeRange"',
-              }],
-              isError: true,
-            };
-          }
-
-          // Validate timeRange is one of the allowed values
-          const validTimeRanges = ['today', 'this_week', 'this_month', 'all'];
-          if (!validTimeRanges.includes(timeRange)) {
-            return {
-              content: [{
-                type: 'text' as const,
-                text: `Error: Invalid timeRange "${timeRange}". Must be one of: ${validTimeRanges.join(', ')}`,
-              }],
-              isError: true,
-            };
-          }
-
-          // TODO: Implement calendar query functionality in Phase 1
-          // For now, return a placeholder message
-          const events: any[] = [];
-
-          console.error(`[CallTool/query_calendar_events] Returning ${events.length} events`);
-
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({ events, count: events.length }, null, 2),
-            }],
-          };
-        } catch (error) {
-          // Handle errors
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(`[CallTool/query_calendar_events] Error: ${message}`);
-          return {
-            content: [{
-              type: 'text' as const,
-              text: `Error querying calendar events: ${message}`,
             }],
             isError: true,
           };
