@@ -15,6 +15,8 @@ import { MacOSAdapter } from './adapters/macos/macos-adapter.js';
 import { PermissionChecker } from './permissions/permission-checker.js';
 import { ErrorHandler } from './error-handler.js';
 import { PerAppCache } from './jitd/cache/per-app-cache.js';
+import { ReferenceStore } from './execution/reference-store.js';
+import { QueryExecutor } from './execution/query-executor.js';
 
 /**
  * Logging utility that writes to stderr (stdout is reserved for MCP protocol)
@@ -57,6 +59,10 @@ async function main(): Promise<void> {
   const errorHandler = new ErrorHandler();
   const perAppCache = new PerAppCache();
 
+  // Initialize query execution components
+  const referenceStore = new ReferenceStore(15 * 60 * 1000); // 15-minute TTL
+  const queryExecutor = new QueryExecutor(referenceStore);
+
   // Setup all MCP handlers
   try {
     await setupHandlers(
@@ -65,7 +71,8 @@ async function main(): Promise<void> {
       permissionChecker,
       adapter,
       errorHandler,
-      perAppCache
+      perAppCache,
+      queryExecutor
     );
     log('INFO', 'MCP handlers setup complete');
   } catch (error) {

@@ -29,8 +29,11 @@ export class QueryExecutor {
     app: string,
     specifier: ObjectSpecifier
   ): Promise<ObjectReference> {
+    // 0. Validate specifier type
+    this.validateSpecifier(specifier);
+
     // 1. Build JXA code to resolve specifier
-    const jxaCode = this.buildObjectPath(specifier, `Application("${app}")`);
+    // const jxaCode = this.buildObjectPath(specifier, `Application("${app}")`);
 
     // 2. Execute JXA (for Phase 1, we mock this - will integrate actual execution in Task 5)
     // In production, this would call the JXA executor
@@ -59,7 +62,7 @@ export class QueryExecutor {
    */
   async getProperties(
     referenceId: string,
-    properties?: string[]
+    _properties?: string[]
   ): Promise<Record<string, any>> {
     // 1. Get reference from store
     const reference = this.referenceStore.get(referenceId);
@@ -70,28 +73,25 @@ export class QueryExecutor {
     // 2. Touch reference (update lastAccessedAt)
     this.referenceStore.touch(referenceId);
 
-    // 3. Build JXA to get properties
-    const objectPath = this.buildObjectPath(reference.specifier, `Application("${reference.app}")`);
-
-    let jxaCode: string;
-    if (properties && properties.length > 0) {
-      // Get specific properties
-      const propertyAccess = properties.map(prop =>
-        `${this.camelCase(prop)}: obj.${this.camelCase(prop)}()`
-      ).join(', ');
-      jxaCode = `
-        const app = Application("${reference.app}");
-        const obj = ${objectPath};
-        return { ${propertyAccess} };
-      `;
-    } else {
-      // Get all properties (in production, would use properties())
-      jxaCode = `
-        const app = Application("${reference.app}");
-        const obj = ${objectPath};
-        return obj.properties();
-      `;
-    }
+    // 3. Build JXA to get properties (commented out until Phase 5 JXA integration)
+    // const objectPath = this.buildObjectPath(reference.specifier, `Application("${reference.app}")`);
+    // let jxaCode: string;
+    // if (properties && properties.length > 0) {
+    //   const propertyAccess = properties.map(prop =>
+    //     `${this.camelCase(prop)}: obj.${this.camelCase(prop)}()`
+    //   ).join(', ');
+    //   jxaCode = `
+    //     const app = Application("${reference.app}");
+    //     const obj = ${objectPath};
+    //     return { ${propertyAccess} };
+    //   `;
+    // } else {
+    //   jxaCode = `
+    //     const app = Application("${reference.app}");
+    //     const obj = ${objectPath};
+    //     return obj.properties();
+    //   `;
+    // }
 
     // 4. Execute JXA (mocked for Phase 1)
     // In production: const result = await this.jxaExecutor.execute(reference.app, jxaCode);
@@ -132,26 +132,25 @@ export class QueryExecutor {
       app = 'Mail'; // TODO: Extract from context or require as parameter
     }
 
-    // 2. Build JXA to get elements
-    const containerPath = this.buildObjectPath(containerSpec, `Application("${app}")`);
-    const elementsPath = `${containerPath}.${this.pluralize(elementType)}`;
-
-    const jxaCode = `
-      const app = Application("${app}");
-      const container = ${containerPath};
-      const elements = container.${this.pluralize(elementType)};
-      return {
-        count: elements.length,
-        items: elements.slice(0, ${limit})
-      };
-    `;
+    // 2. Build JXA to get elements (commented out until Phase 5 JXA integration)
+    // const containerPath = this.buildObjectPath(containerSpec, `Application("${app}")`);
+    // const elementsPath = `${containerPath}.${this.pluralize(elementType)}`;
+    // const jxaCode = `
+    //   const app = Application("${app}");
+    //   const container = ${containerPath};
+    //   const elements = container.${this.pluralize(elementType)};
+    //   return {
+    //     count: elements.length,
+    //     items: elements.slice(0, ${limit})
+    //   };
+    // `;
 
     // 3. Execute JXA (mocked for Phase 1)
     // In production: const result = await this.jxaExecutor.execute(app, jxaCode);
     const mockResult = this.mockExecuteGetElements(app, containerSpec, elementType, limit);
 
     // 4. Create references for each element
-    const elements: ObjectReference[] = mockResult.items.map((item: any, index: number) => {
+    const elements: ObjectReference[] = mockResult.items.map((_item: any, index: number) => {
       const elementSpec: ElementSpecifier = {
         type: 'element',
         element: elementType,
@@ -235,6 +234,41 @@ export class QueryExecutor {
   }
 
   /**
+   * Validate that a specifier has a supported type and valid references.
+   *
+   * @param specifier - The object specifier to validate
+   * @throws Error if specifier type is unsupported or references are invalid
+   */
+  private validateSpecifier(specifier: ObjectSpecifier): void {
+    // Check if specifier has a recognized type
+    if (!isElementSpecifier(specifier) &&
+        !isNamedSpecifier(specifier) &&
+        !isIdSpecifier(specifier) &&
+        !isPropertySpecifier(specifier)) {
+      throw new Error(`Unsupported specifier type: ${(specifier as any).type}`);
+    }
+
+    // For PropertySpecifier with reference ID, validate reference exists
+    if (isPropertySpecifier(specifier) && typeof specifier.of === "string") {
+      const ref = this.referenceStore.get(specifier.of);
+      if (!ref) {
+        throw new Error(`Reference not found: ${specifier.of}`);
+      }
+    }
+
+    // Recursively validate nested specifiers
+    if (isElementSpecifier(specifier) || isNamedSpecifier(specifier) || isIdSpecifier(specifier)) {
+      if (specifier.container !== "application" && typeof specifier.container === "object") {
+        this.validateSpecifier(specifier.container);
+      }
+    }
+
+    if (isPropertySpecifier(specifier) && typeof specifier.of === "object") {
+      this.validateSpecifier(specifier.of);
+    }
+  }
+
+  /**
    * Extract the object type from a specifier.
    *
    * @param specifier - The object specifier
@@ -284,10 +318,10 @@ export class QueryExecutor {
    * @protected
    */
   protected mockExecuteGetElements(
-    app: string,
-    containerSpec: ObjectSpecifier,
-    elementType: string,
-    limit: number
+    _app: string,
+    _containerSpec: ObjectSpecifier,
+    _elementType: string,
+    _limit: number
   ): { count: number; items: any[] } {
     return {
       count: 0,

@@ -24,6 +24,8 @@ import { MacOSAdapter } from '../adapters/macos/macos-adapter.js';
 import { PermissionChecker } from '../permissions/permission-checker.js';
 import { ErrorHandler } from '../error-handler.js';
 import { PerAppCache } from '../jitd/cache/per-app-cache.js';
+import { ReferenceStore } from '../execution/reference-store.js';
+import { QueryExecutor } from '../execution/query-executor.js';
 import { setupHandlers } from './handlers.js';
 
 /**
@@ -95,6 +97,8 @@ export class IACMCPServer {
   private permissionChecker: PermissionChecker;
   private errorHandler: ErrorHandler;
   private perAppCache: PerAppCache;
+  private referenceStore: ReferenceStore;
+  private queryExecutor: QueryExecutor;
 
   // State tracking
   private status: ServerStatus = {
@@ -156,6 +160,10 @@ export class IACMCPServer {
     this.permissionChecker = new PermissionChecker();
     this.errorHandler = new ErrorHandler();
     this.perAppCache = new PerAppCache(this.options.cacheDir);
+
+    // Initialize query execution components
+    this.referenceStore = new ReferenceStore(15 * 60 * 1000); // 15-minute TTL
+    this.queryExecutor = new QueryExecutor(this.referenceStore);
   }
 
   /**
@@ -196,7 +204,8 @@ export class IACMCPServer {
         this.permissionChecker,
         this.adapter,
         this.errorHandler,
-        this.perAppCache
+        this.perAppCache,
+        this.queryExecutor
       );
 
       this.status.initialized = true;
