@@ -509,6 +509,15 @@ Placeholder for Linux-specific issues.
 
 ## Debugging Tips
 
+### Environment Variables
+
+| Variable | Description | Values |
+|----------|-------------|--------|
+| `IAC_MCP_LOG_LEVEL` | General logging verbosity | `error`, `warn`, `info`, `debug` |
+| `IAC_MCP_DEBUG_REFS` | Reference lifecycle logging | `true` to enable |
+| `IAC_MCP_TIMEOUT` | Command execution timeout (ms) | Default: `30000` |
+| `IAC_MCP_CACHE_DIR` | Cache directory location | Default: `~/.iac-mcp/cache` |
+
 ### Enable Verbose Logging
 
 ```bash
@@ -518,6 +527,22 @@ export IAC_MCP_LOG_LEVEL=debug
 # Run with verbose flag
 npm run cli:discover -- --verbose
 ```
+
+### Enable Reference Lifecycle Logging
+
+For debugging stateful query issues (reference creation, expiration, cleanup):
+
+```bash
+export IAC_MCP_DEBUG_REFS=true
+npm start
+```
+
+This logs to stderr:
+- `created`: reference ID, app, type, specifier type
+- `not_found`: attempted ID lookup that failed
+- `touched`: reference ID, age since creation
+- `expired`: reference ID, TTL exceeded
+- `cleanup_complete`: count removed, count remaining
 
 ### Use MCP Inspector
 
