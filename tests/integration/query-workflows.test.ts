@@ -51,7 +51,7 @@ describe('Query Workflows Integration', () => {
 
       // Response format: { reference: { id, type, app } }
       expect(result.reference).toBeDefined();
-      expect(result.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result.reference.id).toMatch(/^ref_[a-f0-9-]+$/);
       expect(result.reference.app).toBe('Mail');
       expect(result.reference.type).toBe('mailbox');
     });
@@ -78,7 +78,7 @@ describe('Query Workflows Integration', () => {
 
       // Response format: { reference: { id, type, app } }
       expect(result.reference).toBeDefined();
-      expect(result.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result.reference.id).toMatch(/^ref_[a-f0-9-]+$/);
       expect(result.reference.app).toBe('Mail');
       expect(result.reference.type).toBe('mailbox');
     });
@@ -261,7 +261,7 @@ describe('Query Workflows Integration', () => {
 
       // Response format: { reference: { id, type, app } }
       expect(result1.reference).toBeDefined();
-      expect(result1.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result1.reference.id).toMatch(/^ref_[a-f0-9-]+$/);
       expect(result1.reference.type).toBe('mailbox');
 
       // Step 2: Get messages from inbox
@@ -287,7 +287,7 @@ describe('Query Workflows Integration', () => {
       if (messagesResult.elements.length > 0) {
         const messageRef = messagesResult.elements[0];
 
-        expect(messageRef.id).toMatch(/^ref_[a-z0-9]+$/);
+        expect(messageRef.id).toMatch(/^ref_[a-f0-9-]+$/);
         expect(messageRef.type).toBe('message');
 
         const step3 = {
@@ -359,7 +359,7 @@ describe('Query Workflows Integration', () => {
 
       // Response format: { reference: { id, type, app } }
       expect(messageResult.reference).toBeDefined();
-      expect(messageResult.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(messageResult.reference.id).toMatch(/^ref_[a-f0-9-]+$/);
       expect(messageResult.reference.type).toBe('message');
 
       // Both references should be valid
@@ -448,9 +448,10 @@ describe('Query Workflows Integration', () => {
       };
 
       const response = await server['handleRequest'](request);
-      const result = response.content[0].text;
+      const result = JSON.parse(response.content[0].text);
 
-      expect(result).toContain('Unsupported specifier type');
+      // With runtime validation, invalid specifier type returns validation error
+      expect(result.error).toBe('invalid_parameter');
     });
 
     it('should handle missing required parameters', async () => {
@@ -608,7 +609,7 @@ describe('Query Workflows Integration', () => {
 
       // Response format: { reference: { id, type, app } }
       expect(windowResult.reference).toBeDefined();
-      expect(windowResult.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(windowResult.reference.id).toMatch(/^ref_[a-f0-9-]+$/);
       expect(windowResult.reference.type).toBe('window');
 
       // Get window properties
@@ -652,7 +653,7 @@ describe('Query Workflows Integration', () => {
 
       // Response format: { reference: { id, type, app } }
       expect(docResult.reference).toBeDefined();
-      expect(docResult.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(docResult.reference.id).toMatch(/^ref_[a-f0-9-]+$/);
       expect(docResult.reference.type).toBe('document');
 
       // Get document URL

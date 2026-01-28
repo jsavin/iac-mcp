@@ -10,6 +10,19 @@ import {
 import { ReferenceStore } from "./reference-store.js";
 
 /**
+ * Regex for validating JXA-safe identifiers.
+ * Allows alphanumeric characters, regular spaces (0x20), hyphens, and underscores.
+ * Explicitly excludes other whitespace characters like \t, \n, \r that could be used for injection.
+ * This prevents code injection when building JXA path strings.
+ */
+const SAFE_IDENTIFIER_REGEX = /^[a-zA-Z0-9_ \-]+$/;
+
+/**
+ * Maximum length for identifier strings to prevent DoS attacks.
+ */
+const MAX_IDENTIFIER_LENGTH = 256;
+
+/**
  * Executes queries against applications and manages object references.
  * Builds JXA code from ObjectSpecifier types and executes queries.
  */
@@ -29,8 +42,10 @@ export class QueryExecutor {
     app: string,
     specifier: ObjectSpecifier
   ): Promise<ObjectReference> {
-    // 0. Validate specifier type
+    // 0. Validate specifier type and values
     this.validateSpecifier(specifier);
+    // 0a. Validate specifier values for JXA safety (prevent injection attacks)
+    this.validateSpecifierValues(specifier);
 
     // 1. Build JXA code to resolve specifier
     // const jxaCode = this.buildObjectPath(specifier, `Application("${app}")`);
@@ -106,17 +121,19 @@ export class QueryExecutor {
    *
    * @param container - Reference ID or ObjectSpecifier
    * @param elementType - Type of elements to retrieve
+   * @param app - Application name (required when container is ObjectSpecifier)
    * @param limit - Maximum number of elements to return (default: 100)
    * @returns Elements with metadata
    */
   async getElements(
     container: string | ObjectSpecifier,
     elementType: string,
+    app?: string,
     limit: number = 100
   ): Promise<{ elements: ObjectReference[]; count: number; hasMore: boolean }> {
     // 1. Resolve container (reference ID or specifier)
     let containerSpec: ObjectSpecifier;
-    let app: string;
+    let resolvedApp: string;
 
     if (typeof container === 'string') {
       // It's a reference ID
@@ -125,18 +142,21 @@ export class QueryExecutor {
         throw new Error(`Reference not found: ${container}`);
       }
       containerSpec = reference.specifier;
-      app = reference.app;
+      resolvedApp = reference.app;
     } else {
-      // It's a specifier - need to infer app (for Phase 1, we'll assume Mail)
+      // It's a specifier - app is required
+      if (!app) {
+        throw new Error('App parameter is required when container is an ObjectSpecifier');
+      }
       containerSpec = container;
-      app = 'Mail'; // TODO: Extract from context or require as parameter
+      resolvedApp = app;
     }
 
     // 2. Build JXA to get elements (commented out until Phase 5 JXA integration)
-    // const containerPath = this.buildObjectPath(containerSpec, `Application("${app}")`);
+    // const containerPath = this.buildObjectPath(containerSpec, `Application("${resolvedApp}")`);
     // const elementsPath = `${containerPath}.${this.pluralize(elementType)}`;
     // const jxaCode = `
-    //   const app = Application("${app}");
+    //   const app = Application("${resolvedApp}");
     //   const container = ${containerPath};
     //   const elements = container.${this.pluralize(elementType)};
     //   return {
@@ -146,8 +166,8 @@ export class QueryExecutor {
     // `;
 
     // 3. Execute JXA (mocked for Phase 1)
-    // In production: const result = await this.jxaExecutor.execute(app, jxaCode);
-    const mockResult = this.mockExecuteGetElements(app, containerSpec, elementType, limit);
+    // In production: const result = await this.jxaExecutor.execute(resolvedApp, jxaCode);
+    const mockResult = this.mockExecuteGetElements(resolvedApp, containerSpec, elementType, limit);
 
     // 4. Create references for each element
     const elements: ObjectReference[] = mockResult.items.map((_item: any, index: number) => {
@@ -158,7 +178,7 @@ export class QueryExecutor {
         container: containerSpec
       };
 
-      const referenceId = this.referenceStore.create(app, elementType, elementSpec);
+      const referenceId = this.referenceStore.create(resolvedApp, elementType, elementSpec);
       const reference = this.referenceStore.get(referenceId);
       if (!reference) {
         throw new Error('Failed to create element reference');
@@ -175,8 +195,36 @@ export class QueryExecutor {
   }
 
   /**
+   * Sanitize a string for safe use in JXA code generation.
+   * Validates against injection attacks by checking:
+   * 1. Length limits (prevents DoS)
+   * 2. Character allowlist (prevents code injection)
+   *
+   * @param value - The string to sanitize
+   * @param fieldName - Name of the field for error messages
+   * @returns The sanitized string (unchanged if valid)
+   * @throws Error if the string fails validation
+   */
+  private sanitizeForJxa(value: string, fieldName: string): string {
+    // Length check
+    if (value.length > MAX_IDENTIFIER_LENGTH) {
+      throw new Error(`${fieldName} exceeds maximum length (${MAX_IDENTIFIER_LENGTH} characters)`);
+    }
+
+    // Character allowlist check
+    if (!SAFE_IDENTIFIER_REGEX.test(value)) {
+      throw new Error(`${fieldName} contains invalid characters. Only alphanumeric, spaces, hyphens, and underscores are allowed.`);
+    }
+
+    return value;
+  }
+
+  /**
    * Build JXA object path from specifier.
    * This generates the correct JXA syntax for accessing objects.
+   *
+   * SECURITY: All user-provided strings (name, id, element, property) are
+   * sanitized before being interpolated into JXA code to prevent injection attacks.
    *
    * @param specifier - The object specifier
    * @param appVar - The app variable name (default: "app")
@@ -184,36 +232,51 @@ export class QueryExecutor {
    */
   private buildObjectPath(specifier: ObjectSpecifier, appVar: string = "app"): string {
     if (isElementSpecifier(specifier)) {
+      // Sanitize element name before interpolation
+      const sanitizedElement = this.sanitizeForJxa(specifier.element, 'element');
+
       const containerPath = specifier.container === "application"
         ? appVar
         : this.buildObjectPath(specifier.container, appVar);
       // JXA: app.messages[0] or container.messages[index]
-      return `${containerPath}.${this.pluralize(specifier.element)}[${specifier.index}]`;
+      // Note: index is a number, no sanitization needed
+      return `${containerPath}.${this.pluralize(sanitizedElement)}[${specifier.index}]`;
     }
 
     if (isNamedSpecifier(specifier)) {
+      // Sanitize both element and name before interpolation
+      const sanitizedElement = this.sanitizeForJxa(specifier.element, 'element');
+      const sanitizedName = this.sanitizeForJxa(specifier.name, 'name');
+
       const containerPath = specifier.container === "application"
         ? appVar
         : this.buildObjectPath(specifier.container, appVar);
       // JXA: app.mailboxes.byName("inbox")
-      return `${containerPath}.${this.pluralize(specifier.element)}.byName("${specifier.name}")`;
+      return `${containerPath}.${this.pluralize(sanitizedElement)}.byName("${sanitizedName}")`;
     }
 
     if (isIdSpecifier(specifier)) {
+      // Sanitize both element and id before interpolation
+      const sanitizedElement = this.sanitizeForJxa(specifier.element, 'element');
+      const sanitizedId = this.sanitizeForJxa(specifier.id, 'id');
+
       const containerPath = specifier.container === "application"
         ? appVar
         : this.buildObjectPath(specifier.container, appVar);
       // JXA: app.messages.byId("abc123")
-      return `${containerPath}.${this.pluralize(specifier.element)}.byId("${specifier.id}")`;
+      return `${containerPath}.${this.pluralize(sanitizedElement)}.byId("${sanitizedId}")`;
     }
 
     if (isPropertySpecifier(specifier)) {
+      // Sanitize property name before interpolation
+      const sanitizedProperty = this.sanitizeForJxa(specifier.property, 'property');
+
       // Handle "of" being either reference ID or specifier
       const ofPath = typeof specifier.of === "string"
         ? this.resolveReferenceToPath(specifier.of)
         : this.buildObjectPath(specifier.of, appVar);
       // JXA: message.subject() or object.property()
-      return `${ofPath}.${this.camelCase(specifier.property)}()`;
+      return `${ofPath}.${this.camelCase(sanitizedProperty)}()`;
     }
 
     throw new Error(`Unsupported specifier type: ${(specifier as any).type}`);
@@ -269,6 +332,46 @@ export class QueryExecutor {
   }
 
   /**
+   * Validate specifier values for JXA safety.
+   * This prevents code injection by ensuring all user-provided strings
+   * match the allowed character pattern and are within length limits.
+   *
+   * @param specifier - The object specifier to validate
+   * @throws Error if any value fails validation
+   */
+  private validateSpecifierValues(specifier: ObjectSpecifier): void {
+    if (isElementSpecifier(specifier)) {
+      this.sanitizeForJxa(specifier.element, 'element');
+      if (specifier.container !== "application" && typeof specifier.container === "object") {
+        this.validateSpecifierValues(specifier.container);
+      }
+    }
+
+    if (isNamedSpecifier(specifier)) {
+      this.sanitizeForJxa(specifier.element, 'element');
+      this.sanitizeForJxa(specifier.name, 'name');
+      if (specifier.container !== "application" && typeof specifier.container === "object") {
+        this.validateSpecifierValues(specifier.container);
+      }
+    }
+
+    if (isIdSpecifier(specifier)) {
+      this.sanitizeForJxa(specifier.element, 'element');
+      this.sanitizeForJxa(specifier.id, 'id');
+      if (specifier.container !== "application" && typeof specifier.container === "object") {
+        this.validateSpecifierValues(specifier.container);
+      }
+    }
+
+    if (isPropertySpecifier(specifier)) {
+      this.sanitizeForJxa(specifier.property, 'property');
+      if (typeof specifier.of === "object") {
+        this.validateSpecifierValues(specifier.of);
+      }
+    }
+  }
+
+  /**
    * Extract the object type from a specifier.
    *
    * @param specifier - The object specifier
@@ -300,13 +403,137 @@ export class QueryExecutor {
   }
 
   /**
+   * Common irregular plurals found in macOS app scripting dictionaries.
+   * Maps singular forms to their plural equivalents.
+   */
+  private static readonly IRREGULAR_PLURALS: Record<string, string> = {
+    // Common English irregulars used in app scripting
+    person: "people",
+    child: "children",
+    man: "men",
+    woman: "women",
+    foot: "feet",
+    tooth: "teeth",
+    goose: "geese",
+    mouse: "mice",
+    // macOS/app-specific terms
+    index: "indices",
+    appendix: "appendices",
+    criterion: "criteria",
+    datum: "data",
+    medium: "media",
+    // Words that are the same singular and plural
+    series: "series",
+    species: "species",
+    deer: "deer",
+    sheep: "sheep",
+    fish: "fish",
+    aircraft: "aircraft",
+    // Common uncountable nouns often used in apps
+    information: "information",
+    software: "software",
+    hardware: "hardware",
+    data: "data",
+    media: "media",
+    // Words where final consonant doubles before 'es'
+    quiz: "quizzes"
+  };
+
+  /**
    * Pluralize an element name for JXA collection access.
    *
-   * @param str - The element name (e.g., "message")
-   * @returns Pluralized name (e.g., "messages")
+   * This is a fallback pluralization method using common English rules.
+   * Phase 5 will enhance this by extracting plural forms directly from
+   * SDEF parsing, which will provide authoritative plural names for each
+   * application's scripting dictionary.
+   *
+   * @param str - The element name (e.g., "message", "category", "person")
+   * @returns Pluralized name (e.g., "messages", "categories", "people")
    */
   private pluralize(str: string): string {
-    if (str.endsWith("s") || str.endsWith("x")) return str + "es";
+    // Normalize to lowercase for lookup (preserve original for suffix rules)
+    const lowerStr = str.toLowerCase();
+
+    // 1. Check irregular plurals first
+    if (QueryExecutor.IRREGULAR_PLURALS[lowerStr]) {
+      return QueryExecutor.IRREGULAR_PLURALS[lowerStr];
+    }
+
+    // 2. Already plural (common patterns) - return as-is
+    // Words ending in 'ies' (categories), 'es' (boxes), 's' (unless ending in 'ss')
+    if (lowerStr.endsWith("ies") ||
+        lowerStr.endsWith("ches") ||
+        lowerStr.endsWith("shes") ||
+        lowerStr.endsWith("xes") ||
+        lowerStr.endsWith("zes") ||
+        lowerStr.endsWith("ses") ||
+        (lowerStr.endsWith("s") && !lowerStr.endsWith("ss") && lowerStr.length > 2)) {
+      // Likely already plural - but be careful with words like "bus", "focus"
+      // For safety, we only skip if it matches common plural patterns
+      if (lowerStr.endsWith("ies") ||
+          lowerStr.endsWith("ches") ||
+          lowerStr.endsWith("shes") ||
+          lowerStr.endsWith("xes") ||
+          lowerStr.endsWith("zes")) {
+        return str;
+      }
+    }
+
+    // 3. Words ending in consonant + 'y' -> 'ies'
+    // e.g., category -> categories, story -> stories
+    if (lowerStr.endsWith("y") && lowerStr.length > 1) {
+      const beforeY = lowerStr.charAt(lowerStr.length - 2);
+      const vowels = "aeiou";
+      if (beforeY && !vowels.includes(beforeY)) {
+        return str.slice(0, -1) + "ies";
+      }
+    }
+
+    // 4. Words ending in 's', 'ss', 'sh', 'ch', 'x' -> add 'es'
+    // e.g., bus -> buses, class -> classes, box -> boxes
+    if (lowerStr.endsWith("s") ||
+        lowerStr.endsWith("ss") ||
+        lowerStr.endsWith("sh") ||
+        lowerStr.endsWith("ch") ||
+        lowerStr.endsWith("x")) {
+      return str + "es";
+    }
+
+    // 4a. Words ending in 'z' -> double the z and add 'es' (unless already 'zz')
+    // e.g., quiz -> quizzes, but buzz -> buzzes (not buzzzes)
+    if (lowerStr.endsWith("z") && !lowerStr.endsWith("zz")) {
+      return str + "zes";
+    }
+    if (lowerStr.endsWith("zz")) {
+      return str + "es";
+    }
+
+    // 5. Words ending in 'f' or 'fe' -> 'ves'
+    // e.g., leaf -> leaves, knife -> knives
+    // Note: Some exceptions like "roof" -> "roofs", but we'll handle common cases
+    if (lowerStr.endsWith("fe")) {
+      return str.slice(0, -2) + "ves";
+    }
+    if (lowerStr.endsWith("f") && !lowerStr.endsWith("ff")) {
+      // Check for common exceptions that just add 's'
+      const fExceptions = ["roof", "proof", "chief", "belief", "cliff", "cuff"];
+      if (!fExceptions.includes(lowerStr)) {
+        return str.slice(0, -1) + "ves";
+      }
+    }
+
+    // 6. Words ending in 'o' - some add 'es', some add 's'
+    // Common 'es' words: hero, potato, tomato, echo
+    // Common 's' words: photo, piano, radio, video
+    if (lowerStr.endsWith("o")) {
+      const oAddEs = ["hero", "potato", "tomato", "echo", "veto", "embargo"];
+      if (oAddEs.includes(lowerStr)) {
+        return str + "es";
+      }
+      return str + "s";
+    }
+
+    // 7. Default: add 's'
     return str + "s";
   }
 

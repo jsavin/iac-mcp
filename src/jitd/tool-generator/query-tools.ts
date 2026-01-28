@@ -66,11 +66,11 @@ export function generateQueryTools(): Tool[] {
             oneOf: [
               {
                 type: "string",
-                description: "Reference ID of container",
+                description: "Reference ID of container (app is inferred from reference)",
               },
               {
                 type: "object",
-                description: "Object specifier for container",
+                description: "Object specifier for container (requires app parameter)",
               },
             ],
           },
@@ -78,6 +78,11 @@ export function generateQueryTools(): Tool[] {
             type: "string",
             description:
               "Type of elements to retrieve (e.g., 'message', 'file', 'event')",
+          },
+          app: {
+            type: "string",
+            description:
+              "App bundle ID (required when container is an ObjectSpecifier, ignored when container is a reference ID)",
           },
           limit: {
             type: "number",

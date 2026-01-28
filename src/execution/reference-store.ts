@@ -8,6 +8,7 @@
  * Phase 4: Will add LRU-based cleanup (lastAccessedAt)
  */
 
+import { randomUUID } from "node:crypto";
 import { ObjectReference, ReferenceStats } from "../types/object-reference.js";
 import { ObjectSpecifier } from "../types/object-specifier.js";
 
@@ -141,11 +142,13 @@ export class ReferenceStore {
   }
 
   /**
-   * Generate unique reference ID
+   * Generate unique reference ID using cryptographically secure random UUID.
+   * Uses crypto.randomUUID() to prevent collisions.
+   *
    * @private
-   * @returns Reference ID with format "ref_<random>"
+   * @returns Reference ID with format "ref_<uuid>"
    */
   private generateId(): string {
-    return `ref_${Math.random().toString(36).substring(2, 15)}`;
+    return `ref_${randomUUID()}`;
   }
 }

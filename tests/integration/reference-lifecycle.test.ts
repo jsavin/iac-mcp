@@ -42,7 +42,7 @@ describe('Reference Lifecycle Management', () => {
 
       const ref = await queryExecutor.queryObject('Mail', spec);
 
-      expect(ref.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(ref.id).toMatch(/^ref_[a-f0-9-]+$/);
       expect(ref.id.startsWith('ref_')).toBe(true);
       expect(ref.id.length).toBeGreaterThan(4);
     });

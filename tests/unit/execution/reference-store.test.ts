@@ -33,7 +33,7 @@ describe("ReferenceStore", () => {
 
       const id = store.create("com.apple.finder", "window", specifier);
 
-      expect(id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(id).toMatch(/^ref_[a-f0-9-]+$/);  // UUID format with dashes
     });
 
     it("should generate different IDs for multiple create calls", () => {

@@ -3,7 +3,7 @@ import { QueryExecutor } from '../../../src/execution/query-executor.js';
 import { ReferenceStore } from '../../../src/execution/reference-store.js';
 import { ObjectSpecifier, ElementSpecifier, NamedSpecifier, IdSpecifier, PropertySpecifier } from '../../../src/types/object-specifier.js';
 
-// Test subclass that returns mock elements
+// Test subclass that returns mock elements and exposes private methods for testing
 class TestableQueryExecutor extends QueryExecutor {
   private mockElementCount = 0;
 
@@ -31,6 +31,13 @@ class TestableQueryExecutor extends QueryExecutor {
       count: this.mockElementCount,
       items
     };
+  }
+
+  /**
+   * Expose pluralize method for direct testing
+   */
+  public testPluralize(str: string): string {
+    return (this as any).pluralize(str);
   }
 }
 
@@ -217,7 +224,7 @@ describe('QueryExecutor', () => {
 
       const ref = await queryExecutor.queryObject('Mail', specifier);
 
-      expect(ref.id).toMatch(/^ref_[a-z0-9]+$/); // Reference ID format
+      expect(ref.id).toMatch(/^ref_[a-f0-9-]+$/); // Reference ID format (UUID)
       expect(ref.app).toBe('Mail');
       expect(ref.type).toBe('mailbox');
     });
@@ -371,14 +378,14 @@ describe('QueryExecutor', () => {
       };
       const mailboxRef = await queryExecutor.queryObject('Mail', mailboxSpec);
 
-      const result = await queryExecutor.getElements(mailboxRef.id, 'message', 10);
+      const result = await queryExecutor.getElements(mailboxRef.id, 'message', undefined, 10);
 
       expect(result.elements).toBeInstanceOf(Array);
       expect(result.count).toBeGreaterThanOrEqual(0);
       expect(typeof result.hasMore).toBe('boolean');
     });
 
-    it('should accept ObjectSpecifier as container', async () => {
+    it('should accept ObjectSpecifier as container with app parameter', async () => {
       const mailboxSpec: NamedSpecifier = {
         type: 'named',
         element: 'mailbox',
@@ -386,7 +393,7 @@ describe('QueryExecutor', () => {
         container: 'application'
       };
 
-      const result = await queryExecutor.getElements(mailboxSpec, 'message', 10);
+      const result = await queryExecutor.getElements(mailboxSpec, 'message', 'Mail', 10);
 
       expect(result.elements).toBeInstanceOf(Array);
       expect(result.count).toBeGreaterThanOrEqual(0);
@@ -401,7 +408,7 @@ describe('QueryExecutor', () => {
         container: 'application'
       };
 
-      const result = await queryExecutor.getElements(mailboxSpec, 'message', 5);
+      const result = await queryExecutor.getElements(mailboxSpec, 'message', 'Mail', 5);
 
       result.elements.forEach(element => {
         expect(element.id).toBeDefined();
@@ -423,7 +430,7 @@ describe('QueryExecutor', () => {
         container: 'application'
       };
 
-      const result = await queryExecutor.getElements(mailboxSpec, 'message', 3);
+      const result = await queryExecutor.getElements(mailboxSpec, 'message', 'Mail', 3);
 
       expect(result.elements.length).toBeLessThanOrEqual(3);
     });
@@ -436,7 +443,7 @@ describe('QueryExecutor', () => {
         container: 'application'
       };
 
-      const result = await queryExecutor.getElements(mailboxSpec, 'message', 5);
+      const result = await queryExecutor.getElements(mailboxSpec, 'message', 'Mail', 5);
 
       if (result.count > 5) {
         expect(result.hasMore).toBe(true);
@@ -453,14 +460,14 @@ describe('QueryExecutor', () => {
         container: 'application'
       };
 
-      const result = await queryExecutor.getElements(mailboxSpec, 'message', 1000);
+      const result = await queryExecutor.getElements(mailboxSpec, 'message', 'Mail', 1000);
 
       expect(result.hasMore).toBe(false);
     });
 
     it('should throw error on invalid container reference', async () => {
-      await expect(queryExecutor.getElements('invalid-ref-id', 'message', 10))
-        .rejects.toThrow('Reference not found: invalid-ref-id');
+      await expect(queryExecutor.getElements('ref_invalid-ref-id', 'message', undefined, 10))
+        .rejects.toThrow('Reference not found: ref_invalid-ref-id');
     });
 
     it('should use default limit of 100', async () => {
@@ -471,7 +478,7 @@ describe('QueryExecutor', () => {
         container: 'application'
       };
 
-      const result = await queryExecutor.getElements(mailboxSpec, 'message');
+      const result = await queryExecutor.getElements(mailboxSpec, 'message', 'Mail');
 
       expect(result.elements.length).toBeLessThanOrEqual(100);
     });
@@ -487,7 +494,7 @@ describe('QueryExecutor', () => {
         container: 'application'
       };
 
-      const result = await testExecutor.getElements(mailboxSpec, 'message', 10);
+      const result = await testExecutor.getElements(mailboxSpec, 'message', 'Mail', 10);
 
       expect(result.elements.length).toBe(3);
       expect(result.count).toBe(3);
@@ -517,7 +524,7 @@ describe('QueryExecutor', () => {
         container: 'application'
       };
 
-      const result = await testExecutor.getElements(mailboxSpec, 'message', 5);
+      const result = await testExecutor.getElements(mailboxSpec, 'message', 'Mail', 5);
 
       expect(result.elements.length).toBe(5);
       expect(result.count).toBe(10);
@@ -578,40 +585,176 @@ describe('QueryExecutor', () => {
     });
 
     describe('pluralize()', () => {
-      it('should pluralize "message" to "messages"', async () => {
-        const specifier: ElementSpecifier = {
-          type: 'element',
-          element: 'message',
-          index: 0,
-          container: 'application'
-        };
+      let testExecutor: TestableQueryExecutor;
 
-        const ref = await queryExecutor.queryObject('Mail', specifier);
-        expect(ref.type).toBe('message');
+      beforeEach(() => {
+        testExecutor = new TestableQueryExecutor(referenceStore);
       });
 
-      it('should pluralize "mailbox" to "mailboxes"', async () => {
-        const specifier: ElementSpecifier = {
-          type: 'element',
-          element: 'mailbox',
-          index: 0,
-          container: 'application'
-        };
-
-        const ref = await queryExecutor.queryObject('Mail', specifier);
-        expect(ref.type).toBe('mailbox');
+      // Basic pluralization (default rule: add 's')
+      it('should pluralize "message" to "messages"', () => {
+        expect(testExecutor.testPluralize('message')).toBe('messages');
       });
 
-      it('should handle words ending in "s"', async () => {
-        const specifier: ElementSpecifier = {
-          type: 'element',
-          element: 'class',
-          index: 0,
-          container: 'application'
-        };
+      it('should pluralize "window" to "windows"', () => {
+        expect(testExecutor.testPluralize('window')).toBe('windows');
+      });
 
-        const ref = await queryExecutor.queryObject('Mail', specifier);
-        expect(ref.type).toBe('class');
+      // Words ending in 'x' -> add 'es'
+      it('should pluralize "mailbox" to "mailboxes"', () => {
+        expect(testExecutor.testPluralize('mailbox')).toBe('mailboxes');
+      });
+
+      it('should pluralize "box" to "boxes"', () => {
+        expect(testExecutor.testPluralize('box')).toBe('boxes');
+      });
+
+      // Words ending in 's' -> add 'es'
+      it('should pluralize "class" to "classes"', () => {
+        expect(testExecutor.testPluralize('class')).toBe('classes');
+      });
+
+      it('should pluralize "bus" to "buses"', () => {
+        expect(testExecutor.testPluralize('bus')).toBe('buses');
+      });
+
+      // Words ending in 'ch', 'sh' -> add 'es'
+      it('should pluralize "branch" to "branches"', () => {
+        expect(testExecutor.testPluralize('branch')).toBe('branches');
+      });
+
+      it('should pluralize "brush" to "brushes"', () => {
+        expect(testExecutor.testPluralize('brush')).toBe('brushes');
+      });
+
+      // Words ending in 'z' -> add 'es'
+      it('should pluralize "quiz" to "quizzes"', () => {
+        expect(testExecutor.testPluralize('quiz')).toBe('quizzes');
+      });
+
+      // Words ending in consonant + 'y' -> replace 'y' with 'ies'
+      it('should pluralize "category" to "categories"', () => {
+        expect(testExecutor.testPluralize('category')).toBe('categories');
+      });
+
+      it('should pluralize "story" to "stories"', () => {
+        expect(testExecutor.testPluralize('story')).toBe('stories');
+      });
+
+      it('should pluralize "entry" to "entries"', () => {
+        expect(testExecutor.testPluralize('entry')).toBe('entries');
+      });
+
+      // Words ending in vowel + 'y' -> add 's' (not 'ies')
+      it('should pluralize "key" to "keys"', () => {
+        expect(testExecutor.testPluralize('key')).toBe('keys');
+      });
+
+      it('should pluralize "day" to "days"', () => {
+        expect(testExecutor.testPluralize('day')).toBe('days');
+      });
+
+      it('should pluralize "display" to "displays"', () => {
+        expect(testExecutor.testPluralize('display')).toBe('displays');
+      });
+
+      // Irregular plurals (macOS app terms)
+      it('should pluralize "person" to "people"', () => {
+        expect(testExecutor.testPluralize('person')).toBe('people');
+      });
+
+      it('should pluralize "child" to "children"', () => {
+        expect(testExecutor.testPluralize('child')).toBe('children');
+      });
+
+      it('should pluralize "mouse" to "mice"', () => {
+        expect(testExecutor.testPluralize('mouse')).toBe('mice');
+      });
+
+      it('should pluralize "index" to "indices"', () => {
+        expect(testExecutor.testPluralize('index')).toBe('indices');
+      });
+
+      it('should pluralize "datum" to "data"', () => {
+        expect(testExecutor.testPluralize('datum')).toBe('data');
+      });
+
+      it('should pluralize "medium" to "media"', () => {
+        expect(testExecutor.testPluralize('medium')).toBe('media');
+      });
+
+      // Words that are same in singular and plural
+      it('should keep "series" as "series"', () => {
+        expect(testExecutor.testPluralize('series')).toBe('series');
+      });
+
+      it('should keep "species" as "species"', () => {
+        expect(testExecutor.testPluralize('species')).toBe('species');
+      });
+
+      it('should keep "fish" as "fish"', () => {
+        expect(testExecutor.testPluralize('fish')).toBe('fish');
+      });
+
+      it('should keep "data" as "data"', () => {
+        expect(testExecutor.testPluralize('data')).toBe('data');
+      });
+
+      // Words ending in 'f' or 'fe' -> 'ves'
+      it('should pluralize "leaf" to "leaves"', () => {
+        expect(testExecutor.testPluralize('leaf')).toBe('leaves');
+      });
+
+      it('should pluralize "knife" to "knives"', () => {
+        expect(testExecutor.testPluralize('knife')).toBe('knives');
+      });
+
+      it('should pluralize "life" to "lives"', () => {
+        expect(testExecutor.testPluralize('life')).toBe('lives');
+      });
+
+      // Exceptions for 'f' words that just add 's'
+      it('should pluralize "roof" to "roofs"', () => {
+        expect(testExecutor.testPluralize('roof')).toBe('roofs');
+      });
+
+      it('should pluralize "chief" to "chiefs"', () => {
+        expect(testExecutor.testPluralize('chief')).toBe('chiefs');
+      });
+
+      // Words ending in 'o' - varies
+      it('should pluralize "hero" to "heroes"', () => {
+        expect(testExecutor.testPluralize('hero')).toBe('heroes');
+      });
+
+      it('should pluralize "photo" to "photos"', () => {
+        expect(testExecutor.testPluralize('photo')).toBe('photos');
+      });
+
+      it('should pluralize "video" to "videos"', () => {
+        expect(testExecutor.testPluralize('video')).toBe('videos');
+      });
+
+      // Already plural patterns (should not double-pluralize)
+      it('should keep "categories" as "categories"', () => {
+        expect(testExecutor.testPluralize('categories')).toBe('categories');
+      });
+
+      it('should keep "boxes" as "boxes"', () => {
+        expect(testExecutor.testPluralize('boxes')).toBe('boxes');
+      });
+
+      it('should keep "brushes" as "brushes"', () => {
+        expect(testExecutor.testPluralize('brushes')).toBe('brushes');
+      });
+
+      // Case insensitivity for irregular lookups
+      it('should handle case-insensitive lookups for "Person"', () => {
+        expect(testExecutor.testPluralize('Person')).toBe('people');
+      });
+
+      it('should handle case-insensitive lookups for "CHILD"', () => {
+        expect(testExecutor.testPluralize('CHILD')).toBe('children');
       });
     });
 
@@ -722,10 +865,10 @@ describe('QueryExecutor', () => {
     });
 
     it('should provide clear error for invalid reference ID in getElements', async () => {
-      const error = await queryExecutor.getElements('does-not-exist', 'message', 10)
+      const error = await queryExecutor.getElements('ref_does-not-exist', 'message', undefined, 10)
         .catch(e => e);
 
-      expect(error.message).toBe('Reference not found: does-not-exist');
+      expect(error.message).toBe('Reference not found: ref_does-not-exist');
     });
 
     it('should provide error with details for unsupported specifier type', async () => {

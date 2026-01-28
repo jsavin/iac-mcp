@@ -162,7 +162,7 @@ describe('Query Tools MCP Integration', () => {
       const result = JSON.parse(response.content[0].text);
       // Response format: { reference: { id, type, app } }
       expect(result.reference).toBeDefined();
-      expect(result.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result.reference.id).toMatch(/^ref_[a-f0-9-]+$/);  // UUID format
       expect(result.reference.app).toBe('Mail');
       expect(result.reference.type).toBe('mailbox');
     });
@@ -193,7 +193,7 @@ describe('Query Tools MCP Integration', () => {
       const result = JSON.parse(response.content[0].text);
       // Response format: { reference: { id, type, app } }
       expect(result.reference).toBeDefined();
-      expect(result.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result.reference.id).toMatch(/^ref_[a-f0-9-]+$/);  // UUID format
       expect(result.reference.app).toBe('Finder');
       expect(result.reference.type).toBe('window');
     });
@@ -219,8 +219,9 @@ describe('Query Tools MCP Integration', () => {
       expect(response.content).toHaveLength(1);
       expect(response.content[0].type).toBe('text');
 
-      const result = response.content[0].text;
-      expect(result).toContain('Unsupported specifier type');
+      const result = JSON.parse(response.content[0].text);
+      // With runtime validation, invalid specifier type returns validation error
+      expect(result.error).toBe('invalid_parameter');
     });
   });
 
@@ -354,6 +355,7 @@ describe('Query Tools MCP Integration', () => {
               container: 'application'
             },
             elementType: 'message',
+            app: 'Mail',  // Required when container is a specifier
             limit: 10
           }
         }

@@ -40,6 +40,7 @@ import { SDEFParser, type ParseWarning } from '../jitd/discovery/parse-sdef.js';
 import { buildFallbackMetadata } from '../jitd/discovery/app-metadata-builder.js';
 import { QueryExecutor } from '../execution/query-executor.js';
 import { generateQueryTools } from '../jitd/tool-generator/query-tools.js';
+import { validateObjectSpecifier, isReferenceId } from '../types/object-specifier.js';
 import type { ObjectSpecifier } from '../types/object-specifier.js';
 
 /**
@@ -628,7 +629,7 @@ export async function setupHandlers(
       }
 
       if (toolName === 'iac_mcp_get_elements') {
-        return await handleGetElements(queryExecutor, args as { container: string | ObjectSpecifier; elementType: string; limit?: number });
+        return await handleGetElements(queryExecutor, args as { container: string | ObjectSpecifier; elementType: string; app?: string; limit?: number });
       }
 
       // Check for get_app_tools (lazy loading)
@@ -1027,7 +1028,7 @@ async function handleQueryObject(
   try {
     console.error(`[CallTool/query_object] Querying object in ${params.app}`);
 
-    // Validate parameters
+    // Validate app parameter
     if (!params.app || typeof params.app !== 'string') {
       return {
         content: [{
@@ -1041,13 +1042,16 @@ async function handleQueryObject(
       };
     }
 
-    if (!params.specifier || typeof params.specifier !== 'object') {
+    // Validate specifier with comprehensive runtime validation
+    const specifierValidation = validateObjectSpecifier(params.specifier);
+    if (!specifierValidation.valid) {
       return {
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
             error: 'invalid_parameter',
-            message: 'Missing or invalid "specifier" parameter',
+            message: 'Invalid "specifier" parameter',
+            details: specifierValidation.errors,
           }),
         }],
         isError: true,
@@ -1168,7 +1172,7 @@ async function handleGetProperties(
  */
 async function handleGetElements(
   queryExecutor: QueryExecutor,
-  params: { container: string | ObjectSpecifier; elementType: string; limit?: number }
+  params: { container: string | ObjectSpecifier; elementType: string; app?: string; limit?: number }
 ): Promise<{
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
@@ -1203,9 +1207,57 @@ async function handleGetElements(
       };
     }
 
+    // Validate container: must be either a reference ID or a valid specifier
+    if (typeof params.container === 'string') {
+      // Container is a string - must be a reference ID
+      if (!isReferenceId(params.container)) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Container string must be a valid reference ID (format: ref_<uuid>)',
+            }),
+          }],
+          isError: true,
+        };
+      }
+    } else {
+      // Container is an object - validate as specifier
+      const containerValidation = validateObjectSpecifier(params.container);
+      if (!containerValidation.valid) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Invalid "container" specifier',
+              details: containerValidation.errors,
+            }),
+          }],
+          isError: true,
+        };
+      }
+
+      // App is required when container is a specifier
+      if (!params.app) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Missing "app" parameter. App is required when container is an ObjectSpecifier.',
+            }),
+          }],
+          isError: true,
+        };
+      }
+    }
+
     const result = await queryExecutor.getElements(
       params.container,
       params.elementType,
+      params.app,
       params.limit
     );
 
