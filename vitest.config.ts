@@ -12,14 +12,14 @@ export default defineConfig({
     pool: 'threads',
     poolOptions: {
       threads: {
-        maxThreads: 12,  // Allow more parallel threads (2-3x previous)
+        maxThreads: 25,
         minThreads: 2,
       },
     },
     // Isolate tests to prevent memory accumulation
     isolate: true,
     // Limit concurrent file processing
-    maxConcurrency: 15,
+    maxConcurrency: 35,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
