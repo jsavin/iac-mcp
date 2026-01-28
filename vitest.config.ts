@@ -7,17 +7,19 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     testTimeout: 10000, // Increase timeout for tests that validate long timeouts
     // Limit resource usage to prevent memory exhaustion
+    // Note: The test-queue.sh script prevents multiple test runs
+    // These limits are per-run, not cross-agent
     pool: 'threads',
     poolOptions: {
       threads: {
-        maxThreads: 4,  // Limit parallel test threads
-        minThreads: 1,
+        maxThreads: 12,  // Allow more parallel threads (2-3x previous)
+        minThreads: 2,
       },
     },
     // Isolate tests to prevent memory accumulation
     isolate: true,
     // Limit concurrent file processing
-    maxConcurrency: 5,
+    maxConcurrency: 15,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

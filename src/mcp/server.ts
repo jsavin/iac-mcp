@@ -324,6 +324,59 @@ export class IACMCPServer {
     return { ...this.status };
   }
 
+  /**
+   * Handle a request directly (for testing purposes)
+   *
+   * This method allows tests to call MCP handlers without going through the transport.
+   * It simulates what the MCP transport would do when receiving a request.
+   *
+   * @param request - MCP request object with method and params
+   * @returns MCP response
+   */
+  async handleRequest(request: { method: string; params: Record<string, unknown> }): Promise<Record<string, unknown>> {
+    // Get the internal server's request handlers
+    // The MCP SDK Server class stores handlers in a private map
+    // We need to access them via the server's internal routing
+
+    if (request.method === 'tools/list') {
+      // Call the ListTools handler
+      const handler = (this.server as unknown as { _requestHandlers: Map<string, (request: unknown) => Promise<unknown>> })._requestHandlers?.get('tools/list');
+      if (handler) {
+        return handler({ method: request.method, params: request.params }) as Promise<Record<string, unknown>>;
+      }
+      throw new Error('ListTools handler not found');
+    }
+
+    if (request.method === 'tools/call') {
+      // Call the CallTool handler
+      const handler = (this.server as unknown as { _requestHandlers: Map<string, (request: unknown) => Promise<unknown>> })._requestHandlers?.get('tools/call');
+      if (handler) {
+        return handler({ method: request.method, params: request.params }) as Promise<Record<string, unknown>>;
+      }
+      throw new Error('CallTool handler not found');
+    }
+
+    if (request.method === 'resources/list') {
+      // Call the ListResources handler
+      const handler = (this.server as unknown as { _requestHandlers: Map<string, (request: unknown) => Promise<unknown>> })._requestHandlers?.get('resources/list');
+      if (handler) {
+        return handler({ method: request.method, params: request.params }) as Promise<Record<string, unknown>>;
+      }
+      throw new Error('ListResources handler not found');
+    }
+
+    if (request.method === 'resources/read') {
+      // Call the ReadResource handler
+      const handler = (this.server as unknown as { _requestHandlers: Map<string, (request: unknown) => Promise<unknown>> })._requestHandlers?.get('resources/read');
+      if (handler) {
+        return handler({ method: request.method, params: request.params }) as Promise<Record<string, unknown>>;
+      }
+      throw new Error('ReadResource handler not found');
+    }
+
+    throw new Error(`Unknown method: ${request.method}`);
+  }
+
 }
 
 /**

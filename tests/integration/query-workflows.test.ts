@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { IACMCPServer } from '../../src/mcp/iac-mcp-server.js';
+import { IACMCPServer } from '../../src/mcp/server.js';
 
 describe('Query Workflows Integration', () => {
   let server: IACMCPServer;
@@ -33,7 +33,7 @@ describe('Query Workflows Integration', () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -49,17 +49,18 @@ describe('Query Workflows Integration', () => {
       const response = await server['handleRequest'](request);
       const result = JSON.parse(response.content[0].text);
 
-      expect(result.id).toMatch(/^ref_[a-z0-9]+$/);
-      expect(result.app).toBe('Mail');
-      expect(result.type).toBe('mailbox');
-      expect(result.specifier.name).toBe('inbox');
+      // Response format: { reference: { id, type, app } }
+      expect(result.reference).toBeDefined();
+      expect(result.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result.reference.app).toBe('Mail');
+      expect(result.reference.type).toBe('mailbox');
     });
 
     it('should query drafts mailbox and return different reference', async () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -75,10 +76,11 @@ describe('Query Workflows Integration', () => {
       const response = await server['handleRequest'](request);
       const result = JSON.parse(response.content[0].text);
 
-      expect(result.id).toMatch(/^ref_[a-z0-9]+$/);
-      expect(result.app).toBe('Mail');
-      expect(result.type).toBe('mailbox');
-      expect(result.specifier.name).toBe('drafts');
+      // Response format: { reference: { id, type, app } }
+      expect(result.reference).toBeDefined();
+      expect(result.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result.reference.app).toBe('Mail');
+      expect(result.reference.type).toBe('mailbox');
     });
   });
 
@@ -88,7 +90,7 @@ describe('Query Workflows Integration', () => {
       const queryRequest = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -102,15 +104,15 @@ describe('Query Workflows Integration', () => {
       };
 
       const queryResponse = await server['handleRequest'](queryRequest);
-      const inboxRef = JSON.parse(queryResponse.content[0].text);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
 
       // Step 2: Get messages from inbox
       const elementsRequest = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
-            container: inboxRef.id,
+            container: queryResult.reference.id,
             elementType: 'message',
             limit: 1
           }
@@ -131,7 +133,7 @@ describe('Query Workflows Integration', () => {
       const queryRequest = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -145,15 +147,15 @@ describe('Query Workflows Integration', () => {
       };
 
       const queryResponse = await server['handleRequest'](queryRequest);
-      const inboxRef = JSON.parse(queryResponse.content[0].text);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
 
       // Step 2: Get messages with limit 5
       const elementsRequest = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
-            container: inboxRef.id,
+            container: queryResult.reference.id,
             elementType: 'message',
             limit: 5
           }
@@ -176,7 +178,7 @@ describe('Query Workflows Integration', () => {
       const queryRequest = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -190,15 +192,15 @@ describe('Query Workflows Integration', () => {
       };
 
       const queryResponse = await server['handleRequest'](queryRequest);
-      const inboxRef = JSON.parse(queryResponse.content[0].text);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
 
       // Step 2: Get first message
       const elementsRequest = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
-            container: inboxRef.id,
+            container: queryResult.reference.id,
             elementType: 'message',
             limit: 1
           }
@@ -215,9 +217,9 @@ describe('Query Workflows Integration', () => {
         const propsRequest = {
           method: 'tools/call',
           params: {
-            name: 'get_properties',
+            name: 'iac_mcp_get_properties',
             arguments: {
-              referenceId: messageRef.id,
+              reference: messageRef.id,
               properties: ['subject', 'sender', 'date']
             }
           }
@@ -241,7 +243,7 @@ describe('Query Workflows Integration', () => {
       const step1 = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -255,18 +257,20 @@ describe('Query Workflows Integration', () => {
       };
 
       const response1 = await server['handleRequest'](step1);
-      const inboxRef = JSON.parse(response1.content[0].text);
+      const result1 = JSON.parse(response1.content[0].text);
 
-      expect(inboxRef.id).toMatch(/^ref_[a-z0-9]+$/);
-      expect(inboxRef.type).toBe('mailbox');
+      // Response format: { reference: { id, type, app } }
+      expect(result1.reference).toBeDefined();
+      expect(result1.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result1.reference.type).toBe('mailbox');
 
       // Step 2: Get messages from inbox
       const step2 = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
-            container: inboxRef.id,
+            container: result1.reference.id,
             elementType: 'message',
             limit: 1
           }
@@ -289,9 +293,9 @@ describe('Query Workflows Integration', () => {
         const step3 = {
           method: 'tools/call',
           params: {
-            name: 'get_properties',
+            name: 'iac_mcp_get_properties',
             arguments: {
-              referenceId: messageRef.id,
+              reference: messageRef.id,
               properties: ['subject', 'sender', 'date', 'content']
             }
           }
@@ -320,7 +324,7 @@ describe('Query Workflows Integration', () => {
       const step1 = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: mailboxSpec
@@ -329,7 +333,7 @@ describe('Query Workflows Integration', () => {
       };
 
       const response1 = await server['handleRequest'](step1);
-      const mailboxRef = JSON.parse(response1.content[0].text);
+      const mailboxResult = JSON.parse(response1.content[0].text);
 
       // Step 2: Query message within mailbox (using reference in specifier)
       const messageSpec = {
@@ -342,7 +346,7 @@ describe('Query Workflows Integration', () => {
       const step2 = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: messageSpec
@@ -351,43 +355,47 @@ describe('Query Workflows Integration', () => {
       };
 
       const response2 = await server['handleRequest'](step2);
-      const messageRef = JSON.parse(response2.content[0].text);
+      const messageResult = JSON.parse(response2.content[0].text);
 
-      expect(messageRef.id).toMatch(/^ref_[a-z0-9]+$/);
-      expect(messageRef.type).toBe('message');
+      // Response format: { reference: { id, type, app } }
+      expect(messageResult.reference).toBeDefined();
+      expect(messageResult.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(messageResult.reference.type).toBe('message');
 
       // Both references should be valid
-      expect(mailboxRef.id).toBeDefined();
-      expect(messageRef.id).toBeDefined();
-      expect(mailboxRef.id).not.toBe(messageRef.id);
+      expect(mailboxResult.reference).toBeDefined();
+      expect(mailboxResult.reference.id).toBeDefined();
+      expect(messageResult.reference.id).toBeDefined();
+      expect(mailboxResult.reference.id).not.toBe(messageResult.reference.id);
     });
   });
 
   describe('Workflow 5: Error Handling', () => {
-    it('should return error when using invalid reference in get_properties', async () => {
+    it('should return error when using invalid reference in iac_mcp_get_properties', async () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'get_properties',
+          name: 'iac_mcp_get_properties',
           arguments: {
-            referenceId: 'ref_invalid123',
+            reference: 'ref_invalid123',
             properties: ['subject']
           }
         }
       };
 
       const response = await server['handleRequest'](request);
-      const result = response.content[0].text;
+      const result = JSON.parse(response.content[0].text);
 
-      expect(result).toContain('Reference not found');
-      expect(result).toContain('ref_invalid123');
+      // Error response format: { error: 'reference_invalid', reference: '...', ... }
+      expect(result.error).toBe('reference_invalid');
+      expect(result.reference).toBe('ref_invalid123');
     });
 
-    it('should return error when using invalid reference in get_elements', async () => {
+    it('should return error when using invalid reference in iac_mcp_get_elements', async () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
             container: 'ref_invalid456',
             elementType: 'message',
@@ -397,10 +405,10 @@ describe('Query Workflows Integration', () => {
       };
 
       const response = await server['handleRequest'](request);
-      const result = response.content[0].text;
+      const result = JSON.parse(response.content[0].text);
 
-      expect(result).toContain('Reference not found');
-      expect(result).toContain('ref_invalid456');
+      // Error response format: { error: 'reference_invalid', ... }
+      expect(result.error).toBe('reference_invalid');
     });
 
     it('should provide helpful error for expired reference', async () => {
@@ -408,27 +416,27 @@ describe('Query Workflows Integration', () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'get_properties',
+          name: 'iac_mcp_get_properties',
           arguments: {
-            referenceId: 'ref_expired789',
+            reference: 'ref_expired789',
             properties: ['name']
           }
         }
       };
 
       const response = await server['handleRequest'](request);
-      const result = response.content[0].text;
+      const result = JSON.parse(response.content[0].text);
 
-      expect(result).toContain('Reference not found');
-      // Error should be clear that reference doesn't exist
-      expect(result.length).toBeGreaterThan(0);
+      // Error response format: { error: 'reference_invalid', suggestion: '...' }
+      expect(result.error).toBe('reference_invalid');
+      expect(result.suggestion).toBeDefined();
     });
 
-    it('should handle invalid specifier type in query_object', async () => {
+    it('should handle invalid specifier type in iac_mcp_query_object', async () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -449,7 +457,7 @@ describe('Query Workflows Integration', () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             // Missing 'app' parameter
             specifier: {
@@ -477,7 +485,7 @@ describe('Query Workflows Integration', () => {
       const queryRequest = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -491,15 +499,15 @@ describe('Query Workflows Integration', () => {
       };
 
       const queryResponse = await server['handleRequest'](queryRequest);
-      const inboxRef = JSON.parse(queryResponse.content[0].text);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
 
       // Use reference multiple times
       const elementsRequest1 = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
-            container: inboxRef.id,
+            container: queryResult.reference.id,
             elementType: 'message',
             limit: 5
           }
@@ -509,9 +517,9 @@ describe('Query Workflows Integration', () => {
       const elementsRequest2 = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
-            container: inboxRef.id,
+            container: queryResult.reference.id,
             elementType: 'message',
             limit: 10
           }
@@ -534,7 +542,7 @@ describe('Query Workflows Integration', () => {
       const inboxQuery = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -551,7 +559,7 @@ describe('Query Workflows Integration', () => {
       const draftsQuery = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -567,13 +575,12 @@ describe('Query Workflows Integration', () => {
       const inboxResponse = await server['handleRequest'](inboxQuery);
       const draftsResponse = await server['handleRequest'](draftsQuery);
 
-      const inboxRef = JSON.parse(inboxResponse.content[0].text);
-      const draftsRef = JSON.parse(draftsResponse.content[0].text);
+      const inboxResult = JSON.parse(inboxResponse.content[0].text);
+      const draftsResult = JSON.parse(draftsResponse.content[0].text);
 
+      // Response format: { reference: { id, type, app } }
       // References should be different
-      expect(inboxRef.id).not.toBe(draftsRef.id);
-      expect(inboxRef.specifier.name).toBe('inbox');
-      expect(draftsRef.specifier.name).toBe('drafts');
+      expect(inboxResult.reference.id).not.toBe(draftsResult.reference.id);
     });
   });
 
@@ -583,7 +590,7 @@ describe('Query Workflows Integration', () => {
       const windowQuery = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Finder',
             specifier: {
@@ -597,18 +604,20 @@ describe('Query Workflows Integration', () => {
       };
 
       const windowResponse = await server['handleRequest'](windowQuery);
-      const windowRef = JSON.parse(windowResponse.content[0].text);
+      const windowResult = JSON.parse(windowResponse.content[0].text);
 
-      expect(windowRef.id).toMatch(/^ref_[a-z0-9]+$/);
-      expect(windowRef.type).toBe('window');
+      // Response format: { reference: { id, type, app } }
+      expect(windowResult.reference).toBeDefined();
+      expect(windowResult.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(windowResult.reference.type).toBe('window');
 
       // Get window properties
       const propsQuery = {
         method: 'tools/call',
         params: {
-          name: 'get_properties',
+          name: 'iac_mcp_get_properties',
           arguments: {
-            referenceId: windowRef.id,
+            reference: windowResult.reference.id,
             properties: ['name', 'position', 'bounds']
           }
         }
@@ -625,7 +634,7 @@ describe('Query Workflows Integration', () => {
       const docQuery = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Safari',
             specifier: {
@@ -639,18 +648,20 @@ describe('Query Workflows Integration', () => {
       };
 
       const docResponse = await server['handleRequest'](docQuery);
-      const docRef = JSON.parse(docResponse.content[0].text);
+      const docResult = JSON.parse(docResponse.content[0].text);
 
-      expect(docRef.id).toMatch(/^ref_[a-z0-9]+$/);
-      expect(docRef.type).toBe('document');
+      // Response format: { reference: { id, type, app } }
+      expect(docResult.reference).toBeDefined();
+      expect(docResult.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(docResult.reference.type).toBe('document');
 
       // Get document URL
       const propsQuery = {
         method: 'tools/call',
         params: {
-          name: 'get_properties',
+          name: 'iac_mcp_get_properties',
           arguments: {
-            referenceId: docRef.id,
+            reference: docResult.reference.id,
             properties: ['URL', 'name']
           }
         }

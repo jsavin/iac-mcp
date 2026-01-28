@@ -13,8 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { IACMCPServer } from '../../src/mcp/iac-mcp-server.js';
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { IACMCPServer } from '../../src/mcp/server.js';
 import type { MCPTool } from '../../src/types/mcp-tool.js';
 
 describe('Query Tools MCP Integration', () => {
@@ -41,16 +40,16 @@ describe('Query Tools MCP Integration', () => {
       const tools = response.tools as MCPTool[];
 
       // Find query tools
-      const queryObjectTool = tools.find(t => t.name === 'query_object');
-      const getPropertiesTool = tools.find(t => t.name === 'get_properties');
-      const getElementsTool = tools.find(t => t.name === 'get_elements');
+      const queryObjectTool = tools.find(t => t.name === 'iac_mcp_query_object');
+      const getPropertiesTool = tools.find(t => t.name === 'iac_mcp_get_properties');
+      const getElementsTool = tools.find(t => t.name === 'iac_mcp_get_elements');
 
       expect(queryObjectTool).toBeDefined();
       expect(getPropertiesTool).toBeDefined();
       expect(getElementsTool).toBeDefined();
     });
 
-    it('should have correct schemas for query_object tool', async () => {
+    it('should have correct schemas for iac_mcp_query_object tool', async () => {
       const request = {
         method: 'tools/list',
         params: {}
@@ -58,10 +57,10 @@ describe('Query Tools MCP Integration', () => {
 
       const response = await server['handleRequest'](request);
       const tools = response.tools as MCPTool[];
-      const queryObjectTool = tools.find(t => t.name === 'query_object');
+      const queryObjectTool = tools.find(t => t.name === 'iac_mcp_query_object');
 
       expect(queryObjectTool).toBeDefined();
-      expect(queryObjectTool!.name).toBe('query_object');
+      expect(queryObjectTool!.name).toBe('iac_mcp_query_object');
       expect(queryObjectTool!.description).toContain('Query an object');
       expect(queryObjectTool!.inputSchema).toBeDefined();
       expect(queryObjectTool!.inputSchema.type).toBe('object');
@@ -71,7 +70,7 @@ describe('Query Tools MCP Integration', () => {
       expect(queryObjectTool!.inputSchema.required).toContain('specifier');
     });
 
-    it('should have correct schemas for get_properties tool', async () => {
+    it('should have correct schemas for iac_mcp_get_properties tool', async () => {
       const request = {
         method: 'tools/list',
         params: {}
@@ -79,19 +78,19 @@ describe('Query Tools MCP Integration', () => {
 
       const response = await server['handleRequest'](request);
       const tools = response.tools as MCPTool[];
-      const getPropertiesTool = tools.find(t => t.name === 'get_properties');
+      const getPropertiesTool = tools.find(t => t.name === 'iac_mcp_get_properties');
 
       expect(getPropertiesTool).toBeDefined();
-      expect(getPropertiesTool!.name).toBe('get_properties');
+      expect(getPropertiesTool!.name).toBe('iac_mcp_get_properties');
       expect(getPropertiesTool!.description).toContain('Get properties');
       expect(getPropertiesTool!.inputSchema).toBeDefined();
       expect(getPropertiesTool!.inputSchema.type).toBe('object');
-      expect(getPropertiesTool!.inputSchema.properties).toHaveProperty('referenceId');
+      expect(getPropertiesTool!.inputSchema.properties).toHaveProperty('reference');
       expect(getPropertiesTool!.inputSchema.properties).toHaveProperty('properties');
-      expect(getPropertiesTool!.inputSchema.required).toContain('referenceId');
+      expect(getPropertiesTool!.inputSchema.required).toContain('reference');
     });
 
-    it('should have correct schemas for get_elements tool', async () => {
+    it('should have correct schemas for iac_mcp_get_elements tool', async () => {
       const request = {
         method: 'tools/list',
         params: {}
@@ -99,10 +98,10 @@ describe('Query Tools MCP Integration', () => {
 
       const response = await server['handleRequest'](request);
       const tools = response.tools as MCPTool[];
-      const getElementsTool = tools.find(t => t.name === 'get_elements');
+      const getElementsTool = tools.find(t => t.name === 'iac_mcp_get_elements');
 
       expect(getElementsTool).toBeDefined();
-      expect(getElementsTool!.name).toBe('get_elements');
+      expect(getElementsTool!.name).toBe('iac_mcp_get_elements');
       expect(getElementsTool!.description).toContain('Get elements');
       expect(getElementsTool!.inputSchema).toBeDefined();
       expect(getElementsTool!.inputSchema.type).toBe('object');
@@ -124,9 +123,9 @@ describe('Query Tools MCP Integration', () => {
 
       // Should have query tools
       const queryTools = tools.filter(t =>
-        t.name === 'query_object' ||
-        t.name === 'get_properties' ||
-        t.name === 'get_elements'
+        t.name === 'iac_mcp_query_object' ||
+        t.name === 'iac_mcp_get_properties' ||
+        t.name === 'iac_mcp_get_elements'
       );
       expect(queryTools).toHaveLength(3);
 
@@ -136,12 +135,12 @@ describe('Query Tools MCP Integration', () => {
     });
   });
 
-  describe('CallTool Integration - query_object', () => {
-    it('should handle query_object with NamedSpecifier', async () => {
+  describe('CallTool Integration - iac_mcp_query_object', () => {
+    it('should handle iac_mcp_query_object with NamedSpecifier', async () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -161,22 +160,18 @@ describe('Query Tools MCP Integration', () => {
       expect(response.content[0].type).toBe('text');
 
       const result = JSON.parse(response.content[0].text);
-      expect(result.id).toMatch(/^ref_[a-z0-9]+$/);
-      expect(result.app).toBe('Mail');
-      expect(result.type).toBe('mailbox');
-      expect(result.specifier).toEqual({
-        type: 'named',
-        element: 'mailbox',
-        name: 'inbox',
-        container: 'application'
-      });
+      // Response format: { reference: { id, type, app } }
+      expect(result.reference).toBeDefined();
+      expect(result.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result.reference.app).toBe('Mail');
+      expect(result.reference.type).toBe('mailbox');
     });
 
-    it('should handle query_object with ElementSpecifier', async () => {
+    it('should handle iac_mcp_query_object with ElementSpecifier', async () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Finder',
             specifier: {
@@ -196,16 +191,18 @@ describe('Query Tools MCP Integration', () => {
       expect(response.content[0].type).toBe('text');
 
       const result = JSON.parse(response.content[0].text);
-      expect(result.id).toMatch(/^ref_[a-z0-9]+$/);
-      expect(result.app).toBe('Finder');
-      expect(result.type).toBe('window');
+      // Response format: { reference: { id, type, app } }
+      expect(result.reference).toBeDefined();
+      expect(result.reference.id).toMatch(/^ref_[a-z0-9]+$/);
+      expect(result.reference.app).toBe('Finder');
+      expect(result.reference.type).toBe('window');
     });
 
     it('should return error for unsupported specifier type', async () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -227,13 +224,13 @@ describe('Query Tools MCP Integration', () => {
     });
   });
 
-  describe('CallTool Integration - get_properties', () => {
-    it('should handle get_properties with valid reference', async () => {
+  describe('CallTool Integration - iac_mcp_get_properties', () => {
+    it('should handle iac_mcp_get_properties with valid reference', async () => {
       // First create a reference
       const queryRequest = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -247,15 +244,15 @@ describe('Query Tools MCP Integration', () => {
       };
 
       const queryResponse = await server['handleRequest'](queryRequest);
-      const reference = JSON.parse(queryResponse.content[0].text);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
 
       // Now get properties
       const propsRequest = {
         method: 'tools/call',
         params: {
-          name: 'get_properties',
+          name: 'iac_mcp_get_properties',
           arguments: {
-            referenceId: reference.id,
+            reference: queryResult.reference.id,
             properties: ['name', 'unreadCount']
           }
         }
@@ -276,9 +273,9 @@ describe('Query Tools MCP Integration', () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'get_properties',
+          name: 'iac_mcp_get_properties',
           arguments: {
-            referenceId: 'ref_invalid123',
+            reference: 'ref_invalid123',
             properties: ['name']
           }
         }
@@ -290,18 +287,19 @@ describe('Query Tools MCP Integration', () => {
       expect(response.content).toHaveLength(1);
       expect(response.content[0].type).toBe('text');
 
-      const result = response.content[0].text;
-      expect(result).toContain('Reference not found');
+      const result = JSON.parse(response.content[0].text);
+      // Error response format: { error: 'reference_invalid', ... }
+      expect(result.error).toBe('reference_invalid');
     });
   });
 
-  describe('CallTool Integration - get_elements', () => {
-    it('should handle get_elements with reference ID', async () => {
+  describe('CallTool Integration - iac_mcp_get_elements', () => {
+    it('should handle iac_mcp_get_elements with reference ID', async () => {
       // First create a mailbox reference
       const queryRequest = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail',
             specifier: {
@@ -315,15 +313,15 @@ describe('Query Tools MCP Integration', () => {
       };
 
       const queryResponse = await server['handleRequest'](queryRequest);
-      const mailboxRef = JSON.parse(queryResponse.content[0].text);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
 
       // Now get messages from mailbox
       const elementsRequest = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
-            container: mailboxRef.id,
+            container: queryResult.reference.id,
             elementType: 'message',
             limit: 5
           }
@@ -343,11 +341,11 @@ describe('Query Tools MCP Integration', () => {
       expect(Array.isArray(result.elements)).toBe(true);
     });
 
-    it('should handle get_elements with specifier', async () => {
+    it('should handle iac_mcp_get_elements with specifier', async () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
             container: {
               type: 'named',
@@ -377,7 +375,7 @@ describe('Query Tools MCP Integration', () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'get_elements',
+          name: 'iac_mcp_get_elements',
           arguments: {
             container: 'ref_invalid456',
             elementType: 'message',
@@ -392,8 +390,9 @@ describe('Query Tools MCP Integration', () => {
       expect(response.content).toHaveLength(1);
       expect(response.content[0].type).toBe('text');
 
-      const result = response.content[0].text;
-      expect(result).toContain('Reference not found');
+      const result = JSON.parse(response.content[0].text);
+      // Error response format: { error: 'reference_invalid', ... }
+      expect(result.error).toBe('reference_invalid');
     });
   });
 
@@ -402,7 +401,7 @@ describe('Query Tools MCP Integration', () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             // Missing 'app' parameter
             specifier: {
@@ -429,7 +428,7 @@ describe('Query Tools MCP Integration', () => {
       const request = {
         method: 'tools/call',
         params: {
-          name: 'query_object',
+          name: 'iac_mcp_query_object',
           arguments: {
             app: 'Mail'
             // Missing 'specifier' parameter
