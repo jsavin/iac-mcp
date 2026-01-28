@@ -68,17 +68,11 @@ describe("generateQueryTools", () => {
     });
 
     it("should have description mentioning specifier types", () => {
-      const schema = queryObjectTool.inputSchema as any;
-      expect(schema.properties.specifier.description).toContain(
-        "ElementSpecifier"
-      );
-      expect(schema.properties.specifier.description).toContain(
-        "NamedSpecifier"
-      );
-      expect(schema.properties.specifier.description).toContain("IdSpecifier");
-      expect(schema.properties.specifier.description).toContain(
-        "PropertySpecifier"
-      );
+      // Specifier types are now documented in the main tool description, not in the property description
+      expect(queryObjectTool.description).toContain("NamedSpecifier");
+      expect(queryObjectTool.description).toContain("ElementSpecifier");
+      expect(queryObjectTool.description).toContain("IdSpecifier");
+      expect(queryObjectTool.description).toContain("PropertySpecifier");
     });
   });
 
@@ -185,8 +179,8 @@ describe("generateQueryTools", () => {
       expect(schema.properties.limit.default).toBe(100);
     });
 
-    it("should mention elements can be used in subsequent calls", () => {
-      expect(getElementsTool.description).toContain("subsequent");
+    it("should mention elements can be used in further operations", () => {
+      expect(getElementsTool.description).toContain("further operations");
     });
   });
 

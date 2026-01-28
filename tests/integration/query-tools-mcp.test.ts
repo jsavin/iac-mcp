@@ -20,7 +20,8 @@ describe('Query Tools MCP Integration', () => {
   let server: IACMCPServer;
 
   beforeEach(async () => {
-    server = new IACMCPServer({ enableLogging: false });
+    // Use disableJxaExecution: true to avoid real app interactions in tests
+    server = new IACMCPServer({ enableLogging: false, disableJxaExecution: true });
     await server.initialize();
     await server.start();
   });
@@ -102,7 +103,7 @@ describe('Query Tools MCP Integration', () => {
 
       expect(getElementsTool).toBeDefined();
       expect(getElementsTool!.name).toBe('iac_mcp_get_elements');
-      expect(getElementsTool!.description).toContain('Get elements');
+      expect(getElementsTool!.description).toContain('Get child elements');
       expect(getElementsTool!.inputSchema).toBeDefined();
       expect(getElementsTool!.inputSchema.type).toBe('object');
       expect(getElementsTool!.inputSchema.properties).toHaveProperty('container');

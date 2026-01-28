@@ -21,6 +21,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { findAllScriptableApps } from '../jitd/discovery/index.js';
 import { ToolGenerator } from '../jitd/tool-generator/generator.js';
 import { MacOSAdapter } from '../adapters/macos/macos-adapter.js';
+import { JXAExecutor } from '../adapters/macos/jxa-executor.js';
 import { PermissionChecker } from '../permissions/permission-checker.js';
 import { ErrorHandler } from '../error-handler.js';
 import { PerAppCache } from '../jitd/cache/per-app-cache.js';
@@ -67,6 +68,13 @@ export interface ServerOptions {
    * Default: false
    */
   enableLogging?: boolean;
+
+  /**
+   * Disable JXA execution for query tools.
+   * When true, query tools return empty/mock results (useful for testing).
+   * Default: false
+   */
+  disableJxaExecution?: boolean;
 }
 
 /**
@@ -94,6 +102,7 @@ export class IACMCPServer {
   private discoverer = findAllScriptableApps;
   private generator: ToolGenerator;
   private adapter: MacOSAdapter;
+  private jxaExecutor: JXAExecutor;
   private permissionChecker: PermissionChecker;
   private errorHandler: ErrorHandler;
   private perAppCache: PerAppCache;
@@ -130,6 +139,7 @@ export class IACMCPServer {
       timeoutMs: options?.timeoutMs ?? 30000,
       serverName: options?.serverName ?? 'iac-mcp',
       enableLogging: options?.enableLogging ?? false,
+      disableJxaExecution: options?.disableJxaExecution ?? false,
     };
 
     // Initialize MCP server
@@ -161,9 +171,15 @@ export class IACMCPServer {
     this.errorHandler = new ErrorHandler();
     this.perAppCache = new PerAppCache(this.options.cacheDir);
 
+    // Initialize JXA executor for query operations (only if JXA execution is enabled)
+    this.jxaExecutor = new JXAExecutor();
+
     // Initialize query execution components
+    // Pass JXAExecutor only if JXA execution is enabled (default: enabled)
     this.referenceStore = new ReferenceStore(15 * 60 * 1000); // 15-minute TTL
-    this.queryExecutor = new QueryExecutor(this.referenceStore);
+    this.queryExecutor = this.options.disableJxaExecution
+      ? new QueryExecutor(this.referenceStore)
+      : new QueryExecutor(this.referenceStore, this.jxaExecutor);
   }
 
   /**
