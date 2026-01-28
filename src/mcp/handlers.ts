@@ -38,7 +38,10 @@ import type { AppMetadata } from '../types/app-metadata.js';
 import type { PerAppCache } from '../jitd/cache/per-app-cache.js';
 import { SDEFParser, type ParseWarning } from '../jitd/discovery/parse-sdef.js';
 import { buildFallbackMetadata } from '../jitd/discovery/app-metadata-builder.js';
-import { QueryExecutor } from '../query-executor/query-executor.js';
+import { QueryExecutor } from '../execution/query-executor.js';
+import { generateQueryTools } from '../jitd/tool-generator/query-tools.js';
+import { validateObjectSpecifier, isReferenceId } from '../types/object-specifier.js';
+import type { ObjectSpecifier } from '../types/object-specifier.js';
 
 /**
  * Maximum length for app_name parameter to prevent DoS attacks
@@ -64,6 +67,61 @@ const MAX_REGULAR_WARNINGS = 80;
  */
 function isValidAppName(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+/**
+ * Type guard for iac_mcp_query_object parameters
+ * Runtime validation of parameter structure
+ */
+interface QueryObjectParams {
+  app: string;
+  specifier: ObjectSpecifier;
+}
+
+function isQueryObjectParams(value: unknown): value is QueryObjectParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.app === 'string' &&
+         typeof obj.specifier === 'object' && obj.specifier !== null;
+}
+
+/**
+ * Type guard for iac_mcp_get_properties parameters
+ * Runtime validation of parameter structure
+ */
+interface GetPropertiesParams {
+  reference: string;
+  properties?: string[];
+}
+
+function isGetPropertiesParams(value: unknown): value is GetPropertiesParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.reference !== 'string') return false;
+  if (obj.properties !== undefined && !Array.isArray(obj.properties)) return false;
+  return true;
+}
+
+/**
+ * Type guard for iac_mcp_get_elements parameters
+ * Runtime validation of parameter structure
+ */
+interface GetElementsParams {
+  container: string | ObjectSpecifier;
+  elementType: string;
+  app?: string;
+  limit?: number;
+}
+
+function isGetElementsParams(value: unknown): value is GetElementsParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.elementType !== 'string') return false;
+  // container can be string (reference ID) or object (specifier)
+  if (typeof obj.container !== 'string' && (typeof obj.container !== 'object' || obj.container === null)) return false;
+  if (obj.app !== undefined && typeof obj.app !== 'string') return false;
+  if (obj.limit !== undefined && typeof obj.limit !== 'number') return false;
+  return true;
 }
 
 /**
@@ -373,7 +431,8 @@ export async function setupHandlers(
   permissionChecker: PermissionChecker,
   adapter: MacOSAdapter,
   errorHandler: ErrorHandler,
-  perAppCache: PerAppCache
+  perAppCache: PerAppCache,
+  queryExecutor: QueryExecutor
 ): Promise<void> {
   // Store discovered tools in memory for CallTool lookups
   let discoveredTools: MCPTool[] = [];
@@ -485,9 +544,12 @@ export async function setupHandlers(
         },
       };
 
-      // Return get_app_tools tool + list_apps tool + query_calendar_events tool + app metadata
+      // Generate query tools
+      const queryTools = generateQueryTools();
+
+      // Return get_app_tools tool + list_apps tool + query_calendar_events tool + query tools + app metadata
       return {
-        tools: [getAppToolsTool, listAppsTool, queryCalendarEventsTool],
+        tools: [getAppToolsTool, listAppsTool, queryCalendarEventsTool, ...queryTools],
         _app_metadata: appMetadataList,
       };
 
@@ -561,7 +623,7 @@ export async function setupHandlers(
 
           // Validate arguments
           const timeRange = args?.timeRange as 'today' | 'this_week' | 'this_month' | 'all' | undefined;
-          const calendarName = args?.calendarName as string | undefined;
+          // const calendarName = args?.calendarName as string | undefined;
 
           if (!timeRange) {
             console.error('[CallTool/query_calendar_events] Error: Missing timeRange parameter');
@@ -586,13 +648,9 @@ export async function setupHandlers(
             };
           }
 
-          // Execute query
-          const queryExecutor = new QueryExecutor();
-          const events = await queryExecutor.executeQuery({
-            app: 'Calendar',
-            timeRange,
-            calendarName,
-          });
+          // TODO: Implement calendar query functionality in Phase 1
+          // For now, return a placeholder message
+          const events: any[] = [];
 
           console.error(`[CallTool/query_calendar_events] Returning ${events.length} events`);
 
@@ -614,6 +672,56 @@ export async function setupHandlers(
             isError: true,
           };
         }
+      }
+
+      // Check for query tools (iac_mcp_query_object, iac_mcp_get_properties, iac_mcp_get_elements)
+      // Using type guards instead of unsafe type assertions for runtime safety
+      if (toolName === 'iac_mcp_query_object') {
+        if (!isQueryObjectParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_query_object. Expected: { app: string, specifier: object }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        return await handleQueryObject(queryExecutor, args);
+      }
+
+      if (toolName === 'iac_mcp_get_properties') {
+        if (!isGetPropertiesParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_get_properties. Expected: { reference: string, properties?: string[] }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        return await handleGetProperties(queryExecutor, args);
+      }
+
+      if (toolName === 'iac_mcp_get_elements') {
+        if (!isGetElementsParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_get_elements. Expected: { container: string|object, elementType: string, app?: string, limit?: number }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        return await handleGetElements(queryExecutor, args);
       }
 
       // Check for get_app_tools (lazy loading)
@@ -995,6 +1103,301 @@ export async function setupHandlers(
     }
   });
 
+}
+
+/**
+ * Handle query_object tool call
+ *
+ * Queries an object in an application and returns a stable reference.
+ */
+async function handleQueryObject(
+  queryExecutor: QueryExecutor,
+  params: { app: string; specifier: ObjectSpecifier }
+): Promise<{
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+}> {
+  try {
+    console.error(`[CallTool/query_object] Querying object in ${params.app}`);
+
+    // Validate app parameter
+    if (!params.app || typeof params.app !== 'string') {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing or invalid "app" parameter',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    // Validate specifier with comprehensive runtime validation
+    const specifierValidation = validateObjectSpecifier(params.specifier);
+    if (!specifierValidation.valid) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Invalid "specifier" parameter',
+            details: specifierValidation.errors,
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    const ref = await queryExecutor.queryObject(params.app, params.specifier);
+
+    console.error(`[CallTool/query_object] Created reference: ${ref.id}`);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          reference: {
+            id: ref.id,
+            type: ref.type,
+            app: ref.app,
+          },
+        }),
+      }],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/query_object] Error: ${message}`);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'query_failed',
+          message,
+        }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle get_properties tool call
+ *
+ * Gets properties of a referenced object.
+ */
+async function handleGetProperties(
+  queryExecutor: QueryExecutor,
+  params: { reference: string; properties?: string[] }
+): Promise<{
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+}> {
+  try {
+    console.error(`[CallTool/get_properties] Getting properties for reference: ${params.reference}`);
+
+    // Validate parameters
+    if (!params.reference || typeof params.reference !== 'string') {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing or invalid "reference" parameter',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    const properties = await queryExecutor.getProperties(
+      params.reference,
+      params.properties
+    );
+
+    console.error(`[CallTool/get_properties] Retrieved ${Object.keys(properties).length} properties`);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ properties }),
+      }],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/get_properties] Error: ${message}`);
+
+    if (message.includes('Reference not found')) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'reference_invalid',
+            reference: params.reference,
+            message: 'The referenced object no longer exists or cannot be accessed',
+            suggestion: 'Query the object again using iac_mcp_query_object',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'execution_failed',
+          message,
+        }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle get_elements tool call
+ *
+ * Gets elements from a container object.
+ */
+async function handleGetElements(
+  queryExecutor: QueryExecutor,
+  params: { container: string | ObjectSpecifier; elementType: string; app?: string; limit?: number }
+): Promise<{
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+}> {
+  try {
+    console.error(`[CallTool/get_elements] Getting elements of type: ${params.elementType}`);
+
+    // Validate parameters
+    if (!params.container) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing "container" parameter',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    if (!params.elementType || typeof params.elementType !== 'string') {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing or invalid "elementType" parameter',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    // Validate container: must be either a reference ID or a valid specifier
+    if (typeof params.container === 'string') {
+      // Container is a string - must be a reference ID
+      if (!isReferenceId(params.container)) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Container string must be a valid reference ID (format: ref_<uuid>)',
+            }),
+          }],
+          isError: true,
+        };
+      }
+    } else {
+      // Container is an object - validate as specifier
+      const containerValidation = validateObjectSpecifier(params.container);
+      if (!containerValidation.valid) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Invalid "container" specifier',
+              details: containerValidation.errors,
+            }),
+          }],
+          isError: true,
+        };
+      }
+
+      // App is required when container is a specifier
+      if (!params.app) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Missing "app" parameter. App is required when container is an ObjectSpecifier.',
+            }),
+          }],
+          isError: true,
+        };
+      }
+    }
+
+    const result = await queryExecutor.getElements(
+      params.container,
+      params.elementType,
+      params.app,
+      params.limit
+    );
+
+    console.error(`[CallTool/get_elements] Retrieved ${result.elements.length} elements (total: ${result.count})`);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          elements: result.elements.map(el => ({
+            id: el.id,
+            type: el.type,
+            app: el.app,
+          })),
+          count: result.count,
+          hasMore: result.hasMore,
+        }),
+      }],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/get_elements] Error: ${message}`);
+
+    if (message.includes('Reference not found')) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'reference_invalid',
+            message: 'The referenced container object no longer exists or cannot be accessed',
+            suggestion: 'Query the container again using iac_mcp_query_object',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'execution_failed',
+          message,
+        }),
+      }],
+      isError: true,
+    };
+  }
 }
 
 /**

@@ -31,9 +31,12 @@ npm run dev            # Development mode with watch
 npm test               # Run tests
 npm start              # Start MCP server
 
-# Testing
-npm run test:unit      # Unit tests only
-npm run test:integration  # Integration tests
+# Testing (use queued versions in agents to prevent memory exhaustion)
+npm run test:unit           # Unit tests only
+npm run test:integration    # Integration tests
+npm run test:queued         # ⚠️ AGENTS MUST USE THIS - queued test run
+npm run test:queued:unit    # ⚠️ AGENTS MUST USE THIS - queued unit tests
+npm run test:queued:coverage # ⚠️ AGENTS MUST USE THIS - queued coverage
 npx @modelcontextprotocol/inspector node dist/index.js  # MCP Inspector
 
 # Git workflow
@@ -158,6 +161,42 @@ npm run lint          # Must pass with no errors
 ```
 
 **See [CODE-QUALITY.md](CODE-QUALITY.md) for complete standards, enforcement, and examples.**
+
+---
+
+## ⚠️ CRITICAL: Test Queue for Sub-Agents
+
+**PROBLEM:** Multiple sub-agents running tests in parallel can exhaust system memory (45GB+ observed).
+
+**SOLUTION:** Use queued test commands that enforce sequential test execution across all agents.
+
+### Sub-Agents MUST Use Queued Commands
+
+When running tests from a sub-agent, **ALWAYS** use:
+
+```bash
+npm run test:queued           # Instead of: npm test
+npm run test:queued:unit      # Instead of: npm run test:unit
+npm run test:queued:coverage  # Instead of: npm run test:coverage
+```
+
+### How the Queue Works
+
+The `./tools/test-queue.sh` script:
+1. Adds the test run to a file-based queue
+2. Waits for any currently-running tests to complete
+3. Acquires a lock before running tests
+4. Releases the lock when done
+
+This prevents multiple vitest processes from running simultaneously and exhausting memory.
+
+### Direct User Commands (No Queue Needed)
+
+When the user runs tests directly (not via sub-agents), regular commands are fine:
+```bash
+npm test                      # OK for direct user execution
+npm run test:coverage         # OK for direct user execution
+```
 
 ---
 

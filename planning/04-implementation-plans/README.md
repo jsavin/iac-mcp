@@ -4,6 +4,26 @@ This directory contains active and upcoming implementation work, organized by in
 
 ## Current Initiatives
 
+### Stateful Query System ⭐ **NEW - CRITICAL PATH**
+Status: **Ready for Implementation**
+
+Enable Claude to query objects and read properties from scriptable apps. **This is the highest priority feature** - it unblocks the core use case (e.g., "What's my most recent email?").
+
+**Main Plan:** [stateful-query-system.md](./stateful-query-system.md)
+
+**Phases:**
+1. **[Phase 1: Core Stateful Queries](./stateful-query-phase1.md)** (3-4 days) - **START HERE**
+   - Three MCP tools: `query_object`, `get_properties`, `get_elements`
+   - Stateful references with 15+ minute TTL
+   - Ready for /doit workflow
+2. **[Phase 2: Filtering & Advanced Queries](./stateful-query-phase2.md)** (2-3 days)
+3. **[Phase 3: Property Setters](./stateful-query-phase3.md)** (1-2 days)
+4. **[Phase 4: Sophisticated GC & Optimization](./stateful-query-phase4.md)** (2-3 days)
+
+**Total Effort:** 8-10 days across 4 phases
+
+---
+
 ### MVP Phase
 Status: **In Progress** (Weeks 3-4)
 
