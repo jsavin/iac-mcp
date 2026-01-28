@@ -9,7 +9,8 @@ set -e
 LOCK_DIR="${TMPDIR:-/tmp}/iac-mcp-test-locks"
 LOCK_FILE="$LOCK_DIR/test.lock"
 QUEUE_FILE="$LOCK_DIR/test.queue"
-MAX_WAIT_SECONDS=600  # 10 minutes max wait
+MAX_WAIT_SECONDS=600  # 10 minutes max wait in queue
+MAX_RUN_SECONDS=300   # 5 minutes max test execution time
 POLL_INTERVAL=5       # Check every 5 seconds
 
 # Create lock directory if it doesn't exist
@@ -90,10 +91,29 @@ done
 
 echo "🔒 Acquired test lock (queue position was $(grep -n "^$RUN_ID$" "$QUEUE_FILE" 2>/dev/null | cut -d: -f1 || echo "1"))" >&2
 
-# Run the actual test command
-echo "🧪 Running: $*" >&2
-"$@"
-exit_code=$?
+# Run the actual test command with timeout to prevent deadlocks
+echo "🧪 Running: $* (timeout: ${MAX_RUN_SECONDS}s)" >&2
+
+# Use timeout command if available, otherwise run directly
+if command -v timeout &> /dev/null; then
+    timeout --signal=SIGTERM --kill-after=10 "$MAX_RUN_SECONDS" "$@"
+    exit_code=$?
+    if [[ $exit_code -eq 124 ]]; then
+        echo "⚠️ Test timed out after ${MAX_RUN_SECONDS}s" >&2
+    fi
+elif command -v gtimeout &> /dev/null; then
+    # macOS with coreutils installed via Homebrew
+    gtimeout --signal=SIGTERM --kill-after=10 "$MAX_RUN_SECONDS" "$@"
+    exit_code=$?
+    if [[ $exit_code -eq 124 ]]; then
+        echo "⚠️ Test timed out after ${MAX_RUN_SECONDS}s" >&2
+    fi
+else
+    # Fallback: run without timeout (macOS default)
+    # Note: Install coreutils via 'brew install coreutils' for timeout support
+    "$@"
+    exit_code=$?
+fi
 
 echo "✅ Test complete (exit code: $exit_code)" >&2
 exit $exit_code
