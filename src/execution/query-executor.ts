@@ -8,6 +8,8 @@ import {
   ElementSpecifier
 } from "../types/object-specifier.js";
 import { ReferenceStore } from "./reference-store.js";
+import { JXAExecutor } from "../adapters/macos/jxa-executor.js";
+import { ResultParser, JXAError } from "../adapters/macos/result-parser.js";
 
 /**
  * Regex for validating JXA-safe identifiers.
@@ -34,9 +36,21 @@ const MAX_IDENTIFIER_LENGTH = 256;
  * Builds JXA code from ObjectSpecifier types and executes queries.
  */
 export class QueryExecutor {
+  private resultParser: ResultParser;
+
+  /**
+   * Create a new QueryExecutor.
+   *
+   * @param referenceStore - Store for managing object references
+   * @param jxaExecutor - Optional JXAExecutor for real JXA execution.
+   *                      If not provided, methods return empty/mock results.
+   */
   constructor(
-    private referenceStore: ReferenceStore
-  ) {}
+    private referenceStore: ReferenceStore,
+    private jxaExecutor?: JXAExecutor
+  ) {
+    this.resultParser = new ResultParser();
+  }
 
   /**
    * Query an object and return a reference.
@@ -86,7 +100,7 @@ export class QueryExecutor {
    */
   async getProperties(
     referenceId: string,
-    _properties?: string[]
+    properties?: string[]
   ): Promise<Record<string, any>> {
     // 1. Get reference from store
     const reference = this.referenceStore.get(referenceId);
@@ -97,32 +111,47 @@ export class QueryExecutor {
     // 2. Touch reference (update lastAccessedAt)
     this.referenceStore.touch(referenceId);
 
-    // 3. Build JXA to get properties (commented out until Phase 5 JXA integration)
-    // const objectPath = this.buildObjectPath(reference.specifier, `Application("${reference.app}")`);
-    // let jxaCode: string;
-    // if (properties && properties.length > 0) {
-    //   const propertyAccess = properties.map(prop =>
-    //     `${this.camelCase(prop)}: obj.${this.camelCase(prop)}()`
-    //   ).join(', ');
-    //   jxaCode = `
-    //     const app = Application("${reference.app}");
-    //     const obj = ${objectPath};
-    //     return { ${propertyAccess} };
-    //   `;
-    // } else {
-    //   jxaCode = `
-    //     const app = Application("${reference.app}");
-    //     const obj = ${objectPath};
-    //     return obj.properties();
-    //   `;
-    // }
+    // 3. If no JXAExecutor, return empty result (backward compatibility)
+    if (!this.jxaExecutor) {
+      return {};
+    }
 
-    // 4. Execute JXA (mocked for Phase 1)
-    // In production: const result = await this.jxaExecutor.execute(reference.app, jxaCode);
-    const mockResult: Record<string, any> = {};
+    // 4. Build JXA to get properties
+    const objectPath = this.buildObjectPath(reference.specifier, "app");
+    let jxaCode: string;
 
-    // 5. Parse and return properties
-    return mockResult;
+    if (properties && properties.length > 0) {
+      // Get specific properties - sanitize each property name first to prevent injection
+      const propertyAccess = properties.map(prop => {
+        const sanitizedProp = this.sanitizeForJxa(prop, 'property');
+        const camelProp = this.camelCase(sanitizedProp);
+        return `${camelProp}: obj.${camelProp}()`;
+      }).join(', ');
+      jxaCode = `(() => {
+  const app = Application("${this.escapeJxaString(reference.app)}");
+  const obj = ${objectPath};
+  return JSON.stringify({ ${propertyAccess} });
+})()`;
+    } else {
+      // Get all properties
+      jxaCode = `(() => {
+  const app = Application("${this.escapeJxaString(reference.app)}");
+  const obj = ${objectPath};
+  return JSON.stringify(obj.properties());
+})()`;
+    }
+
+    // 5. Execute JXA
+    const result = await this.jxaExecutor.execute(jxaCode);
+
+    // 6. Parse result and handle errors
+    const parsed = this.resultParser.parse(result, { appName: reference.app });
+
+    if (!parsed.success) {
+      throw new Error(this.formatJxaError(parsed.error!));
+    }
+
+    return parsed.data || {};
   }
 
   /**
@@ -161,24 +190,108 @@ export class QueryExecutor {
       resolvedApp = app;
     }
 
-    // 2. Build JXA to get elements (commented out until Phase 5 JXA integration)
-    // const containerPath = this.buildObjectPath(containerSpec, `Application("${resolvedApp}")`);
-    // const elementsPath = `${containerPath}.${this.pluralize(elementType)}`;
-    // const jxaCode = `
-    //   const app = Application("${resolvedApp}");
-    //   const container = ${containerPath};
-    //   const elements = container.${this.pluralize(elementType)};
-    //   return {
-    //     count: elements.length,
-    //     items: elements.slice(0, ${limit})
-    //   };
-    // `;
+    // 2. Validate element type for JXA safety FIRST (before any code paths use it)
+    this.sanitizeForJxa(elementType, 'elementType');
 
-    // 3. Execute JXA (mocked for Phase 1)
-    // In production: const result = await this.jxaExecutor.execute(resolvedApp, jxaCode);
+    // 3. Validate limit parameter
+    if (!Number.isInteger(limit) || limit < 0 || limit > 10000) {
+      throw new Error(`Invalid limit: ${limit}. Must be an integer between 0 and 10000.`);
+    }
+
+    // 4. If no JXAExecutor, return empty result (backward compatibility)
+    if (!this.jxaExecutor) {
+      return this.mockExecuteGetElementsResult(resolvedApp, containerSpec, elementType, limit);
+    }
+
+    // 5. Build JXA to get elements
+    const containerPath = this.buildObjectPath(containerSpec, "app");
+    const pluralElementType = this.pluralize(elementType);
+
+    const jxaCode = `(() => {
+  const app = Application("${this.escapeJxaString(resolvedApp)}");
+  const container = ${containerPath};
+  const elements = container.${pluralElementType};
+  const count = elements.length;
+  const items = [];
+  for (let i = 0; i < Math.min(count, ${limit}); i++) {
+    items.push({ index: i });
+  }
+  return JSON.stringify({ count, items });
+})()`;
+
+    // 6. Execute JXA
+    const result = await this.jxaExecutor.execute(jxaCode);
+
+    // 7. Parse result and handle errors
+    const parsed = this.resultParser.parse(result, { appName: resolvedApp });
+
+    if (!parsed.success) {
+      throw new Error(this.formatJxaError(parsed.error!));
+    }
+
+    const jxaResult = parsed.data || { count: 0, items: [] };
+
+    // 8. Create references for each element
+    const elements: ObjectReference[] = jxaResult.items.map((_item: any, index: number) => {
+      const elementSpec: ElementSpecifier = {
+        type: 'element',
+        element: elementType,
+        index,
+        container: containerSpec
+      };
+
+      const referenceId = this.referenceStore.create(resolvedApp, elementType, elementSpec);
+      const reference = this.referenceStore.get(referenceId);
+      if (!reference) {
+        throw new Error('Failed to create element reference');
+      }
+      return reference;
+    });
+
+    // 9. Return elements with metadata
+    return {
+      elements,
+      count: jxaResult.count,
+      hasMore: jxaResult.count > limit
+    };
+  }
+
+  /**
+   * Format a JXA error into a user-friendly message.
+   *
+   * @param error - The JXA error object
+   * @returns Formatted error message
+   */
+  private formatJxaError(error: JXAError): string {
+    switch (error.type) {
+      case 'APP_NOT_FOUND':
+        return 'Application not found or not installed';
+      case 'APP_NOT_RUNNING':
+        return 'Application is not running';
+      case 'PERMISSION_DENIED':
+        return 'Permission denied. Grant automation access in System Preferences > Privacy & Security > Automation.';
+      case 'INVALID_PARAM':
+        return 'Object not found: The specified element does not exist';
+      case 'TIMEOUT':
+        return 'Operation timed out';
+      default:
+        return error.message || 'JXA execution error';
+    }
+  }
+
+  /**
+   * Return mock/empty result for getElements when no JXAExecutor is provided.
+   * Maintains backward compatibility with existing tests.
+   */
+  private async mockExecuteGetElementsResult(
+    resolvedApp: string,
+    containerSpec: ObjectSpecifier,
+    elementType: string,
+    limit: number
+  ): Promise<{ elements: ObjectReference[]; count: number; hasMore: boolean }> {
     const mockResult = this.mockExecuteGetElements(resolvedApp, containerSpec, elementType, limit);
 
-    // 4. Create references for each element
+    // Create references for each element (preserves existing test behavior)
     const elements: ObjectReference[] = mockResult.items.map((_item: any, index: number) => {
       const elementSpec: ElementSpecifier = {
         type: 'element',
@@ -195,7 +308,6 @@ export class QueryExecutor {
       return reference;
     });
 
-    // 5. Return elements with metadata
     return {
       elements,
       count: mockResult.count,

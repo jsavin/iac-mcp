@@ -19,7 +19,8 @@ describe('Query Workflows Integration', () => {
   let server: IACMCPServer;
 
   beforeEach(async () => {
-    server = new IACMCPServer({ enableLogging: false });
+    // Use disableJxaExecution: true to avoid real app interactions in tests
+    server = new IACMCPServer({ enableLogging: false, disableJxaExecution: true });
     await server.initialize();
     await server.start();
   });

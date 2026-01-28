@@ -11,19 +11,53 @@ export function generateQueryTools(): Tool[] {
     // Tool 1: query_object - Query an object and get a stable reference
     {
       name: "iac_mcp_query_object",
-      description:
-        "Query an object in an application and return a stable reference. The reference can be used in subsequent calls to get_properties, get_elements, or set_property. References remain valid for at least 15 minutes.",
+      description: `Query an object in a macOS application and return a stable reference for subsequent operations.
+
+**When to use:** Use query tools (query_object, get_properties, get_elements) to navigate the application's object model. Use action tools (from get_app_tools) to perform operations like sending emails or creating files.
+
+**Specifier Types:**
+
+1. **NamedSpecifier** - Find by name:
+   {"type": "named", "element": "mailbox", "name": "INBOX", "container": "application"}
+
+2. **ElementSpecifier** - Find by index (0-based):
+   {"type": "element", "element": "message", "index": 0, "container": <parent-specifier-or-reference>}
+
+3. **IdSpecifier** - Find by unique ID:
+   {"type": "id", "element": "message", "id": "msg-12345", "container": "application"}
+
+4. **PropertySpecifier** - Get a property value:
+   {"type": "property", "property": "subject", "of": <specifier-or-reference-id>}
+
+**Common Patterns:**
+
+| App | Object | Specifier Example |
+|-----|--------|-------------------|
+| Mail | Inbox | {"type": "named", "element": "mailbox", "name": "INBOX", "container": "application"} |
+| Mail | First message in inbox | Use get_elements on mailbox reference with elementType "message" |
+| Finder | Desktop folder | {"type": "named", "element": "folder", "name": "Desktop", "container": "application"} |
+| Calendar | Default calendar | {"type": "named", "element": "calendar", "name": "Calendar", "container": "application"} |
+| Contacts | All people | Use get_elements on application with elementType "person" |
+| Safari | Front window | {"type": "element", "element": "window", "index": 0, "container": "application"} |
+
+**Nested Containers:** Chain specifiers by setting "container" to a parent specifier:
+{"type": "element", "element": "message", "index": 0, "container": {"type": "named", "element": "mailbox", "name": "INBOX", "container": "application"}}
+
+**Reference Lifetime:** References remain valid for 15 minutes. Use the returned reference ID in get_properties, get_elements, or action tools.
+
+**Note:** This may launch the application if it's not running.`,
       inputSchema: {
         type: "object",
         properties: {
           app: {
             type: "string",
-            description: "App bundle ID (e.g., 'com.apple.mail')",
+            description:
+              "Application name (e.g., 'Mail', 'Finder', 'Safari') or bundle ID (e.g., 'com.apple.mail')",
           },
           specifier: {
             type: "object",
             description:
-              "JSON object specifier defining how to locate the object. Must be one of: ElementSpecifier (get by index), NamedSpecifier (get by name), IdSpecifier (get by ID), or PropertySpecifier (get property of object).",
+              "Object specifier defining how to locate the object. See tool description for specifier types and examples.",
           },
         },
         required: ["app", "specifier"],
@@ -33,21 +67,49 @@ export function generateQueryTools(): Tool[] {
     // Tool 2: get_properties - Get properties of a referenced object
     {
       name: "iac_mcp_get_properties",
-      description:
-        "Get properties of a referenced object. If properties array is null or omitted, returns all available properties.",
+      description: `Get properties of a referenced object. Returns property names and their current values.
+
+**Usage:**
+1. First obtain a reference using query_object
+2. Pass the reference ID to this tool
+3. Optionally specify which properties you want (omit for all properties)
+
+**Examples:**
+
+Get all properties of a Mail message:
+- reference: "ref_abc123" (from query_object)
+- properties: null (returns all: subject, sender, dateReceived, etc.)
+
+Get specific properties:
+- reference: "ref_abc123"
+- properties: ["subject", "sender", "dateReceived"]
+
+**Common Property Names by App:**
+
+| App | Object Type | Common Properties |
+|-----|-------------|-------------------|
+| Mail | message | subject, sender, dateReceived, read status, content |
+| Mail | mailbox | name, unreadCount |
+| Finder | file | name, size, creationDate, modificationDate, kind |
+| Finder | folder | name, items, window |
+| Calendar | event | summary, startDate, endDate, location |
+| Contacts | person | firstName, lastName, email, phone |
+| Safari | tab | URL, name |
+
+**Note:** Property names with spaces should be provided as-is (e.g., "read status"). The tool handles conversion to the correct format.`,
       inputSchema: {
         type: "object",
         properties: {
           reference: {
             type: "string",
             description:
-              "Object reference ID from query_object (format: ref_<id>)",
+              "Object reference ID from query_object (format: ref_<uuid>)",
           },
           properties: {
             type: "array",
             items: { type: "string" },
             description:
-              "Property names to retrieve (omit or null = all properties)",
+              "Specific property names to retrieve. Omit or set to null to get all available properties.",
           },
         },
         required: ["reference"],
@@ -57,8 +119,48 @@ export function generateQueryTools(): Tool[] {
     // Tool 3: get_elements - Get elements from a container object
     {
       name: "iac_mcp_get_elements",
-      description:
-        "Get elements from a container object. Returns references to the elements, which can be used in subsequent calls. Supports pagination via limit parameter.",
+      description: `Get child elements from a container object. Returns references to the elements for further operations.
+
+**Usage:**
+1. Obtain a reference to a container (mailbox, folder, calendar, etc.) using query_object
+2. Call get_elements with the container reference and element type
+3. Receive references to each element for use in get_properties or action tools
+
+**Examples:**
+
+Get messages in a mailbox:
+- container: "ref_mailbox123" (reference to INBOX from query_object)
+- elementType: "message"
+- limit: 10
+
+Get files in a folder:
+- container: {"type": "named", "element": "folder", "name": "Desktop", "container": "application"}
+- elementType: "file"
+- app: "Finder"
+- limit: 50
+
+**Common Container/Element Relationships:**
+
+| App | Container | Element Type |
+|-----|-----------|--------------|
+| Mail | mailbox | message |
+| Mail | message | attachment |
+| Finder | folder | file, folder |
+| Finder | application | disk, window |
+| Calendar | calendar | event |
+| Contacts | application | person |
+| Contacts | person | email, phone |
+| Safari | window | tab |
+
+**Pagination:**
+- Use limit to control how many elements to retrieve (default: 100, max recommended: 1000)
+- Response includes hasMore: true if more elements exist beyond the limit
+- Use index-based specifiers to access elements beyond the limit
+
+**Performance Tips:**
+- Start with small limits (10-20) when exploring
+- Increase limit only when you need more results
+- Large collections (1000+ elements) may take several seconds`,
       inputSchema: {
         type: "object",
         properties: {
@@ -66,28 +168,30 @@ export function generateQueryTools(): Tool[] {
             oneOf: [
               {
                 type: "string",
-                description: "Reference ID of container (app is inferred from reference)",
+                description:
+                  "Reference ID of container object (app is inferred from the reference)",
               },
               {
                 type: "object",
-                description: "Object specifier for container (requires app parameter)",
+                description:
+                  "Object specifier for container (requires app parameter)",
               },
             ],
           },
           elementType: {
             type: "string",
             description:
-              "Type of elements to retrieve (e.g., 'message', 'file', 'event')",
+              "Type of elements to retrieve in singular form (e.g., 'message', 'file', 'event', 'person')",
           },
           app: {
             type: "string",
             description:
-              "App bundle ID (required when container is an ObjectSpecifier, ignored when container is a reference ID)",
+              "Application name or bundle ID. Required when container is an ObjectSpecifier, ignored when container is a reference ID.",
           },
           limit: {
             type: "number",
             description:
-              "Maximum number of elements to return (default: 100)",
+              "Maximum number of elements to return (default: 100). Response includes hasMore flag if more exist.",
             default: 100,
           },
         },
