@@ -1420,5 +1420,224 @@ describe('QueryExecutor', () => {
         expect(capturedScript).toContain('readStatus()');
       });
     });
+
+    describe('Security: Property name injection prevention', () => {
+      it('should reject property names with invalid characters (injection attempt)', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({}),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        // Attempt injection via property name
+        const error = await executorWithJxa.getProperties(ref.id, ['foo; malicious code']).catch(e => e);
+
+        expect(error.message).toContain('invalid characters');
+      });
+
+      it('should reject property names with newlines', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({}),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        // Attempt injection via newline
+        const error = await executorWithJxa.getProperties(ref.id, ['foo\nmalicious']).catch(e => e);
+
+        expect(error.message).toContain('invalid characters');
+      });
+
+      it('should reject property names exceeding max length', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({}),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        // Very long property name (DoS attempt)
+        const longProp = 'a'.repeat(300);
+        const error = await executorWithJxa.getProperties(ref.id, [longProp]).catch(e => e);
+
+        expect(error.message).toContain('exceeds maximum length');
+      });
+
+      it('should accept valid property names with spaces, hyphens, and underscores', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ readStatus: true }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        // Valid property names should work (camelCase only converts spaces)
+        await executorWithJxa.getProperties(ref.id, ['read-status', 'message count', 'user_id']);
+
+        // camelCase converts spaces to camelCase, preserves hyphens and underscores
+        expect(capturedScript).toContain('read-status()');
+        expect(capturedScript).toContain('messageCount()');
+        expect(capturedScript).toContain('user_id()');
+      });
+    });
+
+    describe('Limit parameter validation', () => {
+      it('should reject negative limit', async () => {
+        const executorWithJxa = new QueryExecutor(referenceStore);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+
+        const error = await executorWithJxa.getElements(mailboxSpec, 'message', 'Mail', -1).catch(e => e);
+
+        expect(error.message).toContain('Invalid limit');
+      });
+
+      it('should reject limit exceeding maximum (10000)', async () => {
+        const executorWithJxa = new QueryExecutor(referenceStore);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+
+        const error = await executorWithJxa.getElements(mailboxSpec, 'message', 'Mail', 10001).catch(e => e);
+
+        expect(error.message).toContain('Invalid limit');
+      });
+
+      it('should reject non-integer limit', async () => {
+        const executorWithJxa = new QueryExecutor(referenceStore);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+
+        const error = await executorWithJxa.getElements(mailboxSpec, 'message', 'Mail', 10.5).catch(e => e);
+
+        expect(error.message).toContain('Invalid limit');
+      });
+
+      it('should accept limit of 0', async () => {
+        const executorWithJxa = new QueryExecutor(referenceStore);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+
+        // With no JXAExecutor, should return empty result
+        const result = await executorWithJxa.getElements(mailboxSpec, 'message', 'Mail', 0);
+
+        expect(result.elements).toEqual([]);
+        expect(result.count).toBe(0);
+      });
+
+      it('should accept limit of 10000 (maximum)', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({ count: 0, items: [] }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+
+        const result = await executorWithJxa.getElements(mailboxSpec, 'message', 'Mail', 10000);
+
+        expect(result).toBeDefined();
+      });
+    });
+
+    describe('Empty properties array handling', () => {
+      it('should treat empty properties array as request for all properties', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ subject: 'Test', sender: 'test@test.com' }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        // Empty array should get all properties (same as undefined)
+        await executorWithJxa.getProperties(ref.id, []);
+
+        // Should call properties() for all properties
+        expect(capturedScript).toContain('properties()');
+      });
+    });
   });
 });

@@ -121,10 +121,12 @@ export class QueryExecutor {
     let jxaCode: string;
 
     if (properties && properties.length > 0) {
-      // Get specific properties
-      const propertyAccess = properties.map(prop =>
-        `${this.camelCase(prop)}: obj.${this.camelCase(prop)}()`
-      ).join(', ');
+      // Get specific properties - sanitize each property name first to prevent injection
+      const propertyAccess = properties.map(prop => {
+        const sanitizedProp = this.sanitizeForJxa(prop, 'property');
+        const camelProp = this.camelCase(sanitizedProp);
+        return `${camelProp}: obj.${camelProp}()`;
+      }).join(', ');
       jxaCode = `(() => {
   const app = Application("${this.escapeJxaString(reference.app)}");
   const obj = ${objectPath};
@@ -188,15 +190,20 @@ export class QueryExecutor {
       resolvedApp = app;
     }
 
-    // 2. If no JXAExecutor, return empty result (backward compatibility)
+    // 2. Validate element type for JXA safety FIRST (before any code paths use it)
+    this.sanitizeForJxa(elementType, 'elementType');
+
+    // 3. Validate limit parameter
+    if (!Number.isInteger(limit) || limit < 0 || limit > 10000) {
+      throw new Error(`Invalid limit: ${limit}. Must be an integer between 0 and 10000.`);
+    }
+
+    // 4. If no JXAExecutor, return empty result (backward compatibility)
     if (!this.jxaExecutor) {
       return this.mockExecuteGetElementsResult(resolvedApp, containerSpec, elementType, limit);
     }
 
-    // 3. Validate element type for JXA safety
-    this.sanitizeForJxa(elementType, 'elementType');
-
-    // 4. Build JXA to get elements
+    // 5. Build JXA to get elements
     const containerPath = this.buildObjectPath(containerSpec, "app");
     const pluralElementType = this.pluralize(elementType);
 
@@ -212,10 +219,10 @@ export class QueryExecutor {
   return JSON.stringify({ count, items });
 })()`;
 
-    // 5. Execute JXA
+    // 6. Execute JXA
     const result = await this.jxaExecutor.execute(jxaCode);
 
-    // 6. Parse result and handle errors
+    // 7. Parse result and handle errors
     const parsed = this.resultParser.parse(result, { appName: resolvedApp });
 
     if (!parsed.success) {
@@ -224,7 +231,7 @@ export class QueryExecutor {
 
     const jxaResult = parsed.data || { count: 0, items: [] };
 
-    // 7. Create references for each element
+    // 8. Create references for each element
     const elements: ObjectReference[] = jxaResult.items.map((_item: any, index: number) => {
       const elementSpec: ElementSpecifier = {
         type: 'element',
@@ -241,7 +248,7 @@ export class QueryExecutor {
       return reference;
     });
 
-    // 8. Return elements with metadata
+    // 9. Return elements with metadata
     return {
       elements,
       count: jxaResult.count,
