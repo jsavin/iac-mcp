@@ -6,11 +6,28 @@
  *
  * Phase 1: TTL-based cleanup (createdAt)
  * Phase 4: Will add LRU-based cleanup (lastAccessedAt)
+ *
+ * Debug logging: Set IAC_MCP_DEBUG_REFS=true to enable lifecycle logging
  */
 
 import { randomUUID } from "node:crypto";
 import { ObjectReference, ReferenceStats } from "../types/object-reference.js";
 import { ObjectSpecifier } from "../types/object-specifier.js";
+
+/**
+ * Debug logging for reference lifecycle events.
+ * Enabled via IAC_MCP_DEBUG_REFS=true environment variable.
+ * Logs to stderr to avoid MCP protocol interference.
+ */
+const DEBUG_REFS = process.env.IAC_MCP_DEBUG_REFS === "true";
+
+function logRef(event: string, data?: Record<string, unknown>): void {
+  if (DEBUG_REFS) {
+    const timestamp = new Date().toISOString();
+    const dataStr = data ? ` ${JSON.stringify(data)}` : "";
+    console.error(`[RefStore][${timestamp}] ${event}${dataStr}`);
+  }
+}
 
 export class ReferenceStore {
   private references = new Map<string, ObjectReference>();
@@ -47,6 +64,7 @@ export class ReferenceStore {
     };
 
     this.references.set(id, reference);
+    logRef("created", { id, app, type, specifier: specifier.type });
     return id;
   }
 
@@ -56,7 +74,11 @@ export class ReferenceStore {
    * @returns ObjectReference or undefined if not found
    */
   get(id: string): ObjectReference | undefined {
-    return this.references.get(id);
+    const ref = this.references.get(id);
+    if (!ref) {
+      logRef("not_found", { id });
+    }
+    return ref;
   }
 
   /**
@@ -66,7 +88,9 @@ export class ReferenceStore {
   touch(id: string): void {
     const ref = this.references.get(id);
     if (ref) {
+      const age = Date.now() - ref.createdAt;
       ref.lastAccessedAt = Date.now();
+      logRef("touched", { id, ageMs: age });
     }
   }
 
@@ -83,11 +107,20 @@ export class ReferenceStore {
     for (const [id, ref] of this.references) {
       if (now - ref.createdAt > this.ttl) {
         expired.push(id);
+        const exceededBy = now - ref.createdAt - this.ttl;
+        logRef("expired", { id, exceededByMs: exceededBy });
       }
     }
 
     for (const id of expired) {
       this.references.delete(id);
+    }
+
+    if (expired.length > 0 || DEBUG_REFS) {
+      logRef("cleanup_complete", {
+        removed: expired.length,
+        remaining: this.references.size
+      });
     }
   }
 
