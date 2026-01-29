@@ -3,7 +3,7 @@
  *
  * Tests the MCP server integration for query tools:
  * - Query tools appear in ListTools response
- * - Correct number of tools (3 query tools + existing tools)
+ * - Correct number of tools (4 query tools + existing tools)
  * - Tool schemas are correct
  * - CallTool routes to correct handlers
  * - Error responses have correct format
@@ -43,10 +43,12 @@ describe('Query Tools MCP Integration', () => {
       // Find query tools
       const queryObjectTool = tools.find(t => t.name === 'iac_mcp_query_object');
       const getPropertiesTool = tools.find(t => t.name === 'iac_mcp_get_properties');
+      const setPropertyTool = tools.find(t => t.name === 'iac_mcp_set_property');
       const getElementsTool = tools.find(t => t.name === 'iac_mcp_get_elements');
 
       expect(queryObjectTool).toBeDefined();
       expect(getPropertiesTool).toBeDefined();
+      expect(setPropertyTool).toBeDefined();
       expect(getElementsTool).toBeDefined();
     });
 
@@ -91,6 +93,29 @@ describe('Query Tools MCP Integration', () => {
       expect(getPropertiesTool!.inputSchema.required).toContain('reference');
     });
 
+    it('should have correct schemas for iac_mcp_set_property tool', async () => {
+      const request = {
+        method: 'tools/list',
+        params: {}
+      };
+
+      const response = await server['handleRequest'](request);
+      const tools = response.tools as MCPTool[];
+      const setPropertyTool = tools.find(t => t.name === 'iac_mcp_set_property');
+
+      expect(setPropertyTool).toBeDefined();
+      expect(setPropertyTool!.name).toBe('iac_mcp_set_property');
+      expect(setPropertyTool!.description).toContain('Set a property');
+      expect(setPropertyTool!.inputSchema).toBeDefined();
+      expect(setPropertyTool!.inputSchema.type).toBe('object');
+      expect(setPropertyTool!.inputSchema.properties).toHaveProperty('reference');
+      expect(setPropertyTool!.inputSchema.properties).toHaveProperty('property');
+      expect(setPropertyTool!.inputSchema.properties).toHaveProperty('value');
+      expect(setPropertyTool!.inputSchema.required).toContain('reference');
+      expect(setPropertyTool!.inputSchema.required).toContain('property');
+      expect(setPropertyTool!.inputSchema.required).toContain('value');
+    });
+
     it('should have correct schemas for iac_mcp_get_elements tool', async () => {
       const request = {
         method: 'tools/list',
@@ -126,9 +151,10 @@ describe('Query Tools MCP Integration', () => {
       const queryTools = tools.filter(t =>
         t.name === 'iac_mcp_query_object' ||
         t.name === 'iac_mcp_get_properties' ||
+        t.name === 'iac_mcp_set_property' ||
         t.name === 'iac_mcp_get_elements'
       );
-      expect(queryTools).toHaveLength(3);
+      expect(queryTools).toHaveLength(4);
 
       // Should also have list_apps tool
       const listAppsTool = tools.find(t => t.name === 'list_apps');
@@ -292,6 +318,200 @@ describe('Query Tools MCP Integration', () => {
       const result = JSON.parse(response.content[0].text);
       // Error response format: { error: 'reference_invalid', ... }
       expect(result.error).toBe('reference_invalid');
+    });
+  });
+
+  describe('CallTool Integration - iac_mcp_set_property', () => {
+    it('should handle iac_mcp_set_property with valid reference', async () => {
+      // First create a reference
+      const queryRequest = {
+        method: 'tools/call',
+        params: {
+          name: 'iac_mcp_query_object',
+          arguments: {
+            app: 'Finder',
+            specifier: {
+              type: 'element',
+              element: 'window',
+              index: 0,
+              container: 'application'
+            }
+          }
+        }
+      };
+
+      const queryResponse = await server['handleRequest'](queryRequest);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
+
+      // Now set a property
+      const setRequest = {
+        method: 'tools/call',
+        params: {
+          name: 'iac_mcp_set_property',
+          arguments: {
+            reference: queryResult.reference.id,
+            property: 'visible',
+            value: true
+          }
+        }
+      };
+
+      const response = await server['handleRequest'](setRequest);
+
+      expect(response.content).toBeDefined();
+      expect(response.content).toHaveLength(1);
+      expect(response.content[0].type).toBe('text');
+
+      // Response should be JSON (success or error - JXA disabled in tests)
+      const result = JSON.parse(response.content[0].text);
+      expect(result).toBeDefined();
+    });
+
+    it('should return error for invalid reference ID', async () => {
+      const request = {
+        method: 'tools/call',
+        params: {
+          name: 'iac_mcp_set_property',
+          arguments: {
+            reference: 'ref_invalid789',
+            property: 'visible',
+            value: true
+          }
+        }
+      };
+
+      const response = await server['handleRequest'](request);
+
+      expect(response.content).toBeDefined();
+      expect(response.content).toHaveLength(1);
+      expect(response.content[0].type).toBe('text');
+
+      const result = JSON.parse(response.content[0].text);
+      // Error response format: { error: 'reference_invalid', ... }
+      expect(result.error).toBe('reference_invalid');
+    });
+
+    it('should handle different value types (string)', async () => {
+      // First create a reference
+      const queryRequest = {
+        method: 'tools/call',
+        params: {
+          name: 'iac_mcp_query_object',
+          arguments: {
+            app: 'Finder',
+            specifier: {
+              type: 'element',
+              element: 'window',
+              index: 0,
+              container: 'application'
+            }
+          }
+        }
+      };
+
+      const queryResponse = await server['handleRequest'](queryRequest);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
+
+      // Set a string property
+      const setRequest = {
+        method: 'tools/call',
+        params: {
+          name: 'iac_mcp_set_property',
+          arguments: {
+            reference: queryResult.reference.id,
+            property: 'name',
+            value: 'New Window Name'
+          }
+        }
+      };
+
+      const response = await server['handleRequest'](setRequest);
+
+      expect(response.content).toBeDefined();
+      expect(response.content).toHaveLength(1);
+      expect(response.content[0].type).toBe('text');
+    });
+
+    it('should handle different value types (number)', async () => {
+      // First create a reference
+      const queryRequest = {
+        method: 'tools/call',
+        params: {
+          name: 'iac_mcp_query_object',
+          arguments: {
+            app: 'Finder',
+            specifier: {
+              type: 'element',
+              element: 'window',
+              index: 0,
+              container: 'application'
+            }
+          }
+        }
+      };
+
+      const queryResponse = await server['handleRequest'](queryRequest);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
+
+      // Set a number property
+      const setRequest = {
+        method: 'tools/call',
+        params: {
+          name: 'iac_mcp_set_property',
+          arguments: {
+            reference: queryResult.reference.id,
+            property: 'index',
+            value: 42
+          }
+        }
+      };
+
+      const response = await server['handleRequest'](setRequest);
+
+      expect(response.content).toBeDefined();
+      expect(response.content).toHaveLength(1);
+      expect(response.content[0].type).toBe('text');
+    });
+
+    it('should handle null value for clearing properties', async () => {
+      // First create a reference
+      const queryRequest = {
+        method: 'tools/call',
+        params: {
+          name: 'iac_mcp_query_object',
+          arguments: {
+            app: 'Finder',
+            specifier: {
+              type: 'element',
+              element: 'window',
+              index: 0,
+              container: 'application'
+            }
+          }
+        }
+      };
+
+      const queryResponse = await server['handleRequest'](queryRequest);
+      const queryResult = JSON.parse(queryResponse.content[0].text);
+
+      // Set a null value
+      const setRequest = {
+        method: 'tools/call',
+        params: {
+          name: 'iac_mcp_set_property',
+          arguments: {
+            reference: queryResult.reference.id,
+            property: 'comment',
+            value: null
+          }
+        }
+      };
+
+      const response = await server['handleRequest'](setRequest);
+
+      expect(response.content).toBeDefined();
+      expect(response.content).toHaveLength(1);
+      expect(response.content[0].type).toBe('text');
     });
   });
 

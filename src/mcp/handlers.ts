@@ -125,6 +125,25 @@ function isGetElementsParams(value: unknown): value is GetElementsParams {
 }
 
 /**
+ * Type guard for iac_mcp_set_property parameters
+ * Runtime validation of parameter structure
+ */
+interface SetPropertyParams {
+  reference: string;
+  property: string;
+  value: unknown;
+}
+
+function isSetPropertyParams(value: unknown): value is SetPropertyParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.reference !== 'string') return false;
+  if (typeof obj.property !== 'string') return false;
+  // value can be any type (string, number, boolean, null, etc.)
+  return 'value' in obj;
+}
+
+/**
  * Check if a warning is security-related
  *
  * @param warning - Parse warning to check
@@ -636,6 +655,22 @@ export async function setupHandlers(
           };
         }
         return await handleGetElements(queryExecutor, args);
+      }
+
+      if (toolName === 'iac_mcp_set_property') {
+        if (!isSetPropertyParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_set_property. Expected: { reference: string, property: string, value: any }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        return await handleSetProperty(queryExecutor, args);
       }
 
       // Check for get_app_tools (lazy loading)
@@ -1295,6 +1330,111 @@ async function handleGetElements(
             error: 'reference_invalid',
             message: 'The referenced container object no longer exists or cannot be accessed',
             suggestion: 'Query the container again using iac_mcp_query_object',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'execution_failed',
+          message,
+        }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle set_property tool call
+ *
+ * Sets a property value on a referenced object.
+ */
+async function handleSetProperty(
+  queryExecutor: QueryExecutor,
+  params: { reference: string; property: string; value: unknown }
+): Promise<{
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+}> {
+  try {
+    console.error(`[CallTool/set_property] Setting property "${params.property}" on reference: ${params.reference}`);
+
+    // Validate parameters
+    if (!params.reference || typeof params.reference !== 'string') {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing or invalid "reference" parameter',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    if (!params.property || typeof params.property !== 'string') {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing or invalid "property" parameter',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    await queryExecutor.setProperty(
+      params.reference,
+      params.property,
+      params.value
+    );
+
+    console.error(`[CallTool/set_property] Successfully set property "${params.property}"`);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          success: true,
+          message: `Property "${params.property}" has been updated`,
+        }),
+      }],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/set_property] Error: ${message}`);
+
+    if (message.includes('Reference not found')) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'reference_invalid',
+            reference: params.reference,
+            message: 'The referenced object no longer exists or cannot be accessed',
+            suggestion: 'Query the object again using iac_mcp_query_object',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    if (message.includes('read-only') || message.includes('cannot be set')) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'property_read_only',
+            property: params.property,
+            message: `Property "${params.property}" is read-only and cannot be modified`,
           }),
         }],
         isError: true,

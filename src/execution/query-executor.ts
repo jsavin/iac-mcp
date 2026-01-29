@@ -133,11 +133,70 @@ export class QueryExecutor {
   return JSON.stringify({ ${propertyAccess} });
 })()`;
     } else {
-      // Get all properties
+      // Get all properties - try properties() first, fall back to reflection
+      // Some apps (like Mail) don't support properties() and throw "AppleEvent handler failed"
       jxaCode = `(() => {
   const app = Application("${this.escapeJxaString(reference.app)}");
   const obj = ${objectPath};
-  return JSON.stringify(obj.properties());
+
+  // Try the properties() method first (works for Finder, etc.)
+  try {
+    const props = obj.properties();
+    if (props && typeof props === 'object') {
+      return JSON.stringify(props);
+    }
+  } catch (e) {
+    // properties() failed, fall back to reflection
+  }
+
+  // Fallback: Use Object.keys to discover available property accessors
+  // In JXA, scriptable object properties are exposed as methods
+  const result = {};
+  const seen = new Set();
+
+  // Walk the prototype chain to find all property accessors
+  let proto = obj;
+  while (proto && proto !== Object.prototype) {
+    const names = Object.getOwnPropertyNames(proto);
+    for (const name of names) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+
+      // Skip internal/system properties
+      if (name.startsWith('_') || name === 'constructor') continue;
+
+      // Try to call it as a property accessor (no arguments)
+      try {
+        const desc = Object.getOwnPropertyDescriptor(proto, name);
+        if (desc && typeof desc.value === 'function') {
+          // In JXA, property accessors are 0-arg functions
+          const val = obj[name]();
+          // Only include if it returns a primitive or simple object
+          if (val !== undefined && val !== null) {
+            const type = typeof val;
+            if (type === 'string' || type === 'number' || type === 'boolean') {
+              result[name] = val;
+            } else if (val instanceof Date) {
+              result[name] = val.toISOString();
+            } else if (typeof val === 'object') {
+              // Try to get a useful representation
+              if (val.toString && typeof val.toString === 'function') {
+                const str = val.toString();
+                if (str !== '[object Object]') {
+                  result[name] = str;
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // This property accessor failed, skip it
+      }
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
+
+  return JSON.stringify(result);
 })()`;
     }
 
@@ -152,6 +211,105 @@ export class QueryExecutor {
     }
 
     return parsed.data || {};
+  }
+
+  /**
+   * Set a property value on a referenced object.
+   *
+   * @param referenceId - The ID of the reference
+   * @param property - The property name to set
+   * @param value - The new value for the property
+   */
+  async setProperty(
+    referenceId: string,
+    property: string,
+    value: unknown
+  ): Promise<void> {
+    // 1. Get reference from store
+    const reference = this.referenceStore.get(referenceId);
+    if (!reference) {
+      throw new Error(`Reference not found: ${referenceId}`);
+    }
+
+    // 2. Touch reference (update lastAccessedAt)
+    this.referenceStore.touch(referenceId);
+
+    // 3. If no JXAExecutor, throw error (can't set properties without execution)
+    if (!this.jxaExecutor) {
+      throw new Error('Cannot set property: JXA execution is not available');
+    }
+
+    // 4. Sanitize property name for JXA safety
+    const sanitizedProp = this.sanitizeForJxa(property, 'property');
+    const camelProp = this.camelCase(sanitizedProp);
+
+    // 5. Serialize value for JXA
+    const serializedValue = this.serializeValueForJxa(value);
+
+    // 6. Build JXA to set property
+    const objectPath = this.buildObjectPath(reference.specifier, "app");
+    const jxaCode = `(() => {
+  const app = Application("${this.escapeJxaString(reference.app)}");
+  const obj = ${objectPath};
+  obj.${camelProp} = ${serializedValue};
+  return JSON.stringify({ success: true });
+})()`;
+
+    // 7. Execute JXA
+    const result = await this.jxaExecutor.execute(jxaCode);
+
+    // 8. Parse result and handle errors
+    const parsed = this.resultParser.parse(result, { appName: reference.app });
+
+    if (!parsed.success) {
+      throw new Error(this.formatJxaError(parsed.error!));
+    }
+  }
+
+  /**
+   * Serialize a JavaScript value for use in JXA code.
+   * Handles strings, numbers, booleans, null, and simple objects.
+   *
+   * @param value - The value to serialize
+   * @returns JXA code representation of the value
+   */
+  private serializeValueForJxa(value: unknown): string {
+    if (value === null) {
+      return 'null';
+    }
+    if (value === undefined) {
+      return 'undefined';
+    }
+    if (typeof value === 'string') {
+      // Escape string for JXA
+      return JSON.stringify(value);
+    }
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) {
+        throw new Error(`Invalid number value: ${value}`);
+      }
+      return String(value);
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'true' : 'false';
+    }
+    if (value instanceof Date) {
+      return `new Date("${value.toISOString()}")`;
+    }
+    if (Array.isArray(value)) {
+      // Serialize array elements
+      const elements = value.map(v => this.serializeValueForJxa(v));
+      return `[${elements.join(', ')}]`;
+    }
+    if (typeof value === 'object') {
+      // Serialize simple objects
+      const entries = Object.entries(value).map(([k, v]) => {
+        const sanitizedKey = this.sanitizeForJxa(k, 'key');
+        return `${JSON.stringify(sanitizedKey)}: ${this.serializeValueForJxa(v)}`;
+      });
+      return `{${entries.join(', ')}}`;
+    }
+    throw new Error(`Cannot serialize value of type ${typeof value} for JXA`);
   }
 
   /**
