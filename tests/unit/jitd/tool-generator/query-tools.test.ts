@@ -3,11 +3,11 @@ import { generateQueryTools } from "../../../../src/jitd/tool-generator/query-to
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 describe("generateQueryTools", () => {
-  describe("Function Returns 3 Tools", () => {
-    it("should return an array of 3 tools", () => {
+  describe("Function Returns 4 Tools", () => {
+    it("should return an array of 4 tools", () => {
       const tools = generateQueryTools();
       expect(tools).toBeInstanceOf(Array);
-      expect(tools).toHaveLength(3);
+      expect(tools).toHaveLength(4);
     });
 
     it("should return tools with name, description, and inputSchema", () => {
@@ -125,7 +125,66 @@ describe("generateQueryTools", () => {
     });
   });
 
-  describe("Tool 3: get_elements", () => {
+  describe("Tool 3: set_property", () => {
+    let setPropertyTool: Tool;
+
+    beforeEach(() => {
+      const tools = generateQueryTools();
+      setPropertyTool = tools.find((t) => t.name === "iac_mcp_set_property")!;
+    });
+
+    it("should have correct name", () => {
+      expect(setPropertyTool.name).toBe("iac_mcp_set_property");
+    });
+
+    it("should have description mentioning setting properties", () => {
+      expect(setPropertyTool.description.toLowerCase()).toContain("set");
+      expect(setPropertyTool.description).toContain("property");
+    });
+
+    it("should have inputSchema with reference, property, and value properties", () => {
+      const schema = setPropertyTool.inputSchema as any;
+      expect(schema.type).toBe("object");
+      expect(schema.properties).toHaveProperty("reference");
+      expect(schema.properties).toHaveProperty("property");
+      expect(schema.properties).toHaveProperty("value");
+    });
+
+    it("should require reference, property, and value", () => {
+      const schema = setPropertyTool.inputSchema as any;
+      expect(schema.required).toEqual(
+        expect.arrayContaining(["reference", "property", "value"])
+      );
+      expect(schema.required).toHaveLength(3);
+    });
+
+    it("should define reference as string type", () => {
+      const schema = setPropertyTool.inputSchema as any;
+      expect(schema.properties.reference.type).toBe("string");
+      expect(schema.properties.reference.description).toContain("ref_");
+    });
+
+    it("should define property as string type", () => {
+      const schema = setPropertyTool.inputSchema as any;
+      expect(schema.properties.property.type).toBe("string");
+      expect(schema.properties.property.description).toBeTruthy();
+    });
+
+    it("should define value without a type to accept any JSON value", () => {
+      const schema = setPropertyTool.inputSchema as any;
+      // value intentionally has no type to accept string, number, boolean, or null
+      expect(schema.properties.value.type).toBeUndefined();
+      expect(schema.properties.value.description).toBeTruthy();
+    });
+
+    it("should mention common writable properties in description", () => {
+      expect(setPropertyTool.description).toContain("readStatus");
+      expect(setPropertyTool.description).toContain("visible");
+      expect(setPropertyTool.description).toContain("name");
+    });
+  });
+
+  describe("Tool 4: get_elements", () => {
     let getElementsTool: Tool;
 
     beforeEach(() => {
@@ -213,8 +272,14 @@ describe("generateQueryTools", () => {
       tools.forEach((tool) => {
         const schema = tool.inputSchema as any;
         Object.entries(schema.properties).forEach(([key, prop]: [string, any]) => {
-          // Every property should have a type or oneOf
-          expect(prop.type || prop.oneOf).toBeDefined();
+          // Every property should have a type, oneOf, or be the special "value" property
+          // which intentionally has no type to accept any JSON value
+          if (key === 'value') {
+            // value property in set_property accepts any type
+            expect(prop.description).toBeDefined();
+          } else {
+            expect(prop.type || prop.oneOf).toBeDefined();
+          }
         });
       });
     });

@@ -4,7 +4,7 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
  * Generates MCP tool definitions for stateful object queries.
  * These tools are app-independent and work with any scriptable application.
  *
- * @returns Array of 3 MCP tools: query_object, get_properties, get_elements
+ * @returns Array of 4 MCP tools: query_object, get_properties, set_property, get_elements
  */
 export function generateQueryTools(): Tool[] {
   return [
@@ -116,7 +116,75 @@ Get specific properties:
       },
     },
 
-    // Tool 3: get_elements - Get elements from a container object
+    // Tool 3: set_property - Set a property on a referenced object
+    {
+      name: "iac_mcp_set_property",
+      description: `Set a property value on a referenced object.
+
+**Usage:**
+1. First obtain a reference using query_object
+2. Call set_property with the reference ID, property name, and new value
+3. The property will be updated on the target object
+
+**Examples:**
+
+Mark a Mail message as read:
+- reference: "ref_message123" (from query_object)
+- property: "readStatus"
+- value: true
+
+Hide a window:
+- reference: "ref_window123"
+- property: "visible"
+- value: false
+
+Rename a Finder file:
+- reference: "ref_file123"
+- property: "name"
+- value: "new-filename.txt"
+
+**Common Writable Properties by App:**
+
+| App | Object Type | Writable Properties |
+|-----|-------------|---------------------|
+| Mail | message | readStatus, flaggedStatus, junkMailStatus |
+| Finder | file/folder | name, comment, labelIndex, locked |
+| Finder | window | bounds, position, visible |
+| Safari | tab | URL |
+| System Events | process | visible, frontmost |
+
+**Value Types:**
+- Strings: "new value"
+- Numbers: 42
+- Booleans: true/false
+- Null to clear (if supported)
+
+**Permissions:** Some properties may require user confirmation before modification. Destructive changes may be blocked by the permission system.
+
+**Note:** Not all properties are writable. Read-only properties will return an error.`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          reference: {
+            type: "string",
+            description:
+              "Object reference ID from query_object (format: ref_<uuid>)",
+          },
+          property: {
+            type: "string",
+            description:
+              "Name of the property to set (e.g., 'visible', 'name', 'readStatus')",
+          },
+          value: {
+            description:
+              "New value for the property. Type depends on the property (string, number, boolean, or null).",
+          },
+        },
+        required: ["reference", "property", "value"],
+      },
+    },
+
+    // Tool 4: get_elements - Get elements from a container object
     {
       name: "iac_mcp_get_elements",
       description: `Get child elements from a container object. Returns references to the elements for further operations.
