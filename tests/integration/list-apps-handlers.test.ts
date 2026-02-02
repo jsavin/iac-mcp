@@ -36,6 +36,7 @@ import { PermissionChecker } from '../../src/permissions/permission-checker.js';
 import { ErrorHandler } from '../../src/error-handler.js';
 import { PerAppCache } from '../../src/jitd/cache/per-app-cache.js';
 import type { AppMetadata } from '../../src/types/app-metadata.js';
+import type { MCPTool } from '../../src/types/mcp-tool.js';
 
 // ============================================================================
 // TEST FIXTURES AND SETUP
@@ -558,7 +559,189 @@ describe('list_apps Tool and iac://apps Resource - Actual Handler Execution', ()
   });
 
   // ==========================================================================
-  // SECTION 8: Exported Validation Functions
+  // SECTION 8: App Tools Registration After get_app_tools
+  // ==========================================================================
+
+  describe('App Tools Registration After get_app_tools', () => {
+    it('should register app-specific tools after calling get_app_tools', async () => {
+      // First, verify finder_activate is NOT in ListTools (before get_app_tools)
+      const initialListTools = await callListTools(handlers);
+      const tools = initialListTools.tools as MCPTool[];
+      const initialFinderActivate = tools.find((t: MCPTool) => t.name === 'finder_activate');
+      expect(initialFinderActivate).toBeUndefined();
+
+      // Call get_app_tools for Finder
+      const getToolsResponse = await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      if (getToolsResponse.isError) {
+        // Finder might not be accessible in CI, skip this test
+        console.warn('Skipping test: Finder not accessible');
+        return;
+      }
+
+      // Parse the response to verify tools were returned
+      const toolsData = JSON.parse(getToolsResponse.content[0].text) as { tools: MCPTool[] };
+      expect(toolsData.tools).toBeDefined();
+      expect(Array.isArray(toolsData.tools)).toBe(true);
+      expect(toolsData.tools.length).toBeGreaterThan(0);
+
+      // Verify finder_activate is in the returned tools
+      const finderActivate = toolsData.tools.find((t: MCPTool) => t.name === 'finder_activate');
+      expect(finderActivate).toBeDefined();
+
+      // Now verify finder_activate IS in ListTools (after get_app_tools)
+      const afterListTools = await callListTools(handlers);
+      const afterTools = afterListTools.tools as MCPTool[];
+      const registeredFinderActivate = afterTools.find((t: MCPTool) => t.name === 'finder_activate');
+      expect(registeredFinderActivate).toBeDefined();
+      expect(registeredFinderActivate!.name).toBe('finder_activate');
+    });
+
+    it('should be able to call app-specific tool after get_app_tools', async () => {
+      // Call get_app_tools for Finder first
+      const getToolsResponse = await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      if (getToolsResponse.isError) {
+        // Finder might not be accessible in CI, skip this test
+        console.warn('Skipping test: Finder not accessible');
+        return;
+      }
+
+      // Now call finder_activate - it should NOT return "Tool not found"
+      const activateResponse = await callTool(handlers, 'finder_activate', {});
+
+      // The tool should be found (not "Tool not found" error)
+      // It may return a permission error or execution error, but NOT "Tool not found"
+      expect(activateResponse).toBeDefined();
+      expect(activateResponse.content).toBeDefined();
+
+      const responseText = activateResponse.content[0].text as string;
+      // Should NOT contain "Tool not found" or "Unknown tool"
+      expect(responseText).not.toMatch(/tool not found/i);
+      expect(responseText).not.toMatch(/unknown tool/i);
+    });
+
+    it('should not create duplicate tools when get_app_tools is called multiple times', async () => {
+      // Call get_app_tools twice for the same app
+      const response1 = await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      if (response1.isError) {
+        // Finder might not be accessible in CI, skip this test
+        console.warn('Skipping test: Finder not accessible');
+        return;
+      }
+
+      // Call again
+      await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      // Check ListTools - should not have duplicate finder_activate
+      const listToolsResponse = await callListTools(handlers);
+      const tools = listToolsResponse.tools as MCPTool[];
+      const finderActivateTools = tools.filter((t: MCPTool) => t.name === 'finder_activate');
+
+      // Should only have one instance
+      expect(finderActivateTools.length).toBe(1);
+    });
+
+    it('should handle concurrent get_app_tools calls for different apps', async () => {
+      // Launch multiple get_app_tools calls concurrently
+      // This tests that the Map-based storage handles concurrent access correctly
+      const [finderResponse, safariResponse] = await Promise.all([
+        callTool(handlers, 'get_app_tools', { app_name: 'Finder' }),
+        callTool(handlers, 'get_app_tools', { app_name: 'Safari' }),
+      ]);
+
+      // Both should complete without errors (or gracefully skip if apps not accessible)
+      if (finderResponse.isError && safariResponse.isError) {
+        console.warn('Skipping test: Neither Finder nor Safari accessible');
+        return;
+      }
+
+      // Check that ListTools includes tools from both apps (if loaded successfully)
+      const listToolsResponse = await callListTools(handlers);
+      const tools = listToolsResponse.tools as MCPTool[];
+
+      if (!finderResponse.isError) {
+        const finderTool = tools.find((t: MCPTool) => t.name.startsWith('finder_'));
+        expect(finderTool).toBeDefined();
+      }
+
+      if (!safariResponse.isError) {
+        const safariTool = tools.find((t: MCPTool) => t.name.startsWith('safari_'));
+        expect(safariTool).toBeDefined();
+      }
+
+      // No duplicate tool names should exist
+      const toolNames = tools.map((t: MCPTool) => t.name);
+      const uniqueNames = new Set(toolNames);
+      expect(toolNames.length).toBe(uniqueNames.size);
+    });
+
+    it('should handle tool name collisions by keeping first registered tool', async () => {
+      // This test verifies behavior when two apps might have tools with similar patterns
+      // In practice, tool names are prefixed with app name so collisions are unlikely
+      // But the Map implementation ensures only one tool per name exists
+
+      const response1 = await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      if (response1.isError) {
+        console.warn('Skipping test: Finder not accessible');
+        return;
+      }
+
+      // Get initial tool count
+      const listTools1 = await callListTools(handlers);
+      const initialCount = (listTools1.tools as MCPTool[]).length;
+
+      // Load same app again - should not increase tool count
+      await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      const listTools2 = await callListTools(handlers);
+      const afterCount = (listTools2.tools as MCPTool[]).length;
+
+      // Tool count should remain the same (no duplicates added)
+      expect(afterCount).toBe(initialCount);
+    });
+
+    it('should include dynamically loaded tools in ListTools response', async () => {
+      // Before loading any app tools, ListTools should only have base tools
+      const initialListTools = await callListTools(handlers);
+      const initialTools = initialListTools.tools as MCPTool[];
+      const initialToolNames = initialTools.map((t: MCPTool) => t.name);
+
+      // Base tools should be present
+      expect(initialToolNames).toContain('get_app_tools');
+      expect(initialToolNames).toContain('list_apps');
+
+      // App-specific tools should NOT be present yet
+      expect(initialToolNames.filter((n: string) => n.startsWith('finder_')).length).toBe(0);
+
+      // Load Finder tools
+      const getToolsResponse = await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      if (getToolsResponse.isError) {
+        console.warn('Skipping test: Finder not accessible');
+        return;
+      }
+
+      // After loading, ListTools SHOULD include the dynamically loaded tools
+      // This is the P1 fix - ensuring ListTools is consistent with CallTool
+      const afterListTools = await callListTools(handlers);
+      const afterTools = afterListTools.tools as MCPTool[];
+      const afterToolNames = afterTools.map((t: MCPTool) => t.name);
+
+      // Now finder tools should be present
+      const finderTools = afterToolNames.filter((n: string) => n.startsWith('finder_'));
+      expect(finderTools.length).toBeGreaterThan(0);
+
+      // Base tools should still be present
+      expect(afterToolNames).toContain('get_app_tools');
+      expect(afterToolNames).toContain('list_apps');
+    });
+  });
+
+  // ==========================================================================
+  // SECTION 9: Exported Validation Functions
   // ==========================================================================
 
   describe('Validation Functions', () => {

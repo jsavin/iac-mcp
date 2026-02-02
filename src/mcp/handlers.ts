@@ -454,7 +454,11 @@ export async function setupHandlers(
   queryExecutor: QueryExecutor
 ): Promise<void> {
   // Store discovered tools in memory for CallTool lookups
-  let discoveredTools: MCPTool[] = [];
+  // Using Map for O(1) lookups instead of Array.find() which is O(n)
+  const discoveredToolsMap = new Map<string, MCPTool>();
+
+  // Maximum number of tools to cache (prevents unbounded memory growth)
+  const MAX_CACHED_TOOLS = 5000;
 
   // Store discovered apps for lazy loading
   let discoveredApps: AppWithSDEF[] = [];
@@ -538,9 +542,13 @@ export async function setupHandlers(
       // Generate query tools
       const queryTools = generateQueryTools();
 
-      // Return get_app_tools tool + list_apps tool + query tools + app metadata
+      // Include dynamically loaded tools from previous get_app_tools calls
+      // This ensures ListTools is consistent with what CallTool can execute
+      const dynamicallyLoadedTools = Array.from(discoveredToolsMap.values());
+
+      // Return get_app_tools tool + list_apps tool + query tools + dynamically loaded tools + app metadata
       return {
-        tools: [getAppToolsTool, listAppsTool, ...queryTools],
+        tools: [getAppToolsTool, listAppsTool, ...queryTools, ...dynamicallyLoadedTools],
         _app_metadata: appMetadataList,
       };
 
@@ -753,7 +761,26 @@ export async function setupHandlers(
             perAppCache
           );
 
-          console.error(`[CallTool/get_app_tools] Successfully loaded ${appToolsResponse.tools.length} tools for ${appName}`);
+          // Register loaded tools in discoveredToolsMap for subsequent CallTool execution
+          // Using Map for O(1) lookups and automatic duplicate prevention
+          let newToolsCount = 0;
+          for (const tool of appToolsResponse.tools) {
+            if (!discoveredToolsMap.has(tool.name)) {
+              // Check memory limit before adding
+              if (discoveredToolsMap.size >= MAX_CACHED_TOOLS) {
+                // Evict oldest entries (first entries in Map iteration order)
+                const keysToDelete = Array.from(discoveredToolsMap.keys()).slice(0, 100);
+                for (const key of keysToDelete) {
+                  discoveredToolsMap.delete(key);
+                }
+                console.error(`[CallTool/get_app_tools] Evicted ${keysToDelete.length} tools due to cache limit`);
+              }
+              discoveredToolsMap.set(tool.name, tool);
+              newToolsCount++;
+            }
+          }
+
+          console.error(`[CallTool/get_app_tools] Successfully loaded ${appToolsResponse.tools.length} tools for ${appName} (${newToolsCount} new, ${discoveredToolsMap.size} total cached)`);
 
           // Return tools + object model as JSON
           return {
@@ -791,14 +818,14 @@ export async function setupHandlers(
       }
 
       // Continue with existing tool lookup logic for app-specific commands
-      // 1. Lookup tool by name
-      const tool = discoveredTools.find(t => t.name === toolName);
+      // 1. Lookup tool by name using Map for O(1) lookup
+      const tool = discoveredToolsMap.get(toolName);
 
       if (!tool) {
         console.error(`[CallTool] Tool not found: ${toolName}`);
         const errorResponse = formatErrorResponse('Tool not found', {
           toolName,
-          availableTools: discoveredTools.map(t => t.name).slice(0, 10), // Show first 10
+          availableTools: Array.from(discoveredToolsMap.keys()).slice(0, 10), // Show first 10
         });
 
         return {
