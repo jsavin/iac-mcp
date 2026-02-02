@@ -457,7 +457,8 @@ export async function setupHandlers(
   // Using Map for O(1) lookups instead of Array.find() which is O(n)
   const discoveredToolsMap = new Map<string, MCPTool>();
 
-  // Maximum number of tools to cache (prevents unbounded memory growth)
+  // Maximum number of tools to cache (FIFO eviction when limit reached)
+  // Note: Uses insertion-order eviction (oldest first), not LRU
   const MAX_CACHED_TOOLS = 5000;
 
   // Store discovered apps for lazy loading
@@ -768,12 +769,12 @@ export async function setupHandlers(
             if (!discoveredToolsMap.has(tool.name)) {
               // Check memory limit before adding
               if (discoveredToolsMap.size >= MAX_CACHED_TOOLS) {
-                // Evict oldest entries (first entries in Map iteration order)
+                // FIFO eviction: remove oldest entries by insertion order (not LRU)
                 const keysToDelete = Array.from(discoveredToolsMap.keys()).slice(0, 100);
                 for (const key of keysToDelete) {
                   discoveredToolsMap.delete(key);
                 }
-                console.error(`[CallTool/get_app_tools] Evicted ${keysToDelete.length} tools due to cache limit`);
+                console.error(`[CallTool/get_app_tools] Evicted ${keysToDelete.length} tools (FIFO) due to cache limit`);
               }
               discoveredToolsMap.set(tool.name, tool);
               newToolsCount++;
