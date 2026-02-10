@@ -17,6 +17,7 @@ import { ErrorHandler } from './error-handler.js';
 import { PerAppCache } from './jitd/cache/per-app-cache.js';
 import { ReferenceStore } from './execution/reference-store.js';
 import { QueryExecutor } from './execution/query-executor.js';
+import { JXAExecutor } from './adapters/macos/jxa-executor.js';
 
 /**
  * Logging utility that writes to stderr (stdout is reserved for MCP protocol)
@@ -61,7 +62,8 @@ async function main(): Promise<void> {
 
   // Initialize query execution components
   const referenceStore = new ReferenceStore(15 * 60 * 1000); // 15-minute TTL
-  const queryExecutor = new QueryExecutor(referenceStore);
+  const jxaExecutor = new JXAExecutor();
+  const queryExecutor = new QueryExecutor(referenceStore, jxaExecutor);
 
   // Setup all MCP handlers
   try {
