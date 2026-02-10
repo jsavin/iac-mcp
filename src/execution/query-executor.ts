@@ -5,6 +5,7 @@ import {
   isNamedSpecifier,
   isIdSpecifier,
   isPropertySpecifier,
+  isApplicationSpecifier,
   ElementSpecifier
 } from "../types/object-specifier.js";
 import { ReferenceStore } from "./reference-store.js";
@@ -600,6 +601,12 @@ export class QueryExecutor {
       return `${ofPath}.${this.camelCase(sanitizedProperty)}()`;
     }
 
+    if (isApplicationSpecifier(specifier)) {
+      // ApplicationSpecifier refers to the app object itself
+      // JXA: just the app variable (e.g., "app" which is Application("Finder"))
+      return appVar;
+    }
+
     throw new Error(`Unsupported specifier type: ${(specifier as any).type}`);
   }
 
@@ -628,7 +635,8 @@ export class QueryExecutor {
     if (!isElementSpecifier(specifier) &&
         !isNamedSpecifier(specifier) &&
         !isIdSpecifier(specifier) &&
-        !isPropertySpecifier(specifier)) {
+        !isPropertySpecifier(specifier) &&
+        !isApplicationSpecifier(specifier)) {
       throw new Error(`Unsupported specifier type: ${(specifier as any).type}`);
     }
 
@@ -702,6 +710,7 @@ export class QueryExecutor {
     if (isElementSpecifier(specifier)) return specifier.element;
     if (isNamedSpecifier(specifier)) return specifier.element;
     if (isIdSpecifier(specifier)) return specifier.element;
+    if (isApplicationSpecifier(specifier)) return "application";
     if (isPropertySpecifier(specifier)) {
       // For properties, extract type from "of"
       if (typeof specifier.of === "string") {

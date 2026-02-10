@@ -45,13 +45,22 @@ export interface PropertySpecifier {
 }
 
 /**
+ * Specifies the application object itself (e.g., to set frontmost or activate)
+ */
+export interface ApplicationSpecifier {
+  type: "application";
+  // No additional fields - this refers to the app passed in the query
+}
+
+/**
  * Union of all specifier types
  */
 export type ObjectSpecifier =
   | ElementSpecifier
   | NamedSpecifier
   | IdSpecifier
-  | PropertySpecifier;
+  | PropertySpecifier
+  | ApplicationSpecifier;
 
 /**
  * Container can be another specifier or the application itself
@@ -136,6 +145,21 @@ export function isPropertySpecifier(
 }
 
 /**
+ * Type guard: Check if value is an ApplicationSpecifier
+ */
+export function isApplicationSpecifier(
+  spec: unknown
+): spec is ApplicationSpecifier {
+  if (!spec || typeof spec !== "object") {
+    return false;
+  }
+
+  const candidate = spec as Record<string, unknown>;
+
+  return candidate.type === "application";
+}
+
+/**
  * Check if a string is a reference ID (starts with "ref_")
  */
 export function isReferenceId(value: unknown): boolean {
@@ -184,6 +208,11 @@ export function isValidObjectSpecifier(spec: unknown): spec is ObjectSpecifier {
       return isReferenceId(spec.of);
     }
     return isValidObjectSpecifier(spec.of);
+  }
+
+  // Check for ApplicationSpecifier
+  if (isApplicationSpecifier(spec)) {
+    return true;
   }
 
   return false;
@@ -279,8 +308,12 @@ export function validateObjectSpecifier(spec: unknown): SpecifierValidationResul
       }
       break;
 
+    case "application":
+      // ApplicationSpecifier has no additional fields to validate
+      break;
+
     default:
-      errors.push(`Unknown specifier type: "${candidate.type}". Must be one of: element, named, id, property`);
+      errors.push(`Unknown specifier type: "${candidate.type}". Must be one of: element, named, id, property, application`);
   }
 
   return { valid: errors.length === 0, errors };
