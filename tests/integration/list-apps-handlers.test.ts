@@ -961,6 +961,114 @@ describe('list_apps Tool and iac://apps Resource - Actual Handler Execution', ()
         expect(data.error).not.toBe('command_not_found');
       }
     });
+
+    // P0 #1: Validate arguments parameter
+    it('should return error when arguments is not an object', async () => {
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'Finder',
+        command_name: 'activate',
+        arguments: 'not an object',  // Invalid: should be object
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      expect(data.message).toContain('arguments');
+      expect(data.message).toContain('object');
+    });
+
+    it('should return error when arguments is an array', async () => {
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'Finder',
+        command_name: 'activate',
+        arguments: ['not', 'an', 'object'],  // Invalid: array is not a plain object
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      expect(data.message).toContain('arguments');
+    });
+
+    it('should return error when arguments is null', async () => {
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'Finder',
+        command_name: 'activate',
+        arguments: null,  // Invalid: null is not a plain object
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      expect(data.message).toContain('arguments');
+    });
+
+    // P0 #2: Validate command_name length
+    it('should return error when command_name is too long', async () => {
+      const longCommandName = 'a'.repeat(150);
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'Finder',
+        command_name: longCommandName,
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      expect(data.message).toContain('too long');
+    });
+
+    // P0 #3: Validate command_name characters
+    it('should return error when command_name contains invalid characters', async () => {
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'Finder',
+        command_name: 'activate; rm -rf /',
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      expect(data.message).toContain('invalid characters');
+    });
+
+    it('should return error when command_name contains null bytes', async () => {
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'Finder',
+        command_name: 'activate\0',
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      // Null bytes fail the character validation
+      expect(data.message).toContain('invalid characters');
+    });
+
+    // P0 #1 (continued): Validate app_name comprehensive validation
+    it('should return error when app_name is too long', async () => {
+      const longAppName = 'A'.repeat(150);
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: longAppName,
+        command_name: 'activate',
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      expect(data.message).toContain('too long');
+    });
+
+    it('should return error when app_name contains path traversal', async () => {
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: '../../../etc/passwd',
+        command_name: 'activate',
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      // Path traversal fails the character validation before traversal check
+      expect(data.message).toBeDefined();
+    });
   });
 
   // ==========================================================================

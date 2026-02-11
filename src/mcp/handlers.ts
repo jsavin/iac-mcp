@@ -49,6 +49,23 @@ import type { ObjectSpecifier } from '../types/object-specifier.js';
 const MAX_APP_NAME_LENGTH = 100;
 
 /**
+ * Maximum length for command_name parameter to prevent DoS attacks
+ */
+const MAX_COMMAND_NAME_LENGTH = 100;
+
+/**
+ * Regex for validating app_name characters (alphanumeric + common app name characters)
+ * Security: Stricter regex to prevent path traversal and command injection
+ */
+const APP_NAME_REGEX = /^[a-zA-Z0-9]+([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/;
+
+/**
+ * Regex for validating command_name characters (alphanumeric + spaces, hyphens, underscores)
+ * Security: Prevents injection attacks through malformed command names
+ */
+const COMMAND_NAME_REGEX = /^[a-zA-Z0-9]+([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?$/;
+
+/**
  * Maximum security warnings per app (prioritized in output)
  */
 const MAX_SECURITY_WARNINGS = 20;
@@ -67,6 +84,255 @@ const MAX_REGULAR_WARNINGS = 80;
  */
 function isValidAppName(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+/**
+ * Validation result for app_name parameter
+ */
+interface AppNameValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+/**
+ * Comprehensive validation for app_name parameter
+ * Checks length, character whitelist, path traversal, and null bytes
+ *
+ * @param appName - The app name to validate
+ * @returns Validation result with error message if invalid
+ */
+function validateAppNameParam(appName: string): AppNameValidationResult {
+  // Length limit
+  if (appName.length > MAX_APP_NAME_LENGTH) {
+    return {
+      valid: false,
+      error: `app_name parameter too long (max ${MAX_APP_NAME_LENGTH} characters)`,
+    };
+  }
+
+  // Character whitelist
+  if (!APP_NAME_REGEX.test(appName)) {
+    return {
+      valid: false,
+      error: 'app_name contains invalid characters. Must be alphanumeric with optional spaces, hyphens, underscores, and single period for extension.',
+    };
+  }
+
+  // Path traversal prevention
+  if (appName.includes('/') || appName.includes('\\') || appName.includes('..')) {
+    return {
+      valid: false,
+      error: 'app_name contains path traversal patterns. Use app name only, not a path.',
+    };
+  }
+
+  // Null byte rejection
+  if (appName.includes('\0')) {
+    return {
+      valid: false,
+      error: 'app_name contains null bytes',
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validation result for command_name parameter
+ */
+interface CommandNameValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+/**
+ * Comprehensive validation for command_name parameter
+ * Checks length, character whitelist, and null bytes
+ *
+ * @param commandName - The command name to validate
+ * @returns Validation result with error message if invalid
+ */
+function validateCommandNameParam(commandName: string): CommandNameValidationResult {
+  // Length limit
+  if (commandName.length > MAX_COMMAND_NAME_LENGTH) {
+    return {
+      valid: false,
+      error: `command_name parameter too long (max ${MAX_COMMAND_NAME_LENGTH} characters)`,
+    };
+  }
+
+  // Character whitelist
+  if (!COMMAND_NAME_REGEX.test(commandName)) {
+    return {
+      valid: false,
+      error: 'command_name contains invalid characters. Must be alphanumeric with optional spaces, hyphens, and underscores.',
+    };
+  }
+
+  // Null byte rejection
+  if (commandName.includes('\0')) {
+    return {
+      valid: false,
+      error: 'command_name contains null bytes',
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validate and sanitize the arguments object
+ * Prevents prototype pollution and ensures it's a plain object
+ *
+ * @param args - The arguments object to validate
+ * @returns Sanitized arguments object or null if invalid
+ */
+function sanitizeArguments(args: unknown): Record<string, unknown> | null {
+  // Must be an object (not null, not array, not primitive)
+  if (args === undefined) {
+    return {};
+  }
+
+  if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+    return null;
+  }
+
+  // Sanitize by serializing and parsing (removes prototype pollution vectors)
+  try {
+    return JSON.parse(JSON.stringify(args));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Result type for tool execution
+ * Compatible with MCP CallTool response format
+ */
+interface ToolExecutionResult {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+  [key: string]: unknown;  // Allow additional MCP protocol fields
+}
+
+/**
+ * Context for tool execution (used for error handling)
+ */
+interface ToolExecutionContext {
+  appName: string;
+  commandName: string;
+  logPrefix: string;
+}
+
+/**
+ * Execute a tool with permission checking and error handling
+ *
+ * This shared function handles:
+ * - Permission checking (respects DISABLE_PERMISSIONS env var)
+ * - Execution via MacOSAdapter
+ * - Error formatting via ErrorHandler
+ *
+ * @param tool - The MCP tool to execute
+ * @param args - Arguments for the tool
+ * @param permissionChecker - Permission checker instance
+ * @param adapter - MacOS adapter for execution
+ * @param errorHandler - Error handler for formatting errors
+ * @param context - Execution context for logging and error messages
+ * @returns Tool execution result
+ */
+async function executeToolWithPermissions(
+  tool: MCPTool,
+  args: Record<string, unknown>,
+  permissionChecker: PermissionChecker,
+  adapter: MacOSAdapter,
+  errorHandler: ErrorHandler,
+  context: ToolExecutionContext
+): Promise<ToolExecutionResult> {
+  const { appName, commandName, logPrefix } = context;
+
+  // Check permissions (skip if DISABLE_PERMISSIONS is set)
+  // ⚠️ SECURITY WARNING: DISABLE_PERMISSIONS should ONLY be used for testing!
+  const permissionsDisabled = process.env.DISABLE_PERMISSIONS === 'true';
+  if (!permissionsDisabled) {
+    const permissionDecision = await permissionChecker.check(tool, args);
+
+    if (!permissionDecision.allowed) {
+      console.error(`${logPrefix} Permission denied: ${permissionDecision.reason}`);
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(formatPermissionDeniedResponse(permissionDecision)),
+        }],
+        isError: true,
+      };
+    }
+
+    console.error(`${logPrefix} Permission granted, executing via adapter`);
+  } else {
+    console.error(`${logPrefix} ⚠️ SECURITY WARNING: Permissions disabled (DISABLE_PERMISSIONS=true), executing via adapter`);
+    console.error(`${logPrefix} ⚠️ This should ONLY be used for testing! All permission checks are bypassed!`);
+  }
+
+  // Execute via MacOSAdapter
+  try {
+    const executionResult = await adapter.execute(tool, args as Record<string, any>);
+
+    if (executionResult.success) {
+      console.error(`${logPrefix} Execution successful`);
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            success: true,
+            data: executionResult.data,
+            message: `Command "${commandName}" executed successfully on "${appName}"`,
+          }),
+        }],
+      };
+    } else {
+      console.error(`${logPrefix} Execution failed: ${executionResult.error?.message}`);
+
+      const handledError = errorHandler.handle(
+        {
+          type: executionResult.error?.type || 'EXECUTION_ERROR',
+          message: executionResult.error?.message || 'Unknown error',
+          originalError: executionResult.error?.message,
+        },
+        {
+          appName: tool._metadata?.appName || appName,
+          commandName: tool._metadata?.commandName || commandName,
+          parameters: args,
+        }
+      );
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: handledError.message,
+            suggestion: handledError.suggestion,
+            code: handledError.type,
+            retryable: handledError.retryable,
+            originalError: handledError.originalError,
+          }),
+        }],
+        isError: true,
+      };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`${logPrefix} Unexpected error: ${message}`);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'execution_failed',
+          message,
+        }),
+      }],
+      isError: true,
+    };
+  }
 }
 
 /**
@@ -544,12 +810,25 @@ export async function setupHandlers(
        * execute_app_command Tool Definition
        *
        * Executes an app-specific command that was previously loaded via get_app_tools.
-       * This enables calling app commands without requiring them in the initial ListTools.
+       * This enables calling app commands without requiring them in the initial ListTools,
+       * working around the MCP client tool caching limitation.
        *
-       * Flow:
-       * 1. Call get_app_tools("Finder") to load Finder's tools
-       * 2. Call execute_app_command with command_name="activate" and app_name="Finder"
-       * 3. The command executes via the MacOSAdapter
+       * @example
+       * // Step 1: Load Finder's tools
+       * await callTool('get_app_tools', { app_name: 'Finder' });
+       *
+       * // Step 2: Execute a Finder command
+       * await callTool('execute_app_command', {
+       *   app_name: 'Finder',
+       *   command_name: 'activate'
+       * });
+       *
+       * // Step 3: Execute with arguments
+       * await callTool('execute_app_command', {
+       *   app_name: 'Finder',
+       *   command_name: 'open',
+       *   arguments: { target: '/Users/username/Desktop' }
+       * });
        */
       const executeAppCommandTool: Tool = {
         name: 'execute_app_command',
@@ -719,13 +998,11 @@ export async function setupHandlers(
 
       // Check for execute_app_command
       if (toolName === 'execute_app_command') {
-        console.error('[CallTool/execute_app_command] Executing execute_app_command tool');
+        const logPrefix = '[CallTool/execute_app_command]';
+        console.error(`${logPrefix} Executing execute_app_command tool`);
 
-        // Validate parameters
+        // Validate app_name parameter (basic check first)
         const appNameParam = args?.app_name;
-        const commandNameParam = args?.command_name;
-        const commandArgs = args?.arguments || {};
-
         if (!isValidAppName(appNameParam)) {
           return {
             content: [{
@@ -739,6 +1016,23 @@ export async function setupHandlers(
           };
         }
 
+        // Comprehensive app_name validation (shared with get_app_tools)
+        const appNameValidation = validateAppNameParam(appNameParam);
+        if (!appNameValidation.valid) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: appNameValidation.error,
+              }),
+            }],
+            isError: true,
+          };
+        }
+
+        // Validate command_name parameter (basic check first)
+        const commandNameParam = args?.command_name;
         if (typeof commandNameParam !== 'string' || commandNameParam.length === 0) {
           return {
             content: [{
@@ -752,12 +1046,42 @@ export async function setupHandlers(
           };
         }
 
+        // Comprehensive command_name validation
+        const commandNameValidation = validateCommandNameParam(commandNameParam);
+        if (!commandNameValidation.valid) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: commandNameValidation.error,
+              }),
+            }],
+            isError: true,
+          };
+        }
+
+        // Validate and sanitize arguments (prevents prototype pollution)
+        const commandArgs = sanitizeArguments(args?.arguments);
+        if (commandArgs === null) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: '"arguments" must be a plain object (not null, array, or primitive)',
+              }),
+            }],
+            isError: true,
+          };
+        }
+
         // Build the full tool name (e.g., "finder_activate" from app="Finder", command="activate")
         const normalizedAppName = appNameParam.toLowerCase().replace(/\s+/g, '_');
         const normalizedCommandName = commandNameParam.toLowerCase().replace(/\s+/g, '_');
         const fullToolName = `${normalizedAppName}_${normalizedCommandName}`;
 
-        console.error(`[CallTool/execute_app_command] Looking for tool: ${fullToolName}`);
+        console.error(`${logPrefix} Looking for tool: ${fullToolName}`);
 
         // Look up the tool from discoveredToolsMap
         const tool = discoveredToolsMap.get(fullToolName);
@@ -783,10 +1107,15 @@ export async function setupHandlers(
           }
 
           // App tools exist but this specific command wasn't found
-          const availableCommands = Array.from(discoveredToolsMap.keys())
-            .filter(name => name.startsWith(`${normalizedAppName}_`))
-            .map(name => name.replace(`${normalizedAppName}_`, ''))
-            .slice(0, 10);
+          // Optimized: early termination instead of iterating entire map
+          const availableCommands: string[] = [];
+          const prefix = `${normalizedAppName}_`;
+          for (const name of discoveredToolsMap.keys()) {
+            if (name.startsWith(prefix)) {
+              availableCommands.push(name.replace(prefix, ''));
+              if (availableCommands.length >= 10) break;
+            }
+          }
 
           return {
             content: [{
@@ -806,7 +1135,7 @@ export async function setupHandlers(
         const validationResult = validateToolArguments(commandArgs, tool.inputSchema);
 
         if (!validationResult.valid) {
-          console.error(`[CallTool/execute_app_command] Invalid arguments: ${validationResult.errors.join(', ')}`);
+          console.error(`${logPrefix} Invalid arguments: ${validationResult.errors.join(', ')}`);
           return {
             content: [{
               type: 'text' as const,
@@ -820,86 +1149,19 @@ export async function setupHandlers(
           };
         }
 
-        // Check permissions (skip if DISABLE_PERMISSIONS is set)
-        const permissionsDisabled = process.env.DISABLE_PERMISSIONS === 'true';
-        if (!permissionsDisabled) {
-          const permissionDecision = await permissionChecker.check(tool, commandArgs);
-
-          if (!permissionDecision.allowed) {
-            console.error(`[CallTool/execute_app_command] Permission denied: ${permissionDecision.reason}`);
-            return {
-              content: [{
-                type: 'text' as const,
-                text: JSON.stringify(formatPermissionDeniedResponse(permissionDecision)),
-              }],
-              isError: true,
-            };
+        // Execute tool with permission checking (shared logic)
+        return await executeToolWithPermissions(
+          tool,
+          commandArgs,
+          permissionChecker,
+          adapter,
+          errorHandler,
+          {
+            appName: appNameParam,
+            commandName: commandNameParam,
+            logPrefix,
           }
-
-          console.error(`[CallTool/execute_app_command] Permission granted, executing via adapter`);
-        } else {
-          console.error(`[CallTool/execute_app_command] ⚠️ SECURITY WARNING: Permissions disabled, executing via adapter`);
-        }
-
-        // Execute via MacOSAdapter
-        try {
-          const executionResult = await adapter.execute(tool, commandArgs);
-
-          if (executionResult.success) {
-            console.error(`[CallTool/execute_app_command] Execution successful`);
-            return {
-              content: [{
-                type: 'text' as const,
-                text: JSON.stringify({
-                  success: true,
-                  data: executionResult.data,
-                  message: `Command "${commandNameParam}" executed successfully on "${appNameParam}"`,
-                }),
-              }],
-            };
-          } else {
-            console.error(`[CallTool/execute_app_command] Execution failed: ${executionResult.error?.message}`);
-
-            const handledError = errorHandler.handle(
-              {
-                type: executionResult.error?.type || 'EXECUTION_ERROR',
-                message: executionResult.error?.message || 'Unknown error',
-                originalError: executionResult.error?.message,
-              },
-              {
-                appName: tool._metadata?.appName || appNameParam,
-                commandName: tool._metadata?.commandName || commandNameParam,
-                parameters: commandArgs,
-              }
-            );
-
-            return {
-              content: [{
-                type: 'text' as const,
-                text: JSON.stringify({
-                  error: handledError.message,
-                  suggestion: handledError.suggestion,
-                  code: handledError.type,
-                  retryable: handledError.retryable,
-                }),
-              }],
-              isError: true,
-            };
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(`[CallTool/execute_app_command] Unexpected error: ${message}`);
-          return {
-            content: [{
-              type: 'text' as const,
-              text: JSON.stringify({
-                error: 'execution_failed',
-                message,
-              }),
-            }],
-            isError: true,
-          };
-        }
+        );
       }
 
       // Check for get_app_tools (lazy loading)
@@ -920,52 +1182,13 @@ export async function setupHandlers(
           };
         }
 
-        // Input validation for app_name (security: prevent command injection)
-        // 1. Length limit (prevent buffer overflow/DoS)
-        if (appName.length > MAX_APP_NAME_LENGTH) {
+        // Comprehensive app_name validation (shared with execute_app_command)
+        const appNameValidation = validateAppNameParam(appName);
+        if (!appNameValidation.valid) {
           return {
             content: [{
               type: 'text' as const,
-              text: `Error: app_name parameter too long (max ${MAX_APP_NAME_LENGTH} characters)`,
-            }],
-            isError: true,
-          };
-        }
-
-        // 2. Character whitelist (alphanumeric + common app name characters)
-        // Security: Stricter regex to prevent path traversal and command injection
-        // - Must start with alphanumeric (allows single-char apps like "X" or "R")
-        // - Optionally followed by spaces, hyphens, underscores, alphanumerics
-        // - Must end with alphanumeric before optional extension
-        // - Allows single period for file extensions only (e.g., ".app")
-        // - No consecutive periods (prevents ../ traversal)
-        if (!/^[a-zA-Z0-9]+([a-zA-Z0-9\s\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]+)?$/.test(appName)) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: 'Error: app_name contains invalid characters. Must be alphanumeric with optional spaces, hyphens, underscores, and single period for extension.',
-            }],
-            isError: true,
-          };
-        }
-
-        // 3. Path traversal prevention (reject any path-like patterns)
-        if (appName.includes('/') || appName.includes('\\') || appName.includes('..')) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: 'Error: app_name contains path traversal patterns. Use app name only, not a path.',
-            }],
-            isError: true,
-          };
-        }
-
-        // 4. Null byte rejection (prevent null byte injection)
-        if (appName.includes('\0')) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: 'Error: app_name contains null bytes',
+              text: `Error: ${appNameValidation.error}`,
             }],
             isError: true,
           };
