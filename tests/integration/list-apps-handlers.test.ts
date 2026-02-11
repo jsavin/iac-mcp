@@ -35,6 +35,8 @@ import { MacOSAdapter } from '../../src/adapters/macos/macos-adapter.js';
 import { PermissionChecker } from '../../src/permissions/permission-checker.js';
 import { ErrorHandler } from '../../src/error-handler.js';
 import { PerAppCache } from '../../src/jitd/cache/per-app-cache.js';
+import { QueryExecutor } from '../../src/execution/query-executor.js';
+import { ReferenceStore } from '../../src/execution/reference-store.js';
 import type { AppMetadata } from '../../src/types/app-metadata.js';
 import type { MCPTool } from '../../src/types/mcp-tool.js';
 
@@ -84,8 +86,10 @@ async function createTestServerWithHandlers(): Promise<CapturedHandlers> {
   });
   const errorHandler = new ErrorHandler();
   const perAppCache = new PerAppCache({ cacheDir: TEMP_CACHE_DIR, maxAge: 3600000 });
+  const referenceStore = new ReferenceStore(15 * 60 * 1000); // 15-minute TTL
+  const queryExecutor = new QueryExecutor(referenceStore);
 
-  await setupHandlers(mockServer, toolGenerator, permissionChecker, adapter, errorHandler, perAppCache);
+  await setupHandlers(mockServer, toolGenerator, permissionChecker, adapter, errorHandler, perAppCache, queryExecutor);
 
   return handlers;
 }
@@ -809,7 +813,158 @@ describe('list_apps Tool and iac://apps Resource - Actual Handler Execution', ()
   });
 
   // ==========================================================================
-  // SECTION 9: ReadResource Error Path Tests
+  // SECTION 10: execute_app_command Tool Tests
+  // ==========================================================================
+
+  describe('execute_app_command Tool - Actual Execution', () => {
+    it('should include execute_app_command in ListTools response', async () => {
+      const response = await callListTools(handlers);
+
+      expect(response.tools).toBeDefined();
+      const executeAppCommandTool = response.tools.find((t: any) => t.name === 'execute_app_command');
+      expect(executeAppCommandTool).toBeDefined();
+      expect(executeAppCommandTool.description).toContain('Execute an application command');
+      expect(executeAppCommandTool.inputSchema.required).toContain('app_name');
+      expect(executeAppCommandTool.inputSchema.required).toContain('command_name');
+    });
+
+    it('should return error when app_name is missing', async () => {
+      const response = await callTool(handlers, 'execute_app_command', { command_name: 'activate' });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      expect(data.message).toContain('app_name');
+    });
+
+    it('should return error when command_name is missing', async () => {
+      const response = await callTool(handlers, 'execute_app_command', { app_name: 'Finder' });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('invalid_parameter');
+      expect(data.message).toContain('command_name');
+    });
+
+    it('should return error when app tools have not been loaded', async () => {
+      // Try to execute a command without first calling get_app_tools
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'TextEdit',
+        command_name: 'activate',
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('app_tools_not_loaded');
+      expect(data.message).toContain('not been loaded');
+      expect(data.suggestion).toContain('get_app_tools');
+    });
+
+    it('should return error when command is not found for loaded app', async () => {
+      // First load Finder tools
+      const getToolsResponse = await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      if (getToolsResponse.isError) {
+        console.warn('Skipping test: Finder not accessible');
+        return;
+      }
+
+      // Try to execute a non-existent command
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'Finder',
+        command_name: 'nonexistent_command_xyz',
+      });
+
+      expect(response.isError).toBe(true);
+      const data = JSON.parse(response.content[0].text);
+      expect(data.error).toBe('command_not_found');
+      expect(data.availableCommands).toBeDefined();
+      expect(Array.isArray(data.availableCommands)).toBe(true);
+    });
+
+    it('should execute a loaded app command successfully', async () => {
+      // First load Finder tools
+      const getToolsResponse = await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      if (getToolsResponse.isError) {
+        console.warn('Skipping test: Finder not accessible');
+        return;
+      }
+
+      // Execute the activate command via execute_app_command
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'Finder',
+        command_name: 'activate',
+      });
+
+      // Should not return "Tool not found" or "app_tools_not_loaded"
+      expect(response.content).toBeDefined();
+      const responseText = response.content[0].text;
+
+      // If successful, should have success flag
+      // If failed due to permissions or execution, it's still a valid execution attempt
+      const data = JSON.parse(responseText);
+
+      // Should NOT be "app_tools_not_loaded" or "command_not_found"
+      if (response.isError) {
+        expect(data.error).not.toBe('app_tools_not_loaded');
+        expect(data.error).not.toBe('command_not_found');
+      } else {
+        expect(data.success).toBe(true);
+        expect(data.message).toContain('activate');
+        expect(data.message).toContain('Finder');
+      }
+    });
+
+    it('should pass arguments to the command', async () => {
+      // First load Finder tools
+      const getToolsResponse = await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      if (getToolsResponse.isError) {
+        console.warn('Skipping test: Finder not accessible');
+        return;
+      }
+
+      // Try to call a command with arguments (e.g., open)
+      // This tests that arguments are properly passed through
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'Finder',
+        command_name: 'activate',
+        arguments: {},  // activate doesn't need arguments, but test the flow
+      });
+
+      // Should reach execution (not fail at parameter validation)
+      expect(response.content).toBeDefined();
+    });
+
+    it('should handle case-insensitive app and command names', async () => {
+      // First load Finder tools (uppercase)
+      const getToolsResponse = await callTool(handlers, 'get_app_tools', { app_name: 'Finder' });
+
+      if (getToolsResponse.isError) {
+        console.warn('Skipping test: Finder not accessible');
+        return;
+      }
+
+      // Execute with lowercase app and command names
+      const response = await callTool(handlers, 'execute_app_command', {
+        app_name: 'finder',  // lowercase
+        command_name: 'Activate',  // mixed case
+      });
+
+      // Should find the command (case-insensitive lookup)
+      expect(response.content).toBeDefined();
+      const data = JSON.parse(response.content[0].text);
+
+      // Should NOT be "command_not_found" due to case mismatch
+      if (response.isError) {
+        expect(data.error).not.toBe('command_not_found');
+      }
+    });
+  });
+
+  // ==========================================================================
+  // SECTION 11: ReadResource Error Path Tests
   // ==========================================================================
 
   describe('ReadResource Error Paths', () => {

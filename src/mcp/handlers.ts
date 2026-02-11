@@ -540,6 +540,41 @@ export async function setupHandlers(
         },
       };
 
+      /**
+       * execute_app_command Tool Definition
+       *
+       * Executes an app-specific command that was previously loaded via get_app_tools.
+       * This enables calling app commands without requiring them in the initial ListTools.
+       *
+       * Flow:
+       * 1. Call get_app_tools("Finder") to load Finder's tools
+       * 2. Call execute_app_command with command_name="activate" and app_name="Finder"
+       * 3. The command executes via the MacOSAdapter
+       */
+      const executeAppCommandTool: Tool = {
+        name: 'execute_app_command',
+        description: 'Execute an application command that was loaded via get_app_tools. Use this to invoke app-specific actions like activate, open, close, etc. First call get_app_tools to load the app\'s commands, then use this tool to execute them.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            app_name: {
+              type: 'string',
+              description: 'Application name (e.g., "Finder", "Safari")',
+            },
+            command_name: {
+              type: 'string',
+              description: 'Command name to execute (e.g., "activate", "open", "close"). Use the short name from the tool list, not the full tool name.',
+            },
+            arguments: {
+              type: 'object',
+              description: 'Optional arguments for the command',
+              additionalProperties: true,
+            },
+          },
+          required: ['app_name', 'command_name'],
+        },
+      };
+
       // Generate query tools
       const queryTools = generateQueryTools();
 
@@ -547,9 +582,9 @@ export async function setupHandlers(
       // This ensures ListTools is consistent with what CallTool can execute
       const dynamicallyLoadedTools = Array.from(discoveredToolsMap.values());
 
-      // Return get_app_tools tool + list_apps tool + query tools + dynamically loaded tools + app metadata
+      // Return core tools + query tools + dynamically loaded tools + app metadata
       return {
-        tools: [getAppToolsTool, listAppsTool, ...queryTools, ...dynamicallyLoadedTools],
+        tools: [getAppToolsTool, listAppsTool, executeAppCommandTool, ...queryTools, ...dynamicallyLoadedTools],
         _app_metadata: appMetadataList,
       };
 
@@ -680,6 +715,191 @@ export async function setupHandlers(
           };
         }
         return await handleSetProperty(queryExecutor, args);
+      }
+
+      // Check for execute_app_command
+      if (toolName === 'execute_app_command') {
+        console.error('[CallTool/execute_app_command] Executing execute_app_command tool');
+
+        // Validate parameters
+        const appNameParam = args?.app_name;
+        const commandNameParam = args?.command_name;
+        const commandArgs = args?.arguments || {};
+
+        if (!isValidAppName(appNameParam)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Missing or invalid "app_name" parameter',
+              }),
+            }],
+            isError: true,
+          };
+        }
+
+        if (typeof commandNameParam !== 'string' || commandNameParam.length === 0) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Missing or invalid "command_name" parameter',
+              }),
+            }],
+            isError: true,
+          };
+        }
+
+        // Build the full tool name (e.g., "finder_activate" from app="Finder", command="activate")
+        const normalizedAppName = appNameParam.toLowerCase().replace(/\s+/g, '_');
+        const normalizedCommandName = commandNameParam.toLowerCase().replace(/\s+/g, '_');
+        const fullToolName = `${normalizedAppName}_${normalizedCommandName}`;
+
+        console.error(`[CallTool/execute_app_command] Looking for tool: ${fullToolName}`);
+
+        // Look up the tool from discoveredToolsMap
+        const tool = discoveredToolsMap.get(fullToolName);
+
+        if (!tool) {
+          // Check if any tools for this app exist
+          const appToolsExist = Array.from(discoveredToolsMap.keys()).some(
+            name => name.startsWith(`${normalizedAppName}_`)
+          );
+
+          if (!appToolsExist) {
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                  error: 'app_tools_not_loaded',
+                  message: `Tools for "${appNameParam}" have not been loaded. Call get_app_tools("${appNameParam}") first to load the app's commands.`,
+                  suggestion: `Use get_app_tools("${appNameParam}") to load the app's tools, then try execute_app_command again.`,
+                }),
+              }],
+              isError: true,
+            };
+          }
+
+          // App tools exist but this specific command wasn't found
+          const availableCommands = Array.from(discoveredToolsMap.keys())
+            .filter(name => name.startsWith(`${normalizedAppName}_`))
+            .map(name => name.replace(`${normalizedAppName}_`, ''))
+            .slice(0, 10);
+
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'command_not_found',
+                message: `Command "${commandNameParam}" not found for "${appNameParam}".`,
+                availableCommands,
+                suggestion: `Try one of the available commands: ${availableCommands.join(', ')}`,
+              }),
+            }],
+            isError: true,
+          };
+        }
+
+        // Validate arguments against tool's inputSchema
+        const validationResult = validateToolArguments(commandArgs, tool.inputSchema);
+
+        if (!validationResult.valid) {
+          console.error(`[CallTool/execute_app_command] Invalid arguments: ${validationResult.errors.join(', ')}`);
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_arguments',
+                message: 'Invalid command arguments',
+                errors: validationResult.errors,
+              }),
+            }],
+            isError: true,
+          };
+        }
+
+        // Check permissions (skip if DISABLE_PERMISSIONS is set)
+        const permissionsDisabled = process.env.DISABLE_PERMISSIONS === 'true';
+        if (!permissionsDisabled) {
+          const permissionDecision = await permissionChecker.check(tool, commandArgs);
+
+          if (!permissionDecision.allowed) {
+            console.error(`[CallTool/execute_app_command] Permission denied: ${permissionDecision.reason}`);
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify(formatPermissionDeniedResponse(permissionDecision)),
+              }],
+              isError: true,
+            };
+          }
+
+          console.error(`[CallTool/execute_app_command] Permission granted, executing via adapter`);
+        } else {
+          console.error(`[CallTool/execute_app_command] ⚠️ SECURITY WARNING: Permissions disabled, executing via adapter`);
+        }
+
+        // Execute via MacOSAdapter
+        try {
+          const executionResult = await adapter.execute(tool, commandArgs);
+
+          if (executionResult.success) {
+            console.error(`[CallTool/execute_app_command] Execution successful`);
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                  success: true,
+                  data: executionResult.data,
+                  message: `Command "${commandNameParam}" executed successfully on "${appNameParam}"`,
+                }),
+              }],
+            };
+          } else {
+            console.error(`[CallTool/execute_app_command] Execution failed: ${executionResult.error?.message}`);
+
+            const handledError = errorHandler.handle(
+              {
+                type: executionResult.error?.type || 'EXECUTION_ERROR',
+                message: executionResult.error?.message || 'Unknown error',
+                originalError: executionResult.error?.message,
+              },
+              {
+                appName: tool._metadata?.appName || appNameParam,
+                commandName: tool._metadata?.commandName || commandNameParam,
+                parameters: commandArgs,
+              }
+            );
+
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                  error: handledError.message,
+                  suggestion: handledError.suggestion,
+                  code: handledError.type,
+                  retryable: handledError.retryable,
+                }),
+              }],
+              isError: true,
+            };
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[CallTool/execute_app_command] Unexpected error: ${message}`);
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'execution_failed',
+                message,
+              }),
+            }],
+            isError: true,
+          };
+        }
       }
 
       // Check for get_app_tools (lazy loading)
