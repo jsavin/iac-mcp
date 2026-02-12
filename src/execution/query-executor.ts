@@ -106,11 +106,10 @@ export class QueryExecutor {
     // 1. Get reference from store
     const reference = this.referenceStore.get(referenceId);
     if (!reference) {
-      throw new Error(`Reference not found: ${referenceId}`);
+      throw new Error(`Reference not found: ${referenceId}. The referenced object may have been closed or deleted. Please re-query the object to get a fresh reference.`);
     }
 
-    // 2. Touch reference (update lastAccessedAt)
-    this.referenceStore.touch(referenceId);
+    // 2. lastAccessedAt is auto-updated by get()
 
     // 3. If no JXAExecutor, return empty result (backward compatibility)
     if (!this.jxaExecutor) {
@@ -229,11 +228,10 @@ export class QueryExecutor {
     // 1. Get reference from store
     const reference = this.referenceStore.get(referenceId);
     if (!reference) {
-      throw new Error(`Reference not found: ${referenceId}`);
+      throw new Error(`Reference not found: ${referenceId}. The referenced object may have been closed or deleted. Please re-query the object to get a fresh reference.`);
     }
 
-    // 2. Touch reference (update lastAccessedAt)
-    this.referenceStore.touch(referenceId);
+    // 2. lastAccessedAt is auto-updated by get()
 
     // 3. If no JXAExecutor, throw error (can't set properties without execution)
     if (!this.jxaExecutor) {
@@ -336,7 +334,7 @@ export class QueryExecutor {
       // It's a reference ID
       const reference = this.referenceStore.get(container);
       if (!reference) {
-        throw new Error(`Reference not found: ${container}`);
+        throw new Error(`Reference not found: ${container}. The referenced object may have been closed or deleted. Please re-query the object to get a fresh reference.`);
       }
       containerSpec = reference.specifier;
       resolvedApp = reference.app;
@@ -619,7 +617,7 @@ export class QueryExecutor {
   private resolveReferenceToPath(referenceId: string): string {
     const ref = this.referenceStore.get(referenceId);
     if (!ref) {
-      throw new Error(`Reference not found: ${referenceId}`);
+      throw new Error(`Reference not found: ${referenceId}. The referenced object may have been closed or deleted. Please re-query the object to get a fresh reference.`);
     }
     return this.buildObjectPath(ref.specifier, `Application("${ref.app}")`);
   }
@@ -644,7 +642,7 @@ export class QueryExecutor {
     if (isPropertySpecifier(specifier) && typeof specifier.of === "string") {
       const ref = this.referenceStore.get(specifier.of);
       if (!ref) {
-        throw new Error(`Reference not found: ${specifier.of}`);
+        throw new Error(`Reference not found: ${specifier.of}. The referenced object may have been closed or deleted. Please re-query the object to get a fresh reference.`);
       }
     }
 

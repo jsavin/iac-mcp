@@ -1,8 +1,7 @@
 /**
  * Unit Tests for ReferenceStore
  *
- * Following TDD: These tests are written BEFORE the implementation.
- * They define the expected behavior of the ReferenceStore class.
+ * Tests LRU eviction, auto-touch on get, delete, and core CRUD behavior.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -18,7 +17,7 @@ describe("ReferenceStore", () => {
   });
 
   afterEach(() => {
-    // Stop cleanup timer to avoid test interference
+    // Stop cleanup timer to avoid test interference (no-op but kept for compat)
     store.stopCleanup();
   });
 
@@ -113,6 +112,44 @@ describe("ReferenceStore", () => {
     });
   });
 
+  describe("Auto-touch on get()", () => {
+    it("should update lastAccessedAt when get() is called", async () => {
+      const specifier: ObjectSpecifier = {
+        type: "element",
+        element: "window",
+        index: 0,
+        container: "application",
+      };
+
+      const id = store.create("com.apple.finder", "window", specifier);
+
+      // Wait a bit to ensure timestamp difference
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const ref = store.get(id);
+
+      // lastAccessedAt should be updated by get()
+      expect(ref?.lastAccessedAt).toBeGreaterThan(ref?.createdAt!);
+    });
+
+    it("should not update createdAt when get() is called", async () => {
+      const specifier: ObjectSpecifier = {
+        type: "element",
+        element: "window",
+        index: 0,
+        container: "application",
+      };
+
+      const id = store.create("com.apple.finder", "window", specifier);
+      const initialCreatedAt = store.get(id)?.createdAt;
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const ref = store.get(id);
+      expect(ref?.createdAt).toBe(initialCreatedAt);
+    });
+  });
+
   describe("Touch Functionality", () => {
     it("should update lastAccessedAt when touched", async () => {
       const specifier: ObjectSpecifier = {
@@ -162,10 +199,8 @@ describe("ReferenceStore", () => {
     });
   });
 
-  describe("TTL Cleanup", () => {
-    it("should remove expired references based on TTL", () => {
-      // Use a short TTL for testing (100ms)
-      const shortTtlStore = new ReferenceStore(100);
+  describe("Delete", () => {
+    it("should remove a reference by ID", () => {
       const specifier: ObjectSpecifier = {
         type: "element",
         element: "window",
@@ -173,26 +208,76 @@ describe("ReferenceStore", () => {
         container: "application",
       };
 
-      const id = shortTtlStore.create("com.apple.finder", "window", specifier);
-      expect(shortTtlStore.get(id)).toBeDefined();
+      const id = store.create("com.apple.finder", "window", specifier);
+      expect(store.get(id)).toBeDefined();
 
-      // Mock time passing by 150ms (beyond TTL)
-      const originalNow = Date.now;
+      const result = store.delete(id);
+      expect(result).toBe(true);
+      expect(store.get(id)).toBeUndefined();
+    });
+
+    it("should return false when deleting non-existent reference", () => {
+      const result = store.delete("ref_nonexistent");
+      expect(result).toBe(false);
+    });
+
+    it("should decrement total references after delete", () => {
+      const specifier: ObjectSpecifier = {
+        type: "element",
+        element: "window",
+        index: 0,
+        container: "application",
+      };
+
+      const id = store.create("com.apple.finder", "window", specifier);
+      store.create("com.apple.finder", "window", specifier);
+      expect(store.getStats().totalReferences).toBe(2);
+
+      store.delete(id);
+      expect(store.getStats().totalReferences).toBe(1);
+    });
+  });
+
+  describe("LRU Eviction", () => {
+    it("should evict least recently used reference when over capacity", () => {
+      const smallStore = new ReferenceStore(3);
+      const specifier: ObjectSpecifier = {
+        type: "element",
+        element: "window",
+        index: 0,
+        container: "application",
+      };
+
+      const id1 = smallStore.create("com.apple.finder", "window", specifier);
+      const id2 = smallStore.create("com.apple.finder", "window", specifier);
+      const id3 = smallStore.create("com.apple.finder", "window", specifier);
+
+      // All 3 should exist
+      expect(smallStore.get(id1)).toBeDefined();
+      expect(smallStore.get(id2)).toBeDefined();
+      expect(smallStore.get(id3)).toBeDefined();
+
+      // Adding a 4th should evict the LRU (id1, since id2/id3 were touched by get())
+      // But id1 was also touched by get() above. Let's use time mocking for precision.
       const baseTime = Date.now();
-      vi.spyOn(Date, "now").mockReturnValue(baseTime + 150);
+      vi.spyOn(Date, "now")
+        .mockReturnValueOnce(baseTime + 100)  // create's Date.now
+        .mockReturnValueOnce(baseTime + 100)  // create's second Date.now
+        .mockReturnValueOnce(baseTime + 100); // evictIfNeeded check
 
-      shortTtlStore.cleanup();
+      const id4 = smallStore.create("com.apple.finder", "window", specifier);
 
-      expect(shortTtlStore.get(id)).toBeUndefined();
-
-      // Restore Date.now
       vi.mocked(Date.now).mockRestore();
-      shortTtlStore.stopCleanup();
+
+      // Store should have 3 references (one evicted)
+      expect(smallStore.getStats().totalReferences).toBe(3);
+
+      // The newest one should exist
+      expect(smallStore.get(id4)).toBeDefined();
     });
 
-    it("should keep non-expired references", () => {
-      // Use longer TTL (1 second)
-      const longTtlStore = new ReferenceStore(1000);
+    it("should not evict when at or below capacity", () => {
+      const smallStore = new ReferenceStore(3);
       const specifier: ObjectSpecifier = {
         type: "element",
         element: "window",
@@ -200,26 +285,102 @@ describe("ReferenceStore", () => {
         container: "application",
       };
 
-      const id = longTtlStore.create("com.apple.finder", "window", specifier);
+      smallStore.create("com.apple.finder", "window", specifier);
+      smallStore.create("com.apple.finder", "window", specifier);
+      smallStore.create("com.apple.finder", "window", specifier);
 
-      // Mock time passing by 500ms (within TTL)
-      const originalNow = Date.now;
+      expect(smallStore.getStats().totalReferences).toBe(3);
+    });
+
+    it("should evict based on lastAccessedAt not createdAt", async () => {
+      const smallStore = new ReferenceStore(2);
+      const specifier: ObjectSpecifier = {
+        type: "element",
+        element: "window",
+        index: 0,
+        container: "application",
+      };
+
+      // Create two references
+      const id1 = smallStore.create("com.apple.finder", "window", specifier);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const id2 = smallStore.create("com.apple.finder", "window", specifier);
+
+      // Touch id1 so it's more recently accessed than id2
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      smallStore.touch(id1);
+
+      // Create a third — should evict id2 (least recently accessed)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const id3 = smallStore.create("com.apple.finder", "window", specifier);
+
+      expect(smallStore.getStats().totalReferences).toBe(2);
+      expect(smallStore.get(id1)).toBeDefined();  // kept (recently touched)
+      expect(smallStore.get(id3)).toBeDefined();  // kept (just created)
+    });
+
+    it("should handle eviction of multiple references at once", () => {
+      // Create a store with cap of 2, fill with 5
+      const tinyStore = new ReferenceStore(2);
+      const specifier: ObjectSpecifier = {
+        type: "element",
+        element: "window",
+        index: 0,
+        container: "application",
+      };
+
+      // Need to create refs one at a time since eviction happens on each create
+      const ids: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        ids.push(tinyStore.create("com.apple.finder", "window", specifier));
+      }
+
+      // Should never exceed capacity
+      expect(tinyStore.getStats().totalReferences).toBe(2);
+    });
+
+    it("should use default max of 1000 references", () => {
+      const specifier: ObjectSpecifier = {
+        type: "element",
+        element: "window",
+        index: 0,
+        container: "application",
+      };
+
+      // Create 1000 references
+      for (let i = 0; i < 1000; i++) {
+        store.create("com.apple.finder", "window", specifier);
+      }
+      expect(store.getStats().totalReferences).toBe(1000);
+
+      // Adding one more should evict one
+      store.create("com.apple.finder", "window", specifier);
+      expect(store.getStats().totalReferences).toBe(1000);
+    });
+  });
+
+  describe("No TTL - References persist indefinitely", () => {
+    it("should not expire references based on time", () => {
+      const specifier: ObjectSpecifier = {
+        type: "element",
+        element: "window",
+        index: 0,
+        container: "application",
+      };
+
+      const id = store.create("com.apple.finder", "window", specifier);
+
+      // Mock time passing by 1 hour
       const baseTime = Date.now();
-      vi.spyOn(Date, "now").mockReturnValue(baseTime + 500);
+      vi.spyOn(Date, "now").mockReturnValue(baseTime + 3600000);
 
-      longTtlStore.cleanup();
-
-      expect(longTtlStore.get(id)).toBeDefined();
+      // Reference should still exist (no TTL)
+      expect(store.get(id)).toBeDefined();
 
       vi.mocked(Date.now).mockRestore();
-      longTtlStore.stopCleanup();
     });
 
-    it("should run automatic cleanup every 5 minutes", async () => {
-      // Use fake timers to test automatic cleanup
-      vi.useFakeTimers();
-
-      const shortTtlStore = new ReferenceStore(100); // 100ms TTL
+    it("should not expire references based on time even after 24 hours", () => {
       const specifier: ObjectSpecifier = {
         type: "element",
         element: "window",
@@ -227,36 +388,31 @@ describe("ReferenceStore", () => {
         container: "application",
       };
 
-      // Create a reference
-      const id = shortTtlStore.create("com.apple.finder", "window", specifier);
-      expect(shortTtlStore.get(id)).toBeDefined();
+      const id = store.create("com.apple.finder", "window", specifier);
 
-      // Advance time by 150ms (beyond TTL)
-      vi.advanceTimersByTime(150);
+      // Mock time passing by 24 hours
+      const baseTime = Date.now();
+      vi.spyOn(Date, "now").mockReturnValue(baseTime + 86400000);
 
-      // Reference should still exist (no automatic cleanup yet)
-      expect(shortTtlStore.get(id)).toBeDefined();
+      // Reference should still exist (no TTL)
+      expect(store.get(id)).toBeDefined();
 
-      // Advance time by 5 minutes (cleanup interval)
-      vi.advanceTimersByTime(5 * 60 * 1000);
+      vi.mocked(Date.now).mockRestore();
+    });
+  });
 
-      // Now cleanup should have run and removed the expired reference
-      expect(shortTtlStore.get(id)).toBeUndefined();
-
-      shortTtlStore.stopCleanup();
-      vi.useRealTimers();
+  describe("stopCleanup (backward compatibility)", () => {
+    it("should not throw when stopCleanup is called", () => {
+      expect(() => {
+        store.stopCleanup();
+      }).not.toThrow();
     });
 
-    it("should stop automatic cleanup when stopCleanup is called", () => {
-      const testStore = new ReferenceStore();
-
-      // Verify timer is running
-      expect(testStore["cleanupInterval"]).not.toBeNull();
-
-      testStore.stopCleanup();
-
-      // Verify timer is stopped
-      expect(testStore["cleanupInterval"]).toBeNull();
+    it("should be callable multiple times without error", () => {
+      store.stopCleanup();
+      store.stopCleanup();
+      store.stopCleanup();
+      // No assertions needed — just verifying no throws
     });
   });
 
@@ -391,7 +547,7 @@ describe("ReferenceStore", () => {
         container: "application",
       };
 
-      // Create 1000 references
+      // Create 1000 references (at default cap)
       const ids: string[] = [];
       for (let i = 0; i < 1000; i++) {
         const id = store.create("com.apple.finder", "window", specifier);
@@ -405,13 +561,13 @@ describe("ReferenceStore", () => {
         expect(store.get(id)).toBeDefined();
       }
 
-      // Verify cleanup works with many references
+      // Verify clear works with many references
       store.clear();
       expect(store.getStats().totalReferences).toBe(0);
     });
 
-    it("should properly remove old references during cleanup with many refs", () => {
-      const shortTtlStore = new ReferenceStore(100);
+    it("should enforce capacity limit with many creates", () => {
+      const smallStore = new ReferenceStore(50);
       const specifier: ObjectSpecifier = {
         type: "element",
         element: "window",
@@ -419,23 +575,13 @@ describe("ReferenceStore", () => {
         container: "application",
       };
 
-      // Create 100 references
+      // Create 100 references (2x capacity)
       for (let i = 0; i < 100; i++) {
-        shortTtlStore.create("com.apple.finder", "window", specifier);
+        smallStore.create("com.apple.finder", "window", specifier);
       }
 
-      expect(shortTtlStore.getStats().totalReferences).toBe(100);
-
-      // Mock time passing beyond TTL
-      const baseTime = Date.now();
-      vi.spyOn(Date, "now").mockReturnValue(baseTime + 150);
-
-      shortTtlStore.cleanup();
-
-      expect(shortTtlStore.getStats().totalReferences).toBe(0);
-
-      vi.mocked(Date.now).mockRestore();
-      shortTtlStore.stopCleanup();
+      // Should never exceed capacity
+      expect(smallStore.getStats().totalReferences).toBe(50);
     });
   });
 });
