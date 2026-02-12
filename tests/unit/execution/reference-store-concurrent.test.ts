@@ -204,9 +204,9 @@ describe('ReferenceStore - Concurrent Operations', () => {
     });
   });
 
-  describe('Concurrent Creation and Cleanup', () => {
-    it('should handle cleanup while creating new references', async () => {
-      const shortTtlStore = new ReferenceStore(50); // 50ms TTL
+  describe('Concurrent Creation and Eviction', () => {
+    it('should handle eviction while creating new references', async () => {
+      const smallStore = new ReferenceStore(10);
       const specifier: ObjectSpecifier = {
         type: 'element',
         element: 'window',
@@ -214,44 +214,33 @@ describe('ReferenceStore - Concurrent Operations', () => {
         container: 'application'
       };
 
-      // Create initial references
+      // Create initial references at capacity
       const oldIds: string[] = [];
       for (let i = 0; i < 10; i++) {
-        oldIds.push(shortTtlStore.create('com.apple.finder', 'window', specifier));
+        oldIds.push(smallStore.create('com.apple.finder', 'window', specifier));
       }
 
-      // Wait for TTL to expire
-      await new Promise(resolve => setTimeout(resolve, 60));
+      // Wait a bit so new references have different timestamps
+      await new Promise(resolve => setTimeout(resolve, 10));
 
-      // Now create new references and run cleanup concurrently
-      const newIds: string[] = [];
+      // Create 10 more references concurrently (will trigger evictions)
       const createPromises: Promise<string>[] = [];
-
       for (let i = 0; i < 10; i++) {
         createPromises.push(
-          Promise.resolve(shortTtlStore.create('com.apple.finder', 'window', specifier))
+          Promise.resolve(smallStore.create('com.apple.finder', 'window', specifier))
         );
       }
 
-      // Run cleanup concurrently with creation
-      const [createdIds] = await Promise.all([
-        Promise.all(createPromises),
-        Promise.resolve(shortTtlStore.cleanup())
-      ]);
+      const newIds = await Promise.all(createPromises);
+
+      // Store should be at capacity
+      expect(smallStore.getStats().totalReferences).toBe(10);
 
       // New references should exist
-      createdIds.forEach(id => {
-        const ref = shortTtlStore.get(id);
+      newIds.forEach(id => {
+        const ref = smallStore.get(id);
         expect(ref).toBeDefined();
       });
-
-      // Old references should be cleaned up
-      oldIds.forEach(id => {
-        const ref = shortTtlStore.get(id);
-        expect(ref).toBeUndefined();
-      });
-
-      shortTtlStore.stopCleanup();
     });
   });
 

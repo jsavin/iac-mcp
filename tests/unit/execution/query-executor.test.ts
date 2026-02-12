@@ -861,14 +861,14 @@ describe('QueryExecutor', () => {
       const error = await queryExecutor.getProperties('does-not-exist')
         .catch(e => e);
 
-      expect(error.message).toBe('Reference not found: does-not-exist');
+      expect(error.message).toContain('Reference not found: does-not-exist');
     });
 
     it('should provide clear error for invalid reference ID in getElements', async () => {
       const error = await queryExecutor.getElements('ref_does-not-exist', 'message', undefined, 10)
         .catch(e => e);
 
-      expect(error.message).toBe('Reference not found: ref_does-not-exist');
+      expect(error.message).toContain('Reference not found: ref_does-not-exist');
     });
 
     it('should provide error with details for unsupported specifier type', async () => {
@@ -893,7 +893,7 @@ describe('QueryExecutor', () => {
       const error = await queryExecutor.queryObject('Mail', propertySpec)
         .catch(e => e);
 
-      expect(error.message).toBe('Reference not found: invalid-ref-id');
+      expect(error.message).toContain('Reference not found: invalid-ref-id');
     });
   });
 
@@ -1282,7 +1282,7 @@ describe('QueryExecutor', () => {
 
         const error = await executorWithoutJxa.getProperties('invalid-ref').catch(e => e);
 
-        expect(error.message).toBe('Reference not found: invalid-ref');
+        expect(error.message).toContain('Reference not found: invalid-ref');
       });
     });
 

@@ -1656,8 +1656,8 @@ async function handleGetProperties(
           text: JSON.stringify({
             error: 'reference_invalid',
             reference: params.reference,
-            message: 'The referenced object no longer exists or cannot be accessed',
-            suggestion: 'Query the object again using iac_mcp_query_object',
+            message: 'The referenced object no longer exists or has been evicted from the store. The object may have been closed, deleted, or the reference was evicted due to store capacity.',
+            suggestion: 'Re-query the object using get_elements or get_properties with a fresh specifier to obtain a new reference.',
           }),
         }],
         isError: true,
@@ -1799,8 +1799,8 @@ async function handleGetElements(
           type: 'text' as const,
           text: JSON.stringify({
             error: 'reference_invalid',
-            message: 'The referenced container object no longer exists or cannot be accessed',
-            suggestion: 'Query the container again using iac_mcp_query_object',
+            message: 'The referenced container object no longer exists or has been evicted from the store. The object may have been closed, deleted, or the reference was evicted due to store capacity.',
+            suggestion: 'Re-query the container object using get_elements with a fresh specifier to obtain a new reference.',
           }),
         }],
         isError: true,
@@ -1890,8 +1890,8 @@ async function handleSetProperty(
           text: JSON.stringify({
             error: 'reference_invalid',
             reference: params.reference,
-            message: 'The referenced object no longer exists or cannot be accessed',
-            suggestion: 'Query the object again using iac_mcp_query_object',
+            message: 'The referenced object no longer exists or has been evicted from the store. The object may have been closed, deleted, or the reference was evicted due to store capacity.',
+            suggestion: 'Re-query the object using get_elements or get_properties with a fresh specifier to obtain a new reference.',
           }),
         }],
         isError: true,

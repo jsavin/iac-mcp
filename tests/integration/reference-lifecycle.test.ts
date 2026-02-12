@@ -4,9 +4,10 @@
  * Tests reference management across the system:
  * - References are created with correct IDs (ref_ prefix)
  * - References persist across multiple tool calls
- * - References expire after TTL (15 minutes)
- * - Cleanup removes expired references
- * - Touch updates lastAccessedAt
+ * - References persist indefinitely (no TTL)
+ * - LRU eviction removes least recently used references at capacity
+ * - Touch and get() update lastAccessedAt
+ * - Delete removes stale references
  * - Statistics tracking works correctly
  *
  * These tests verify that object references are properly managed
@@ -28,7 +29,7 @@ describe('Reference Lifecycle Management', () => {
   });
 
   afterEach(() => {
-    referenceStore.cleanup();
+    referenceStore.clear();
   });
 
   describe('Reference Creation', () => {
@@ -151,19 +152,19 @@ describe('Reference Lifecycle Management', () => {
 
       const ref = await queryExecutor.queryObject('Mail', spec);
 
-      // Retrieve multiple times
+      // Retrieve multiple times — data should be consistent
       const retrieved1 = referenceStore.get(ref.id);
       const retrieved2 = referenceStore.get(ref.id);
 
-      expect(retrieved1).toEqual(retrieved2);
-      expect(retrieved1?.app).toBe('Mail');
-      expect(retrieved1?.type).toBe('mailbox');
-      expect(retrieved1?.specifier).toEqual(spec);
+      // Note: lastAccessedAt will differ due to auto-touch on get()
+      expect(retrieved1?.app).toBe(retrieved2?.app);
+      expect(retrieved1?.type).toBe(retrieved2?.type);
+      expect(retrieved1?.specifier).toEqual(retrieved2?.specifier);
     });
   });
 
-  describe('Reference Expiration', () => {
-    it('should expire references after TTL', () => {
+  describe('No TTL - References persist indefinitely', () => {
+    it('should not expire references after 15 minutes', () => {
       vi.useFakeTimers();
       const now = Date.now();
       vi.setSystemTime(now);
@@ -178,19 +179,16 @@ describe('Reference Lifecycle Management', () => {
       // Reference should exist
       expect(referenceStore.get(referenceId)).toBeDefined();
 
-      // Advance time past TTL (15 minutes + 1 second)
+      // Advance time past old TTL (15 minutes + 1 second)
       vi.advanceTimersByTime((15 * 60 * 1000) + 1000);
 
-      // Run cleanup
-      referenceStore.cleanup();
-
-      // Reference should be expired
-      expect(referenceStore.get(referenceId)).toBeUndefined();
+      // Reference should STILL exist (no TTL)
+      expect(referenceStore.get(referenceId)).toBeDefined();
 
       vi.useRealTimers();
     });
 
-    it('should not expire references within TTL', () => {
+    it('should not expire references after 24 hours', () => {
       vi.useFakeTimers();
       const now = Date.now();
       vi.setSystemTime(now);
@@ -202,19 +200,16 @@ describe('Reference Lifecycle Management', () => {
         container: 'application'
       });
 
-      // Advance time but stay within TTL (14 minutes)
-      vi.advanceTimersByTime(14 * 60 * 1000);
+      // Advance time 24 hours
+      vi.advanceTimersByTime(24 * 60 * 60 * 1000);
 
-      // Run cleanup
-      referenceStore.cleanup();
-
-      // Reference should still exist
+      // Reference should STILL exist (no TTL)
       expect(referenceStore.get(referenceId)).toBeDefined();
 
       vi.useRealTimers();
     });
 
-    it('should expire multiple references independently', () => {
+    it('should keep all references regardless of age when below capacity', () => {
       vi.useFakeTimers();
       const now = Date.now();
       vi.setSystemTime(now);
@@ -239,11 +234,8 @@ describe('Reference Lifecycle Management', () => {
       // Advance time another 10 minutes (ref1 at 20 min, ref2 at 10 min)
       vi.advanceTimersByTime(10 * 60 * 1000);
 
-      // Run cleanup
-      referenceStore.cleanup();
-
-      // ref1 should be expired, ref2 should still exist
-      expect(referenceStore.get(ref1)).toBeUndefined();
+      // Both should still exist — no TTL
+      expect(referenceStore.get(ref1)).toBeDefined();
       expect(referenceStore.get(ref2)).toBeDefined();
 
       vi.useRealTimers();
@@ -280,9 +272,7 @@ describe('Reference Lifecycle Management', () => {
       vi.useRealTimers();
     });
 
-    // NOTE: TTL extension via touch is a Phase 4 feature (LRU-based cleanup)
-    // Phase 1 uses createdAt for TTL, not lastAccessedAt
-    it.skip('should extend TTL when touched (Phase 4 feature)', () => {
+    it('should update lastAccessedAt on get()', () => {
       vi.useFakeTimers();
       const now = Date.now();
       vi.setSystemTime(now);
@@ -294,21 +284,12 @@ describe('Reference Lifecycle Management', () => {
         container: 'application'
       });
 
-      // Advance time 14 minutes (close to expiry)
-      vi.advanceTimersByTime(14 * 60 * 1000);
+      // Advance time 5 minutes
+      vi.advanceTimersByTime(5 * 60 * 1000);
 
-      // Touch the reference (in Phase 4, this would reset TTL)
-      referenceStore.touch(referenceId);
-
-      // Advance time another 10 minutes (24 minutes from creation, but 10 from touch)
-      vi.advanceTimersByTime(10 * 60 * 1000);
-
-      // Run cleanup
-      referenceStore.cleanup();
-
-      // In Phase 4 with LRU: Reference should still exist (touched 10 minutes ago)
-      // In Phase 1: Reference expires based on createdAt (24 minutes > 15 minute TTL)
-      expect(referenceStore.get(referenceId)).toBeDefined();
+      // get() should auto-touch
+      const ref = referenceStore.get(referenceId)!;
+      expect(ref.lastAccessedAt).toBe(now + (5 * 60 * 1000));
 
       vi.useRealTimers();
     });
@@ -338,6 +319,102 @@ describe('Reference Lifecycle Management', () => {
       expect(updatedRef.lastAccessedAt).toBeGreaterThan(originalLastAccessed);
 
       vi.useRealTimers();
+    });
+  });
+
+  describe('Delete', () => {
+    it('should remove a specific reference', () => {
+      const refId = referenceStore.create('Mail', 'mailbox', {
+        type: 'named',
+        element: 'mailbox',
+        name: 'inbox',
+        container: 'application'
+      });
+
+      expect(referenceStore.get(refId)).toBeDefined();
+
+      const result = referenceStore.delete(refId);
+      expect(result).toBe(true);
+      expect(referenceStore.get(refId)).toBeUndefined();
+    });
+
+    it('should return false for non-existent reference', () => {
+      const result = referenceStore.delete('ref_nonexistent');
+      expect(result).toBe(false);
+    });
+
+    it('should not affect other references when deleting one', () => {
+      const ref1 = referenceStore.create('Mail', 'mailbox', {
+        type: 'named',
+        element: 'mailbox',
+        name: 'inbox',
+        container: 'application'
+      });
+
+      const ref2 = referenceStore.create('Finder', 'window', {
+        type: 'element',
+        element: 'window',
+        index: 0,
+        container: 'application'
+      });
+
+      referenceStore.delete(ref1);
+
+      expect(referenceStore.get(ref1)).toBeUndefined();
+      expect(referenceStore.get(ref2)).toBeDefined();
+    });
+  });
+
+  describe('LRU Eviction', () => {
+    it('should evict least recently used when over capacity', () => {
+      vi.useFakeTimers();
+      const now = Date.now();
+      vi.setSystemTime(now);
+
+      const smallStore = new ReferenceStore(3);
+
+      const ref1 = smallStore.create('Mail', 'mailbox', {
+        type: 'named', element: 'mailbox', name: 'inbox', container: 'application'
+      });
+      vi.advanceTimersByTime(10);
+      const ref2 = smallStore.create('Mail', 'mailbox', {
+        type: 'named', element: 'mailbox', name: 'drafts', container: 'application'
+      });
+      vi.advanceTimersByTime(10);
+      const ref3 = smallStore.create('Finder', 'window', {
+        type: 'element', element: 'window', index: 0, container: 'application'
+      });
+
+      expect(smallStore.getStats().totalReferences).toBe(3);
+
+      // Touch ref1 to make it the most recently accessed
+      vi.advanceTimersByTime(10);
+      smallStore.touch(ref1);
+
+      // Add a 4th — should evict ref2 (least recently accessed)
+      vi.advanceTimersByTime(10);
+      const ref4 = smallStore.create('Finder', 'window', {
+        type: 'element', element: 'window', index: 1, container: 'application'
+      });
+
+      expect(smallStore.getStats().totalReferences).toBe(3);
+      expect(smallStore.get(ref1)).toBeDefined();  // recently touched
+      expect(smallStore.get(ref4)).toBeDefined();  // just created
+      // ref2 was evicted (oldest lastAccessedAt)
+
+      vi.useRealTimers();
+    });
+
+    it('should not evict when below capacity', () => {
+      const smallStore = new ReferenceStore(5);
+
+      for (let i = 0; i < 5; i++) {
+        smallStore.create('Mail', 'mailbox', {
+          type: 'named', element: 'mailbox', name: `box-${i}`, container: 'application'
+        });
+      }
+
+      expect(smallStore.getStats().totalReferences).toBe(5);
     });
   });
 
@@ -377,59 +454,10 @@ describe('Reference Lifecycle Management', () => {
       await queryExecutor.queryObject('Mail', spec);
 
       const stats = referenceStore.getStats();
-      // In Phase 1, totalReferences tracks all current references
       expect(stats.totalReferences).toBeGreaterThan(0);
     });
 
-    it('should update active count after cleanup', () => {
-      vi.useFakeTimers();
-      const now = Date.now();
-      vi.setSystemTime(now);
-
-      referenceStore.create('Mail', 'mailbox', {
-        type: 'named',
-        element: 'mailbox',
-        name: 'inbox',
-        container: 'application'
-      });
-
-      const statsBeforeCleanup = referenceStore.getStats();
-      // In Phase 1, totalReferences tracks all current references
-      expect(statsBeforeCleanup.totalReferences).toBe(1);
-
-      // Expire reference
-      vi.advanceTimersByTime((15 * 60 * 1000) + 1000);
-      referenceStore.cleanup();
-
-      const statsAfterCleanup = referenceStore.getStats();
-      expect(statsAfterCleanup.totalReferences).toBe(0);
-
-      vi.useRealTimers();
-    });
-
-    // NOTE: lastCleanup tracking is planned for Phase 4 (LRU-based cleanup)
-    // Phase 1 uses simple TTL-based cleanup without tracking cleanup times
-    it.skip('should track last cleanup time (Phase 4 feature)', () => {
-      vi.useFakeTimers();
-      const now = Date.now();
-      vi.setSystemTime(now);
-
-      referenceStore.cleanup();
-
-      const stats = referenceStore.getStats();
-      // Phase 4 will add lastCleanup to ReferenceStats
-      // expect(stats.lastCleanup).toBe(now);
-
-      vi.useRealTimers();
-    });
-  });
-
-  describe('Cleanup Mechanism', () => {
-    it('should remove only expired references', () => {
-      vi.useFakeTimers();
-      const now = Date.now();
-      vi.setSystemTime(now);
-
+    it('should update count after delete', () => {
       const ref1 = referenceStore.create('Mail', 'mailbox', {
         type: 'named',
         element: 'mailbox',
@@ -437,49 +465,34 @@ describe('Reference Lifecycle Management', () => {
         container: 'application'
       });
 
-      // Advance time 10 minutes
-      vi.advanceTimersByTime(10 * 60 * 1000);
-
-      const ref2 = referenceStore.create('Mail', 'mailbox', {
+      referenceStore.create('Mail', 'mailbox', {
         type: 'named',
         element: 'mailbox',
         name: 'drafts',
         container: 'application'
       });
 
-      const ref3 = referenceStore.create('Finder', 'window', {
-        type: 'element',
-        element: 'window',
-        index: 0,
-        container: 'application'
-      });
+      expect(referenceStore.getStats().totalReferences).toBe(2);
 
-      // Advance time 10 minutes (ref1 at 20 min, ref2/ref3 at 10 min)
-      vi.advanceTimersByTime(10 * 60 * 1000);
-
-      referenceStore.cleanup();
-
-      expect(referenceStore.get(ref1)).toBeUndefined();
-      expect(referenceStore.get(ref2)).toBeDefined();
-      expect(referenceStore.get(ref3)).toBeDefined();
-
-      vi.useRealTimers();
+      referenceStore.delete(ref1);
+      expect(referenceStore.getStats().totalReferences).toBe(1);
     });
+  });
 
-    it('should be safe to call cleanup multiple times', () => {
-      referenceStore.cleanup();
-      referenceStore.cleanup();
-      referenceStore.cleanup();
+  describe('Backward Compatibility', () => {
+    it('should be safe to call stopCleanup multiple times', () => {
+      referenceStore.stopCleanup();
+      referenceStore.stopCleanup();
+      referenceStore.stopCleanup();
 
       // Should not throw
       expect(true).toBe(true);
     });
 
-    it('should handle cleanup with no references', () => {
-      referenceStore.cleanup();
+    it('should handle clear with no references', () => {
+      referenceStore.clear();
 
       const stats = referenceStore.getStats();
-      // In Phase 1, totalReferences tracks all current references
       expect(stats.totalReferences).toBe(0);
     });
   });

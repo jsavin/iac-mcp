@@ -1,11 +1,13 @@
 /**
- * ReferenceStore - Manages stateful object references with TTL-based cleanup
+ * ReferenceStore - Manages stateful object references with LRU eviction
  *
- * Stores references to macOS application objects and automatically cleans up
- * expired references based on a time-to-live (TTL) value.
+ * Stores references to macOS application objects. References are specifier
+ * chains (data describing how to resolve an object), not live handles —
+ * there's no app-side resource to clean up. A reference is valid as long
+ * as the underlying object exists in the application.
  *
- * Phase 1: TTL-based cleanup (createdAt)
- * Phase 4: Will add LRU-based cleanup (lastAccessedAt)
+ * Eviction: LRU-based when store exceeds maxReferences cap. No TTL —
+ * references live until evicted or the store is cleared.
  *
  * Debug logging: Set IAC_MCP_DEBUG_REFS=true to enable lifecycle logging
  */
@@ -29,18 +31,19 @@ function logRef(event: string, data?: Record<string, unknown>): void {
   }
 }
 
+/** Default maximum number of references before LRU eviction kicks in */
+const DEFAULT_MAX_REFERENCES = 1000;
+
 export class ReferenceStore {
   private references = new Map<string, ObjectReference>();
-  private ttl: number; // Default 15 minutes (900,000ms)
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private maxReferences: number;
 
   /**
    * Create a new ReferenceStore
-   * @param ttl Time-to-live in milliseconds (default: 15 minutes)
+   * @param maxReferences Maximum references before LRU eviction (default: 1000)
    */
-  constructor(ttl: number = 15 * 60 * 1000) {
-    this.ttl = ttl;
-    this.startCleanup();
+  constructor(maxReferences: number = DEFAULT_MAX_REFERENCES) {
+    this.maxReferences = maxReferences;
   }
 
   /**
@@ -65,11 +68,15 @@ export class ReferenceStore {
 
     this.references.set(id, reference);
     logRef("created", { id, app, type, specifier: specifier.type });
+
+    // Evict least recently used references if over capacity
+    this.evictIfNeeded();
+
     return id;
   }
 
   /**
-   * Get reference by ID
+   * Get reference by ID, automatically updating lastAccessedAt.
    * @param id Reference ID
    * @returns ObjectReference or undefined if not found
    */
@@ -77,7 +84,11 @@ export class ReferenceStore {
     const ref = this.references.get(id);
     if (!ref) {
       logRef("not_found", { id });
+      return undefined;
     }
+    // Auto-touch on access
+    ref.lastAccessedAt = Date.now();
+    logRef("accessed", { id, ageMs: Date.now() - ref.createdAt });
     return ref;
   }
 
@@ -95,33 +106,45 @@ export class ReferenceStore {
   }
 
   /**
-   * Remove expired references (TTL-based)
-   *
-   * Phase 1: Removes references where (now - createdAt) > TTL
-   * Phase 4: Will use LRU-based on lastAccessedAt
+   * Remove a specific reference by ID.
+   * Used when a reference is known to be stale (object no longer exists).
+   * @param id Reference ID to remove
+   * @returns true if the reference was found and removed, false otherwise
    */
-  cleanup(): void {
-    const now = Date.now();
-    const expired: string[] = [];
+  delete(id: string): boolean {
+    const existed = this.references.delete(id);
+    if (existed) {
+      logRef("deleted", { id });
+    }
+    return existed;
+  }
 
-    for (const [id, ref] of this.references) {
-      if (now - ref.createdAt > this.ttl) {
-        expired.push(id);
-        const exceededBy = now - ref.createdAt - this.ttl;
-        logRef("expired", { id, exceededByMs: exceededBy });
-      }
+  /**
+   * Evict least recently used references when store exceeds capacity.
+   * Removes the oldest (by lastAccessedAt) references to bring
+   * the store back to maxReferences.
+   */
+  evictIfNeeded(): void {
+    if (this.references.size <= this.maxReferences) {
+      return;
     }
 
-    for (const id of expired) {
+    const toEvict = this.references.size - this.maxReferences;
+
+    // Sort by lastAccessedAt ascending (least recently used first)
+    const sorted = [...this.references.entries()]
+      .sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt);
+
+    for (let i = 0; i < toEvict; i++) {
+      const [id] = sorted[i];
       this.references.delete(id);
+      logRef("evicted", { id, reason: "lru" });
     }
 
-    if (expired.length > 0 || DEBUG_REFS) {
-      logRef("cleanup_complete", {
-        removed: expired.length,
-        remaining: this.references.size
-      });
-    }
+    logRef("eviction_complete", {
+      evicted: toEvict,
+      remaining: this.references.size
+    });
   }
 
   /**
@@ -148,23 +171,11 @@ export class ReferenceStore {
   }
 
   /**
-   * Start automatic cleanup timer (every 5 minutes)
-   * @private
-   */
-  private startCleanup(): void {
-    this.cleanupInterval = setInterval(() => {
-      this.cleanup();
-    }, 5 * 60 * 1000); // 5 minutes
-  }
-
-  /**
-   * Stop automatic cleanup (for testing)
+   * Stop automatic cleanup (kept for backward compatibility with tests)
    */
   stopCleanup(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
-    }
+    // No-op: TTL-based cleanup has been removed.
+    // Kept for backward compatibility with existing test teardown.
   }
 
   /**
