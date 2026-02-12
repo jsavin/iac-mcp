@@ -223,18 +223,23 @@ These tools collapse common multi-step workflows into single calls.
 
 ### 4.2 Reference Lifetime Management
 
-**Problem**: References expire after 15 minutes. Need to re-query after restart.
+**Problem**: References expire after an artificial 15-minute TTL. But our references are *specifier chains* (data describing how to resolve an object), not live JXA handles. There's no app-side resource to clean up. The specifier is valid as long as the underlying object exists in the app — a Mail message ID lasts as long as the message exists, a window reference lasts while the window is open, a menu bar reference is effectively permanent.
 
-**Solution**: Add `validate_reference` tool and store human-readable paths for recreation.
+**Insight**: The 15-minute TTL solves a non-problem (memory leak of small data objects) while creating a real problem (forcing expensive re-queries of perfectly valid references).
 
-**Tool Schema**:
-```typescript
-{
-  name: "validate_reference",
-  inputSchema: { ref_id: string }
-}
-// Returns: { valid: boolean, expires_in_seconds?: number, path?: string }
-```
+**Solution**: Remove the TTL entirely. Instead, validate references on access — when a specifier fails to resolve at execution time, return a clear error telling the LLM to re-create the reference.
+
+**Implementation**:
+- File: `src/execution/reference-store.ts`
+  - Remove TTL-based cleanup entirely (constructor TTL param, `cleanup()`, `startCleanup()`, cleanup interval)
+  - Add LRU eviction with a size cap (e.g., 1000 references) using `lastAccessedAt`
+  - `touch()` already updates `lastAccessedAt` — ensure it's called on every `get()`
+  - Keep `clear()` and `stopCleanup()` for testing
+- File: `src/mcp/handlers.ts` (or wherever references are resolved)
+  - When JXA execution fails with "Can't get" or similar resolution errors, detect this and return an error like:
+    `"Reference ref_xxx is no longer valid (the referenced object may have been closed or deleted). Please re-query the object to get a fresh reference."`
+  - Remove the stale reference from the store automatically
+- File: Update existing tests to reflect no-TTL behavior
 
 **Effort**: ~3-4 hours
 
