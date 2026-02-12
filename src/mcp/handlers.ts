@@ -1654,7 +1654,7 @@ async function handleGetProperties(
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
-            error: 'reference_invalid',
+            error: 'reference_not_found',
             reference: params.reference,
             message: 'The referenced object no longer exists or has been evicted from the store. The object may have been closed, deleted, or the reference was evicted due to store capacity.',
             suggestion: 'Re-query the object using get_elements or get_properties with a fresh specifier to obtain a new reference.',
@@ -1798,7 +1798,7 @@ async function handleGetElements(
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
-            error: 'reference_invalid',
+            error: 'reference_not_found',
             message: 'The referenced container object no longer exists or has been evicted from the store. The object may have been closed, deleted, or the reference was evicted due to store capacity.',
             suggestion: 'Re-query the container object using get_elements with a fresh specifier to obtain a new reference.',
           }),
@@ -1888,7 +1888,7 @@ async function handleSetProperty(
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
-            error: 'reference_invalid',
+            error: 'reference_not_found',
             reference: params.reference,
             message: 'The referenced object no longer exists or has been evicted from the store. The object may have been closed, deleted, or the reference was evicted due to store capacity.',
             suggestion: 'Re-query the object using get_elements or get_properties with a fresh specifier to obtain a new reference.',

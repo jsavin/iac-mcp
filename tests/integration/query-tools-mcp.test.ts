@@ -316,8 +316,8 @@ describe('Query Tools MCP Integration', () => {
       expect(response.content[0].type).toBe('text');
 
       const result = JSON.parse(response.content[0].text);
-      // Error response format: { error: 'reference_invalid', ... }
-      expect(result.error).toBe('reference_invalid');
+      // Error response format: { error: 'reference_not_found', ... }
+      expect(result.error).toBe('reference_not_found');
     });
   });
 
@@ -387,8 +387,8 @@ describe('Query Tools MCP Integration', () => {
       expect(response.content[0].type).toBe('text');
 
       const result = JSON.parse(response.content[0].text);
-      // Error response format: { error: 'reference_invalid', ... }
-      expect(result.error).toBe('reference_invalid');
+      // Error response format: { error: 'reference_not_found', ... }
+      expect(result.error).toBe('reference_not_found');
     });
 
     it('should handle different value types (string)', async () => {
@@ -614,8 +614,8 @@ describe('Query Tools MCP Integration', () => {
       expect(response.content[0].type).toBe('text');
 
       const result = JSON.parse(response.content[0].text);
-      // Error response format: { error: 'reference_invalid', ... }
-      expect(result.error).toBe('reference_invalid');
+      // Error response format: { error: 'reference_not_found', ... }
+      expect(result.error).toBe('reference_not_found');
     });
   });
 

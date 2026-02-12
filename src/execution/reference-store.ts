@@ -57,6 +57,10 @@ export class ReferenceStore {
     const id = this.generateId();
     const now = Date.now();
 
+    // Evict BEFORE inserting to ensure the new reference is never
+    // a candidate for immediate eviction (same-millisecond race)
+    this.evictIfNeeded();
+
     const reference: ObjectReference = {
       id,
       app,
@@ -69,14 +73,12 @@ export class ReferenceStore {
     this.references.set(id, reference);
     logRef("created", { id, app, type, specifier: specifier.type });
 
-    // Evict least recently used references if over capacity
-    this.evictIfNeeded();
-
     return id;
   }
 
   /**
    * Get reference by ID, automatically updating lastAccessedAt.
+   * @sideEffect Mutates the reference's lastAccessedAt to Date.now()
    * @param id Reference ID
    * @returns ObjectReference or undefined if not found
    */
@@ -123,13 +125,18 @@ export class ReferenceStore {
    * Evict least recently used references when store exceeds capacity.
    * Removes the oldest (by lastAccessedAt) references to bring
    * the store back to maxReferences.
+   *
+   * Performance: O(n log n) due to sort. Acceptable at the default 1000-ref
+   * cap. If maxReferences grows significantly (>10k), consider replacing
+   * with a min-heap or doubly-linked list for O(1) eviction.
    */
   evictIfNeeded(): void {
-    if (this.references.size <= this.maxReferences) {
+    if (this.references.size < this.maxReferences) {
       return;
     }
 
-    const toEvict = this.references.size - this.maxReferences;
+    // Evict enough to make room for one new entry
+    const toEvict = this.references.size - this.maxReferences + 1;  // +1 to free a slot
 
     // Sort by lastAccessedAt ascending (least recently used first)
     const sorted = [...this.references.entries()]

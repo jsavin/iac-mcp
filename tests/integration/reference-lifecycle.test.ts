@@ -405,6 +405,36 @@ describe('Reference Lifecycle Management', () => {
       vi.useRealTimers();
     });
 
+    it('should never evict a just-created reference even with same timestamps', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(1000);
+
+      const smallStore = new ReferenceStore(2);
+
+      // All 3 created at exact same timestamp
+      const ref1 = smallStore.create('Mail', 'mailbox', {
+        type: 'named', element: 'mailbox', name: 'inbox', container: 'application'
+      });
+      const ref2 = smallStore.create('Mail', 'mailbox', {
+        type: 'named', element: 'mailbox', name: 'drafts', container: 'application'
+      });
+      const ref3 = smallStore.create('Mail', 'mailbox', {
+        type: 'named', element: 'mailbox', name: 'sent', container: 'application'
+      });
+
+      // Store should be at capacity
+      expect(smallStore.getStats().totalReferences).toBe(2);
+
+      // The most recently created ref must always survive
+      expect(smallStore.get(ref3)).toBeDefined();
+
+      // ref1 should have been evicted (inserted first, so oldest in Map order)
+      // ref2 or ref3 survive — but ref3 is guaranteed since eviction
+      // happens before its insertion
+
+      vi.useRealTimers();
+    });
+
     it('should not evict when below capacity', () => {
       const smallStore = new ReferenceStore(5);
 

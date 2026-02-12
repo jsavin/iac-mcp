@@ -387,8 +387,8 @@ describe('Query Workflows Integration', () => {
       const response = await server['handleRequest'](request);
       const result = JSON.parse(response.content[0].text);
 
-      // Error response format: { error: 'reference_invalid', reference: '...', ... }
-      expect(result.error).toBe('reference_invalid');
+      // Error response format: { error: 'reference_not_found', reference: '...', ... }
+      expect(result.error).toBe('reference_not_found');
       expect(result.reference).toBe('ref_invalid123');
     });
 
@@ -408,8 +408,8 @@ describe('Query Workflows Integration', () => {
       const response = await server['handleRequest'](request);
       const result = JSON.parse(response.content[0].text);
 
-      // Error response format: { error: 'reference_invalid', ... }
-      expect(result.error).toBe('reference_invalid');
+      // Error response format: { error: 'reference_not_found', ... }
+      expect(result.error).toBe('reference_not_found');
     });
 
     it('should provide helpful error for expired reference', async () => {
@@ -428,8 +428,8 @@ describe('Query Workflows Integration', () => {
       const response = await server['handleRequest'](request);
       const result = JSON.parse(response.content[0].text);
 
-      // Error response format: { error: 'reference_invalid', suggestion: '...' }
-      expect(result.error).toBe('reference_invalid');
+      // Error response format: { error: 'reference_not_found', suggestion: '...' }
+      expect(result.error).toBe('reference_not_found');
       expect(result.suggestion).toBeDefined();
     });
 
