@@ -3003,4 +3003,180 @@ describe('QueryExecutor', () => {
       });
     });
   });
+
+  describe('getPropertiesBatch()', () => {
+    it('should return empty array for empty input', async () => {
+      const results = await queryExecutor.getPropertiesBatch([]);
+      expect(results).toEqual([]);
+    });
+
+    it('should return empty properties for valid refs without JXA executor', async () => {
+      const spec1: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'inbox', container: 'application' };
+      const spec2: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'sent', container: 'application' };
+
+      const ref1 = await queryExecutor.queryObject('Mail', spec1);
+      const ref2 = await queryExecutor.queryObject('Mail', spec2);
+
+      const results = await queryExecutor.getPropertiesBatch([ref1.id, ref2.id]);
+      expect(results).toHaveLength(2);
+      expect(results[0]).toEqual({ referenceId: ref1.id, properties: {} });
+      expect(results[1]).toEqual({ referenceId: ref2.id, properties: {} });
+    });
+
+    it('should return error for missing references', async () => {
+      const results = await queryExecutor.getPropertiesBatch(['ref_nonexistent']);
+      expect(results).toHaveLength(1);
+      expect(results[0]).toHaveProperty('error');
+      expect((results[0] as any).error).toContain('Reference not found');
+    });
+
+    it('should handle partial failure (one valid, one missing)', async () => {
+      const spec: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'inbox', container: 'application' };
+      const ref = await queryExecutor.queryObject('Mail', spec);
+
+      const results = await queryExecutor.getPropertiesBatch([ref.id, 'ref_missing']);
+      expect(results).toHaveLength(2);
+      expect(results[0]).toEqual({ referenceId: ref.id, properties: {} });
+      expect(results[1]).toHaveProperty('error');
+    });
+
+    it('should preserve original order of reference IDs', async () => {
+      const spec1: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'inbox', container: 'application' };
+      const spec2: NamedSpecifier = { type: 'named', element: 'folder', name: 'Desktop', container: 'application' };
+      const spec3: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'sent', container: 'application' };
+
+      const ref1 = await queryExecutor.queryObject('Mail', spec1);
+      const ref2 = await queryExecutor.queryObject('Finder', spec2);
+      const ref3 = await queryExecutor.queryObject('Mail', spec3);
+
+      const results = await queryExecutor.getPropertiesBatch([ref1.id, ref2.id, ref3.id]);
+      expect(results).toHaveLength(3);
+      expect(results[0]!.referenceId).toBe(ref1.id);
+      expect(results[1]!.referenceId).toBe(ref2.id);
+      expect(results[2]!.referenceId).toBe(ref3.id);
+    });
+
+    describe('with JXA executor', () => {
+      it('should batch references from same app into single JXA call', async () => {
+        const executeCalls: string[] = [];
+        const mockJxaExecutor = {
+          execute: async (code: string) => {
+            executeCalls.push(code);
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify([
+                { idx: 0, props: { subject: 'Hello' } },
+                { idx: 1, props: { subject: 'World' } }
+              ]),
+              stderr: ''
+            };
+          }
+        };
+
+        const store = new ReferenceStore();
+        const executor = new QueryExecutor(store, mockJxaExecutor as any);
+
+        const spec1: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'inbox', container: 'application' };
+        const spec2: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'sent', container: 'application' };
+
+        const ref1 = await executor.queryObject('Mail', spec1);
+        const ref2 = await executor.queryObject('Mail', spec2);
+
+        const results = await executor.getPropertiesBatch([ref1.id, ref2.id], ['subject']);
+
+        // Should be 1 JXA call (both refs from same app)
+        expect(executeCalls).toHaveLength(1);
+        expect(results).toHaveLength(2);
+        expect((results[0] as any).properties.subject).toBe('Hello');
+        expect((results[1] as any).properties.subject).toBe('World');
+      });
+
+      it('should run different apps concurrently', async () => {
+        const executeCalls: string[] = [];
+        const mockJxaExecutor = {
+          execute: async (code: string) => {
+            executeCalls.push(code);
+            if (code.includes('Application("Mail")')) {
+              return {
+                exitCode: 0,
+                stdout: JSON.stringify([{ idx: 0, props: { subject: 'Mail msg' } }]),
+                stderr: ''
+              };
+            }
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify([{ idx: 0, props: { name: 'Desktop' } }]),
+              stderr: ''
+            };
+          }
+        };
+
+        const store = new ReferenceStore();
+        const executor = new QueryExecutor(store, mockJxaExecutor as any);
+
+        const mailSpec: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'inbox', container: 'application' };
+        const finderSpec: NamedSpecifier = { type: 'named', element: 'folder', name: 'Desktop', container: 'application' };
+
+        const mailRef = await executor.queryObject('Mail', mailSpec);
+        const finderRef = await executor.queryObject('Finder', finderSpec);
+
+        const results = await executor.getPropertiesBatch([mailRef.id, finderRef.id], ['subject']);
+
+        // Should be 2 JXA calls (different apps)
+        expect(executeCalls).toHaveLength(2);
+        expect(results).toHaveLength(2);
+        expect(results[0]!.referenceId).toBe(mailRef.id);
+        expect(results[1]!.referenceId).toBe(finderRef.id);
+      });
+
+      it('should handle per-reference errors from JXA', async () => {
+        const mockJxaExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify([
+              { idx: 0, props: { subject: 'Works' } },
+              { idx: 1, error: 'Object not found' }
+            ]),
+            stderr: ''
+          })
+        };
+
+        const store = new ReferenceStore();
+        const executor = new QueryExecutor(store, mockJxaExecutor as any);
+
+        const spec1: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'inbox', container: 'application' };
+        const spec2: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'sent', container: 'application' };
+
+        const ref1 = await executor.queryObject('Mail', spec1);
+        const ref2 = await executor.queryObject('Mail', spec2);
+
+        const results = await executor.getPropertiesBatch([ref1.id, ref2.id], ['subject']);
+        expect(results).toHaveLength(2);
+        expect((results[0] as any).properties.subject).toBe('Works');
+        expect((results[1] as any).error).toBe('Object not found');
+      });
+
+      it('should get all properties when none specified', async () => {
+        const mockJxaExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify([
+              { idx: 0, props: { name: 'INBOX', unreadCount: 5 } }
+            ]),
+            stderr: ''
+          })
+        };
+
+        const store = new ReferenceStore();
+        const executor = new QueryExecutor(store, mockJxaExecutor as any);
+
+        const spec: NamedSpecifier = { type: 'named', element: 'mailbox', name: 'inbox', container: 'application' };
+        const ref = await executor.queryObject('Mail', spec);
+
+        const results = await executor.getPropertiesBatch([ref.id]);
+        expect(results).toHaveLength(1);
+        expect((results[0] as any).properties).toEqual({ name: 'INBOX', unreadCount: 5 });
+      });
+    });
+  });
 });

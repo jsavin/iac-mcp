@@ -3,11 +3,11 @@ import { generateQueryTools } from "../../../../src/jitd/tool-generator/query-to
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 describe("generateQueryTools", () => {
-  describe("Function Returns 5 Tools", () => {
-    it("should return an array of 5 tools", () => {
+  describe("Function Returns 6 Tools", () => {
+    it("should return an array of 6 tools", () => {
       const tools = generateQueryTools();
       expect(tools).toBeInstanceOf(Array);
-      expect(tools).toHaveLength(5);
+      expect(tools).toHaveLength(6);
     });
 
     it("should return tools with name, description, and inputSchema", () => {
@@ -339,6 +339,48 @@ describe("generateQueryTools", () => {
           }
         });
       });
+    });
+  });
+
+  describe("Tool 6: get_properties_batch", () => {
+    let batchTool: Tool;
+
+    beforeEach(() => {
+      const tools = generateQueryTools();
+      batchTool = tools.find((t) => t.name === "iac_mcp_get_properties_batch")!;
+    });
+
+    it("should have correct name", () => {
+      expect(batchTool.name).toBe("iac_mcp_get_properties_batch");
+    });
+
+    it("should have description mentioning batch and multiple references", () => {
+      expect(batchTool.description).toContain("batch");
+      expect(batchTool.description).toContain("multiple");
+    });
+
+    it("should have inputSchema with references and properties parameters", () => {
+      const schema = batchTool.inputSchema as any;
+      expect(schema.type).toBe("object");
+      expect(schema.properties).toHaveProperty("references");
+      expect(schema.properties).toHaveProperty("properties");
+    });
+
+    it("should require only references", () => {
+      const schema = batchTool.inputSchema as any;
+      expect(schema.required).toEqual(["references"]);
+    });
+
+    it("should have references as array of strings", () => {
+      const schema = batchTool.inputSchema as any;
+      expect(schema.properties.references.type).toBe("array");
+      expect(schema.properties.references.items.type).toBe("string");
+    });
+
+    it("should have properties as optional array of strings", () => {
+      const schema = batchTool.inputSchema as any;
+      expect(schema.properties.properties.type).toBe("array");
+      expect(schema.properties.properties.items.type).toBe("string");
     });
   });
 

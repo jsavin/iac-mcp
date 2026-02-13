@@ -4,7 +4,7 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
  * Generates MCP tool definitions for stateful object queries.
  * These tools are app-independent and work with any scriptable application.
  *
- * @returns Array of 5 MCP tools: query_object, get_properties, set_property, get_elements, get_elements_with_properties
+ * @returns Array of 6 MCP tools: query_object, get_properties, set_property, get_elements, get_elements_with_properties, get_properties_batch
  */
 export function generateQueryTools(): Tool[] {
   return [
@@ -335,6 +335,49 @@ Get files with name and size:
           },
         },
         required: ["container", "elementType", "properties"],
+      },
+    },
+
+    // Tool 6: get_properties_batch - Batch get properties for multiple references
+    {
+      name: "iac_mcp_get_properties_batch",
+      description: `Get properties for multiple referenced objects in a single batch call. Reduces N separate get_properties calls to 1.
+
+**Usage:**
+1. Obtain multiple references (e.g., from get_properties returning reference lists, or from get_elements)
+2. Pass all reference IDs to this tool
+3. Receive all properties in one response
+
+**Examples:**
+
+Get subjects of selected messages:
+- references: ["ref_abc1", "ref_abc2", "ref_abc3"] (from get_properties on selectedMessages)
+- properties: ["subject", "sender"]
+
+Get names and sizes of multiple files:
+- references: ["ref_file1", "ref_file2", "ref_file3"]
+- properties: ["name", "size"]
+
+**Performance:** References from the same app are batched into a single JXA call. References from different apps run concurrently.
+
+**Error Resilience:** If one reference fails (e.g., expired), its entry gets an error field while others succeed normally.`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          references: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Array of reference IDs to fetch properties for (format: ref_<uuid>)",
+          },
+          properties: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Specific property names to retrieve. Omit or set to null to get all available properties.",
+          },
+        },
+        required: ["references"],
       },
     },
   ];

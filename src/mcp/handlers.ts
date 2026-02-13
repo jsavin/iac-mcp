@@ -433,6 +433,23 @@ function isGetElementsWithPropertiesParams(value: unknown): value is GetElements
 }
 
 /**
+ * Type guard for iac_mcp_get_properties_batch parameters
+ * Runtime validation of parameter structure
+ */
+interface GetPropertiesBatchParams {
+  references: string[];
+  properties?: string[];
+}
+
+function isGetPropertiesBatchParams(value: unknown): value is GetPropertiesBatchParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (!Array.isArray(obj.references)) return false;
+  if (obj.properties !== undefined && !Array.isArray(obj.properties)) return false;
+  return true;
+}
+
+/**
  * Check if a warning is security-related
  *
  * @param warning - Parse warning to check
@@ -1033,6 +1050,22 @@ export async function setupHandlers(
           };
         }
         return await handleGetElementsWithProperties(queryExecutor, args);
+      }
+
+      if (toolName === 'iac_mcp_get_properties_batch') {
+        if (!isGetPropertiesBatchParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_get_properties_batch. Expected: { references: string[], properties?: string[] }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        return await handleGetPropertiesBatch(queryExecutor, args);
       }
 
       // Check for execute_app_command
@@ -2107,6 +2140,81 @@ async function handleGetElementsWithProperties(
         isError: true,
       };
     }
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'execution_failed',
+          message,
+        }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle get_properties_batch tool call
+ *
+ * Gets properties for multiple referenced objects in a single batch call.
+ */
+async function handleGetPropertiesBatch(
+  queryExecutor: QueryExecutor,
+  params: { references: string[]; properties?: string[] }
+): Promise<{
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+}> {
+  try {
+    console.error(`[CallTool/get_properties_batch] Batch getting properties for ${params.references.length} references`);
+
+    // Validate parameters
+    if (!Array.isArray(params.references)) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing or invalid "references" parameter. Must be an array of reference IDs.',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    // Validate each reference is a string
+    for (const ref of params.references) {
+      if (typeof ref !== 'string') {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Each reference must be a string (format: ref_<uuid>)',
+            }),
+          }],
+          isError: true,
+        };
+      }
+    }
+
+    const results = await queryExecutor.getPropertiesBatch(
+      params.references,
+      params.properties
+    );
+
+    console.error(`[CallTool/get_properties_batch] Retrieved properties for ${results.length} references`);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ results }),
+      }],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/get_properties_batch] Error: ${message}`);
 
     return {
       content: [{
