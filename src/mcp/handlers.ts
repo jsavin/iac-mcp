@@ -360,6 +360,8 @@ function isQueryObjectParams(value: unknown): value is QueryObjectParams {
 interface GetPropertiesParams {
   reference: string;
   properties?: string[];
+  tail_lines?: number;
+  head_lines?: number;
 }
 
 function isGetPropertiesParams(value: unknown): value is GetPropertiesParams {
@@ -367,6 +369,8 @@ function isGetPropertiesParams(value: unknown): value is GetPropertiesParams {
   const obj = value as Record<string, unknown>;
   if (typeof obj.reference !== 'string') return false;
   if (obj.properties !== undefined && !Array.isArray(obj.properties)) return false;
+  if (obj.tail_lines !== undefined && typeof obj.tail_lines !== 'number') return false;
+  if (obj.head_lines !== undefined && typeof obj.head_lines !== 'number') return false;
   return true;
 }
 
@@ -421,6 +425,8 @@ interface GetElementsWithPropertiesParams {
   properties: string[];
   app?: string;
   limit?: number;
+  tail_lines?: number;
+  head_lines?: number;
 }
 
 function isGetElementsWithPropertiesParams(value: unknown): value is GetElementsWithPropertiesParams {
@@ -431,6 +437,8 @@ function isGetElementsWithPropertiesParams(value: unknown): value is GetElements
   if (typeof obj.container !== 'string' && (typeof obj.container !== 'object' || obj.container === null)) return false;
   if (obj.app !== undefined && typeof obj.app !== 'string') return false;
   if (obj.limit !== undefined && typeof obj.limit !== 'number') return false;
+  if (obj.tail_lines !== undefined && typeof obj.tail_lines !== 'number') return false;
+  if (obj.head_lines !== undefined && typeof obj.head_lines !== 'number') return false;
   return true;
 }
 
@@ -441,6 +449,8 @@ function isGetElementsWithPropertiesParams(value: unknown): value is GetElements
 interface GetPropertiesBatchParams {
   references: string[];
   properties?: string[];
+  tail_lines?: number;
+  head_lines?: number;
 }
 
 function isGetPropertiesBatchParams(value: unknown): value is GetPropertiesBatchParams {
@@ -448,7 +458,54 @@ function isGetPropertiesBatchParams(value: unknown): value is GetPropertiesBatch
   const obj = value as Record<string, unknown>;
   if (!Array.isArray(obj.references)) return false;
   if (obj.properties !== undefined && !Array.isArray(obj.properties)) return false;
+  if (obj.tail_lines !== undefined && typeof obj.tail_lines !== 'number') return false;
+  if (obj.head_lines !== undefined && typeof obj.head_lines !== 'number') return false;
   return true;
+}
+
+/**
+ * Type guard for iac_mcp_get_cached_value parameters
+ * Runtime validation of parameter structure
+ */
+interface GetCachedValueParams {
+  ref: string;
+  tail_lines?: number;
+  head_lines?: number;
+  offset_lines?: number;
+  max_lines?: number;
+}
+
+function isGetCachedValueParams(value: unknown): value is GetCachedValueParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.ref !== 'string') return false;
+  if (obj.tail_lines !== undefined && typeof obj.tail_lines !== 'number') return false;
+  if (obj.head_lines !== undefined && typeof obj.head_lines !== 'number') return false;
+  if (obj.offset_lines !== undefined && typeof obj.offset_lines !== 'number') return false;
+  if (obj.max_lines !== undefined && typeof obj.max_lines !== 'number') return false;
+  return true;
+}
+
+/**
+ * Validate mutual exclusivity of tail_lines and head_lines.
+ * Returns an error response if both are set, or null if valid.
+ */
+function validateLineTruncation(
+  args: { tail_lines?: number; head_lines?: number }
+): { content: Array<{ type: 'text'; text: string }>; isError: true } | null {
+  if (args.tail_lines !== undefined && args.head_lines !== undefined) {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'invalid_parameter',
+          message: 'Cannot specify both tail_lines and head_lines. Use one or the other.',
+        }),
+      }],
+      isError: true,
+    };
+  }
+  return null;
 }
 
 /**
@@ -1001,12 +1058,14 @@ export async function setupHandlers(
               type: 'text' as const,
               text: JSON.stringify({
                 error: 'invalid_parameter',
-                message: 'Invalid parameters for iac_mcp_get_properties. Expected: { reference: string, properties?: string[] }',
+                message: 'Invalid parameters for iac_mcp_get_properties. Expected: { reference: string, properties?: string[], tail_lines?: number, head_lines?: number }',
               }),
             }],
             isError: true,
           };
         }
+        const lineError = validateLineTruncation(args);
+        if (lineError) return lineError;
         return await handleGetProperties(queryExecutor, args);
       }
 
@@ -1049,12 +1108,14 @@ export async function setupHandlers(
               type: 'text' as const,
               text: JSON.stringify({
                 error: 'invalid_parameter',
-                message: 'Invalid parameters for iac_mcp_get_elements_with_properties. Expected: { container: string|object, elementType: string, properties: string[], app?: string, limit?: number }',
+                message: 'Invalid parameters for iac_mcp_get_elements_with_properties. Expected: { container: string|object, elementType: string, properties: string[], app?: string, limit?: number, tail_lines?: number, head_lines?: number }',
               }),
             }],
             isError: true,
           };
         }
+        const lineError = validateLineTruncation(args);
+        if (lineError) return lineError;
         return await handleGetElementsWithProperties(queryExecutor, args);
       }
 
@@ -1065,13 +1126,33 @@ export async function setupHandlers(
               type: 'text' as const,
               text: JSON.stringify({
                 error: 'invalid_parameter',
-                message: 'Invalid parameters for iac_mcp_get_properties_batch. Expected: { references: string[], properties?: string[] }',
+                message: 'Invalid parameters for iac_mcp_get_properties_batch. Expected: { references: string[], properties?: string[], tail_lines?: number, head_lines?: number }',
               }),
             }],
             isError: true,
           };
         }
+        const lineError = validateLineTruncation(args);
+        if (lineError) return lineError;
         return await handleGetPropertiesBatch(queryExecutor, args);
+      }
+
+      if (toolName === 'iac_mcp_get_cached_value') {
+        if (!isGetCachedValueParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_get_cached_value. Expected: { ref: string, tail_lines?: number, head_lines?: number, offset_lines?: number, max_lines?: number }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        const lineError = validateLineTruncation(args);
+        if (lineError) return lineError;
+        return await handleGetCachedValue(queryExecutor, args);
       }
 
       // Check for System Events UI automation tools
@@ -1839,7 +1920,7 @@ async function handleQueryObject(
  */
 async function handleGetProperties(
   queryExecutor: QueryExecutor,
-  params: { reference: string; properties?: string[] }
+  params: { reference: string; properties?: string[]; tail_lines?: number; head_lines?: number }
 ): Promise<{
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
@@ -1861,9 +1942,14 @@ async function handleGetProperties(
       };
     }
 
+    const options = (params.tail_lines !== undefined || params.head_lines !== undefined)
+      ? { tail_lines: params.tail_lines, head_lines: params.head_lines }
+      : undefined;
+
     const properties = await queryExecutor.getProperties(
       params.reference,
-      params.properties
+      params.properties,
+      options
     );
 
     console.error(`[CallTool/get_properties] Retrieved ${Object.keys(properties).length} properties`);
@@ -2161,7 +2247,7 @@ async function handleSetProperty(
  */
 async function handleGetElementsWithProperties(
   queryExecutor: QueryExecutor,
-  params: { container: string | ObjectSpecifier; elementType: string; properties: string[]; app?: string; limit?: number }
+  params: { container: string | ObjectSpecifier; elementType: string; properties: string[]; app?: string; limit?: number; tail_lines?: number; head_lines?: number }
 ): Promise<{
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
@@ -2253,12 +2339,17 @@ async function handleGetElementsWithProperties(
       }
     }
 
+    const lineOptions = (params.tail_lines !== undefined || params.head_lines !== undefined)
+      ? { tail_lines: params.tail_lines, head_lines: params.head_lines }
+      : undefined;
+
     const result = await queryExecutor.getElementsWithProperties(
       params.container,
       params.elementType,
       params.properties,
       params.app,
-      params.limit
+      params.limit,
+      lineOptions
     );
 
     console.error(`[CallTool/get_elements_with_properties] Retrieved ${result.elements.length} elements (total: ${result.count})`);
@@ -2318,7 +2409,7 @@ async function handleGetElementsWithProperties(
  */
 async function handleGetPropertiesBatch(
   queryExecutor: QueryExecutor,
-  params: { references: string[]; properties?: string[] }
+  params: { references: string[]; properties?: string[]; tail_lines?: number; head_lines?: number }
 ): Promise<{
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
@@ -2356,9 +2447,14 @@ async function handleGetPropertiesBatch(
       }
     }
 
+    const lineOptions = (params.tail_lines !== undefined || params.head_lines !== undefined)
+      ? { tail_lines: params.tail_lines, head_lines: params.head_lines }
+      : undefined;
+
     const results = await queryExecutor.getPropertiesBatch(
       params.references,
-      params.properties
+      params.properties,
+      lineOptions
     );
 
     console.error(`[CallTool/get_properties_batch] Retrieved properties for ${results.length} references`);
@@ -2372,6 +2468,80 @@ async function handleGetPropertiesBatch(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[CallTool/get_properties_batch] Error: ${message}`);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'execution_failed',
+          message,
+        }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle get_cached_value tool call
+ *
+ * Retrieves a slice of a cached large property value.
+ */
+async function handleGetCachedValue(
+  queryExecutor: QueryExecutor,
+  params: GetCachedValueParams
+): Promise<{
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+}> {
+  try {
+    console.error(`[CallTool/get_cached_value] Getting cached value: ${params.ref}`);
+
+    if (!params.ref || typeof params.ref !== 'string') {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing or invalid "ref" parameter',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    const result = queryExecutor.getCachedValue(params.ref, {
+      tail_lines: params.tail_lines,
+      head_lines: params.head_lines,
+      offset_lines: params.offset_lines,
+      max_lines: params.max_lines,
+    });
+
+    console.error(`[CallTool/get_cached_value] Returned ${result.lines_returned} lines (total: ${result.total_lines})`);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify(result),
+      }],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/get_cached_value] Error: ${message}`);
+
+    if (message.includes('Cached value not found')) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'cache_miss',
+            ref: params.ref,
+            message: 'The cached value was not found. It may have expired (15-minute TTL). Re-query the property to refresh.',
+          }),
+        }],
+        isError: true,
+      };
+    }
 
     return {
       content: [{

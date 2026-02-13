@@ -4,7 +4,7 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
  * Generates MCP tool definitions for stateful object queries.
  * These tools are app-independent and work with any scriptable application.
  *
- * @returns Array of 6 MCP tools: query_object, get_properties, set_property, get_elements, get_elements_with_properties, get_properties_batch
+ * @returns Array of 7 MCP tools: query_object, get_properties, set_property, get_elements, get_elements_with_properties, get_properties_batch, get_cached_value
  */
 export function generateQueryTools(): Tool[] {
   return [
@@ -110,6 +110,16 @@ Get specific properties:
             items: { type: "string" },
             description:
               "Specific property names to retrieve. Omit or set to null to get all available properties.",
+          },
+          tail_lines: {
+            type: "number",
+            description:
+              "Return only the last N lines of string property values. Useful for large text (e.g., terminal session content). Applied in JXA before transfer. Mutually exclusive with head_lines.",
+          },
+          head_lines: {
+            type: "number",
+            description:
+              "Return only the first N lines of string property values. Applied in JXA before transfer. Mutually exclusive with tail_lines.",
           },
         },
         required: ["reference"],
@@ -333,6 +343,16 @@ Get files with name and size:
               "Maximum number of elements to return (default: 100). Response includes hasMore flag if more exist.",
             default: 100,
           },
+          tail_lines: {
+            type: "number",
+            description:
+              "Return only the last N lines of string property values. Useful for large text (e.g., terminal session content). Applied in JXA before transfer. Mutually exclusive with head_lines.",
+          },
+          head_lines: {
+            type: "number",
+            description:
+              "Return only the first N lines of string property values. Applied in JXA before transfer. Mutually exclusive with tail_lines.",
+          },
         },
         required: ["container", "elementType", "properties"],
       },
@@ -378,8 +398,80 @@ Get names and sizes of multiple files:
             description:
               "Specific property names to retrieve. Omit or set to null to get all available properties.",
           },
+          tail_lines: {
+            type: "number",
+            description:
+              "Return only the last N lines of string property values. Useful for large text (e.g., terminal session content). Applied in JXA before transfer. Mutually exclusive with head_lines.",
+          },
+          head_lines: {
+            type: "number",
+            description:
+              "Return only the first N lines of string property values. Applied in JXA before transfer. Mutually exclusive with tail_lines.",
+          },
         },
         required: ["references"],
+      },
+    },
+
+    // Tool 7: get_cached_value - Retrieve slices of cached large property values
+    {
+      name: "iac_mcp_get_cached_value",
+      description: `Retrieve a slice of a cached large property value. When get_properties returns a _large_value marker, use this tool to page through the full value.
+
+**Usage:**
+1. Call get_properties on an object
+2. If a property value exceeds 50KB, the response contains a _large_value marker with a _cached_ref
+3. Use this tool with the _cached_ref to retrieve slices of the full value
+
+**Example:**
+
+get_properties returns:
+{ "text": { "_large_value": true, "_cached_ref": "cache_abc123", "_total_lines": 12847, "_preview": "..." } }
+
+Retrieve last 50 lines:
+- ref: "cache_abc123"
+- tail_lines: 50
+
+Retrieve first 100 lines:
+- ref: "cache_abc123"
+- head_lines: 100
+
+Retrieve lines 500-600:
+- ref: "cache_abc123"
+- offset_lines: 500
+- head_lines: 100
+
+**Cache Lifetime:** Cached values expire after 15 minutes. If expired, re-query the property to refresh.`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          ref: {
+            type: "string",
+            description:
+              "Cache reference ID (format: cache_<uuid>) from _large_value._cached_ref",
+          },
+          tail_lines: {
+            type: "number",
+            description:
+              "Return last N lines. Mutually exclusive with head_lines.",
+          },
+          head_lines: {
+            type: "number",
+            description:
+              "Return first N lines. Mutually exclusive with tail_lines.",
+          },
+          offset_lines: {
+            type: "number",
+            description:
+              "Skip first N lines before applying head/tail.",
+          },
+          max_lines: {
+            type: "number",
+            description:
+              "Maximum lines to return (default: all after applying head/tail/offset).",
+          },
+        },
+        required: ["ref"],
       },
     },
   ];

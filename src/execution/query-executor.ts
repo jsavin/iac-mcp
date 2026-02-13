@@ -12,6 +12,7 @@ import {
 import { ReferenceStore } from "./reference-store.js";
 import { JXAExecutor } from "../adapters/macos/jxa-executor.js";
 import { ResultParser, JXAError } from "../adapters/macos/result-parser.js";
+import { LargeValueCache, LARGE_VALUE_THRESHOLD, PREVIEW_LINES } from "./large-value-cache.js";
 
 /**
  * Regex for validating JXA-safe identifiers.
@@ -46,10 +47,14 @@ export class QueryExecutor {
    * @param referenceStore - Store for managing object references
    * @param jxaExecutor - Optional JXAExecutor for real JXA execution.
    *                      If not provided, methods return empty/mock results.
+   * @param largeValueCache - Optional cache for large property values.
+   *                          When provided, values exceeding LARGE_VALUE_THRESHOLD
+   *                          are auto-cached and replaced with markers.
    */
   constructor(
     private referenceStore: ReferenceStore,
-    private jxaExecutor?: JXAExecutor
+    private jxaExecutor?: JXAExecutor,
+    private largeValueCache?: LargeValueCache
   ) {
     this.resultParser = new ResultParser();
   }
@@ -98,11 +103,13 @@ export class QueryExecutor {
    *
    * @param referenceId - The ID of the reference
    * @param properties - Optional array of property names to retrieve
+   * @param options - Optional line truncation options
    * @returns Record of property names to values
    */
   async getProperties(
     referenceId: string,
-    properties?: string[]
+    properties?: string[],
+    options?: { tail_lines?: number; head_lines?: number }
   ): Promise<Record<string, any>> {
     // 1. Get reference from store
     const reference = this.referenceStore.get(referenceId);
@@ -131,7 +138,7 @@ export class QueryExecutor {
         const camelProp = this.camelCase(sanitizedProp);
         // Defense-in-depth: escape camelProp even though sanitizeForJxa should prevent dangerous chars
         const escapedProp = this.escapeJxaString(camelProp);
-        return this.buildPropertyAccessorIIFE(escapedProp, 'obj');
+        return this.buildPropertyAccessorIIFE(escapedProp, 'obj', options);
       }).join(', ');
       jxaCode = `(() => {
   const app = Application("${this.escapeJxaString(reference.app)}");
@@ -241,7 +248,8 @@ export class QueryExecutor {
     }
 
     const propertiesResult: Record<string, any> = parsed.data || {};
-    return this.postProcessPropertyReferences(propertiesResult, reference.app, reference.specifier);
+    const postProcessed = this.postProcessPropertyReferences(propertiesResult, reference.app, reference.specifier);
+    return this.processLargeValues(postProcessed, referenceId);
   }
 
   /**
@@ -460,7 +468,8 @@ export class QueryExecutor {
     elementType: string,
     properties: string[],
     app?: string,
-    limit: number = 100
+    limit: number = 100,
+    options?: { tail_lines?: number; head_lines?: number }
   ): Promise<{
     elements: Array<{
       reference: ObjectReference;
@@ -517,7 +526,7 @@ export class QueryExecutor {
 
     const propertyAccessors = sanitizedProps.map(prop => {
       const escaped = this.escapeJxaString(prop);
-      return this.buildPropertyAccessorIIFE(escaped, 'el');
+      return this.buildPropertyAccessorIIFE(escaped, 'el', options);
     }).join(',\n          ');
 
     const jxaCode = `(() => {
@@ -564,10 +573,11 @@ export class QueryExecutor {
         throw new Error('Failed to create element reference');
       }
 
-      // Post-process properties: convert markers to references
-      const processedProps = this.postProcessPropertyReferences(
+      // Post-process properties: convert markers to references, then auto-cache large values
+      const postProcessed = this.postProcessPropertyReferences(
         item.props || {}, resolvedApp, elementSpec
       );
+      const processedProps = this.processLargeValues(postProcessed, referenceId);
 
       return {
         reference,
@@ -592,7 +602,8 @@ export class QueryExecutor {
    */
   async getPropertiesBatch(
     referenceIds: string[],
-    properties?: string[]
+    properties?: string[],
+    options?: { tail_lines?: number; head_lines?: number }
   ): Promise<Array<{ referenceId: string; properties: Record<string, any> } | { referenceId: string; error: string }>> {
     // Handle empty array
     if (referenceIds.length === 0) {
@@ -652,7 +663,7 @@ export class QueryExecutor {
               const sanitizedProp = this.sanitizeForJxa(prop, 'property');
               const camelProp = this.camelCase(sanitizedProp);
               const escapedProp = this.escapeJxaString(camelProp);
-              return this.buildPropertyAccessorIIFE(escapedProp, `obj${idx}`);
+              return this.buildPropertyAccessorIIFE(escapedProp, `obj${idx}`, options);
             }).join(', ');
             return `(() => {
       try {
@@ -741,9 +752,10 @@ export class QueryExecutor {
               index: entry.index,
             });
           } else {
-            const processedProps = this.postProcessPropertyReferences(
+            const postProcessed = this.postProcessPropertyReferences(
               jxaEntry.props || {}, entry.reference.app, entry.reference.specifier
             );
+            const processedProps = this.processLargeValues(postProcessed, entry.referenceId);
             results.push({
               referenceId: entry.referenceId,
               properties: processedProps,
@@ -809,15 +821,44 @@ export class QueryExecutor {
    * - Single-object detection (object_reference marker, with JSON.stringify check
    *   to distinguish real JXA specifiers from plain JS objects like {x:1, y:2})
    * - Per-property error resilience (try-catch returning _error marker)
+   * - Optional line truncation (tail_lines/head_lines) applied in JXA before transfer
    *
    * @param escapedProp - The escaped property name (already sanitized + escaped)
    * @param objVar - The variable name for the target object (e.g., 'obj' or 'el')
+   * @param options - Optional line truncation (tail_lines or head_lines, mutually exclusive)
    * @returns JXA IIFE string for inclusion in a JSON object literal
    */
-  private buildPropertyAccessorIIFE(escapedProp: string, objVar: string): string {
+  private buildPropertyAccessorIIFE(
+    escapedProp: string,
+    objVar: string,
+    options?: { tail_lines?: number; head_lines?: number }
+  ): string {
+    // Build optional line truncation code (only one of tailLines/headLines can be set,
+    // mutual exclusivity is enforced by the handler before calling QueryExecutor)
+    let truncationCode = '';
+    if (options?.tail_lines && options.tail_lines > 0) {
+      const tailLines = Math.floor(options.tail_lines);
+      truncationCode = `
+        if (typeof val === 'string') {
+          var lines = val.split('\\n');
+          if (lines.length > ${tailLines}) {
+            val = lines.slice(-${tailLines}).join('\\n');
+          }
+        }`;
+    } else if (options?.head_lines && options.head_lines > 0) {
+      const headLines = Math.floor(options.head_lines);
+      truncationCode = `
+        if (typeof val === 'string') {
+          var lines = val.split('\\n');
+          if (lines.length > ${headLines}) {
+            val = lines.slice(0, ${headLines}).join('\\n');
+          }
+        }`;
+    }
+
     return `${escapedProp}: (() => {
       try {
-        const val = ${objVar}.${escapedProp}();
+        var val = ${objVar}.${escapedProp}();${truncationCode}
         const isObj = (v) => v !== null && v !== undefined && (typeof v === 'object' || typeof v === 'function');
         if (Array.isArray(val) && val.length > 0 && val.every(item => isObj(item))) {
           try {
@@ -925,6 +966,102 @@ export class QueryExecutor {
 
     const refId = this.referenceStore.create(app, elementType, propertySpec);
     return refId;
+  }
+
+  /**
+   * Auto-cache string values that exceed LARGE_VALUE_THRESHOLD.
+   * Replaces oversized values with a marker containing a preview and cache reference.
+   *
+   * @param props - Properties record (mutated in place)
+   * @param sourceRef - The reference ID of the object that owns these properties
+   * @returns The same record with large values replaced by markers
+   */
+  private processLargeValues(
+    props: Record<string, any>,
+    sourceRef: string
+  ): Record<string, any> {
+    if (!this.largeValueCache) return props;
+
+    for (const key of Object.keys(props)) {
+      const val = props[key];
+      if (typeof val === 'string' && val.length > LARGE_VALUE_THRESHOLD) {
+        const cacheId = this.largeValueCache.store(val, key, sourceRef);
+        const lines = val.split('\n');
+        const previewLines = lines.slice(-PREVIEW_LINES);
+        props[key] = {
+          _large_value: true,
+          _cached_ref: cacheId,
+          _total_lines: lines.length,
+          _total_chars: val.length,
+          _preview: previewLines.join('\n'),
+        };
+      }
+    }
+    return props;
+  }
+
+  /**
+   * Retrieve a slice of a cached large property value.
+   *
+   * @param cacheRef - Cache ID (format: cache_<uuid>)
+   * @param options - Slicing options (tail_lines, head_lines, offset_lines, max_lines)
+   * @returns Sliced value with metadata
+   */
+  getCachedValue(
+    cacheRef: string,
+    options?: { tail_lines?: number; head_lines?: number; offset_lines?: number; max_lines?: number }
+  ): { value: string; total_lines: number; total_chars: number; lines_returned: number; slice: string } {
+    if (!this.largeValueCache) {
+      throw new Error('Large value cache is not available');
+    }
+
+    const cached = this.largeValueCache.get(cacheRef);
+    if (!cached) {
+      throw new Error(`Cached value not found: ${cacheRef}. The value may have expired (15-minute TTL). Re-query the property to refresh.`);
+    }
+
+    let lines = cached.value.split('\n');
+
+    // Apply offset_lines first
+    if (options?.offset_lines && options.offset_lines > 0) {
+      lines = lines.slice(options.offset_lines);
+    }
+
+    // Apply head_lines or tail_lines (mutually exclusive, validated by handler)
+    if (options?.tail_lines && options.tail_lines > 0) {
+      lines = lines.slice(-options.tail_lines);
+    } else if (options?.head_lines && options.head_lines > 0) {
+      lines = lines.slice(0, options.head_lines);
+    }
+
+    // Apply max_lines cap
+    if (options?.max_lines && options.max_lines > 0) {
+      lines = lines.slice(0, options.max_lines);
+    }
+
+    const value = lines.join('\n');
+    return {
+      value,
+      total_lines: cached.totalLines,
+      total_chars: cached.totalChars,
+      lines_returned: lines.length,
+      slice: this.describeSlice(options),
+    };
+  }
+
+  /**
+   * Build a human-readable description of the slice applied.
+   */
+  private describeSlice(
+    options?: { tail_lines?: number; head_lines?: number; offset_lines?: number; max_lines?: number }
+  ): string {
+    if (!options) return 'full';
+    const parts: string[] = [];
+    if (options.offset_lines) parts.push(`offset ${options.offset_lines}`);
+    if (options.tail_lines) parts.push(`tail ${options.tail_lines}`);
+    if (options.head_lines) parts.push(`head ${options.head_lines}`);
+    if (options.max_lines) parts.push(`max ${options.max_lines}`);
+    return parts.length > 0 ? parts.join(', ') : 'full';
   }
 
   /**

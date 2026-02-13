@@ -3,11 +3,11 @@ import { generateQueryTools } from "../../../../src/jitd/tool-generator/query-to
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 describe("generateQueryTools", () => {
-  describe("Function Returns 6 Tools", () => {
-    it("should return an array of 6 tools", () => {
+  describe("Function Returns 7 Tools", () => {
+    it("should return an array of 7 tools", () => {
       const tools = generateQueryTools();
       expect(tools).toBeInstanceOf(Array);
-      expect(tools).toHaveLength(6);
+      expect(tools).toHaveLength(7);
     });
 
     it("should return tools with name, description, and inputSchema", () => {

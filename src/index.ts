@@ -19,6 +19,7 @@ import { ReferenceStore } from './execution/reference-store.js';
 import { QueryExecutor } from './execution/query-executor.js';
 import { JXAExecutor } from './adapters/macos/jxa-executor.js';
 import { SystemEventsExecutor } from './execution/system-events-executor.js';
+import { LargeValueCache } from './execution/large-value-cache.js';
 
 /**
  * Logging utility that writes to stderr (stdout is reserved for MCP protocol)
@@ -64,7 +65,8 @@ async function main(): Promise<void> {
   // Initialize query execution components
   const referenceStore = new ReferenceStore(15 * 60 * 1000); // 15-minute TTL
   const jxaExecutor = new JXAExecutor();
-  const queryExecutor = new QueryExecutor(referenceStore, jxaExecutor);
+  const largeValueCache = new LargeValueCache();
+  const queryExecutor = new QueryExecutor(referenceStore, jxaExecutor, largeValueCache);
   const systemEventsExecutor = new SystemEventsExecutor(referenceStore, jxaExecutor);
 
   // Setup all MCP handlers
