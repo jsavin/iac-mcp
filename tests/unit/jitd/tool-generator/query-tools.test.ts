@@ -3,11 +3,11 @@ import { generateQueryTools } from "../../../../src/jitd/tool-generator/query-to
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 describe("generateQueryTools", () => {
-  describe("Function Returns 4 Tools", () => {
-    it("should return an array of 4 tools", () => {
+  describe("Function Returns 5 Tools", () => {
+    it("should return an array of 5 tools", () => {
       const tools = generateQueryTools();
       expect(tools).toBeInstanceOf(Array);
-      expect(tools).toHaveLength(4);
+      expect(tools).toHaveLength(5);
     });
 
     it("should return tools with name, description, and inputSchema", () => {
@@ -240,6 +240,63 @@ describe("generateQueryTools", () => {
 
     it("should mention elements can be used in further operations", () => {
       expect(getElementsTool.description).toContain("further operations");
+    });
+  });
+
+  describe("Tool 5: get_elements_with_properties", () => {
+    let batchTool: Tool;
+
+    beforeEach(() => {
+      const tools = generateQueryTools();
+      batchTool = tools.find((t) => t.name === "iac_mcp_get_elements_with_properties")!;
+    });
+
+    it("should have correct name", () => {
+      expect(batchTool.name).toBe("iac_mcp_get_elements_with_properties");
+    });
+
+    it("should have description mentioning batch operation", () => {
+      expect(batchTool.description.toLowerCase()).toContain("batch");
+    });
+
+    it("should have inputSchema with container, elementType, properties, app, and limit", () => {
+      const schema = batchTool.inputSchema as any;
+      expect(schema.type).toBe("object");
+      expect(schema.properties).toHaveProperty("container");
+      expect(schema.properties).toHaveProperty("elementType");
+      expect(schema.properties).toHaveProperty("properties");
+      expect(schema.properties).toHaveProperty("app");
+      expect(schema.properties).toHaveProperty("limit");
+    });
+
+    it("should require container, elementType, and properties", () => {
+      const schema = batchTool.inputSchema as any;
+      expect(schema.required).toEqual(
+        expect.arrayContaining(["container", "elementType", "properties"])
+      );
+      expect(schema.required).toHaveLength(3);
+    });
+
+    it("should define container using oneOf (string or object)", () => {
+      const schema = batchTool.inputSchema as any;
+      expect(schema.properties.container.oneOf).toBeDefined();
+      expect(schema.properties.container.oneOf).toHaveLength(2);
+
+      const types = schema.properties.container.oneOf.map((s: any) => s.type);
+      expect(types).toContain("string");
+      expect(types).toContain("object");
+    });
+
+    it("should define properties as array of strings", () => {
+      const schema = batchTool.inputSchema as any;
+      expect(schema.properties.properties.type).toBe("array");
+      expect(schema.properties.properties.items.type).toBe("string");
+    });
+
+    it("should define limit with default value of 100", () => {
+      const schema = batchTool.inputSchema as any;
+      expect(schema.properties.limit.type).toBe("number");
+      expect(schema.properties.limit.default).toBe(100);
     });
   });
 

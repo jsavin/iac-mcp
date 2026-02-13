@@ -2066,5 +2066,749 @@ describe('QueryExecutor', () => {
         expect(refIds).toEqual([]);
       });
     });
+
+    describe('Object reference serialization (single objects)', () => {
+      it('should convert object_reference marker to stored reference ID', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              mailbox: { _type: 'object_reference', property: 'mailbox' }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['mailbox']);
+
+        // Should return a reference ID string, not the raw marker
+        expect(typeof properties.mailbox).toBe('string');
+        expect(properties.mailbox).toMatch(/^ref_/);
+        const storedRef = referenceStore.get(properties.mailbox);
+        expect(storedRef).toBeDefined();
+        expect(storedRef!.app).toBe('Mail');
+        expect(storedRef!.type).toBe('mailbox');
+        // Should be a PropertySpecifier
+        expect(storedRef!.specifier.type).toBe('property');
+        expect((storedRef!.specifier as PropertySpecifier).property).toBe('mailbox');
+      });
+
+      it('should generate JXA that detects single objects for specific properties', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ mailbox: 'test' }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        await executorWithJxa.getProperties(ref.id, ['mailbox']);
+
+        // Verify JXA contains the single-object detection logic
+        expect(capturedScript).toContain('!Array.isArray(val) && typeof val === \'object\'');
+        expect(capturedScript).toContain('object_reference');
+      });
+
+      it('should handle mixed plain values, reference lists, and object references', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              name: 'Test Message',
+              selectedMessages: {
+                _type: 'reference_list',
+                property: 'selectedMessages',
+                count: 2,
+                items: [{ index: 0 }, { index: 1 }]
+              },
+              mailbox: { _type: 'object_reference', property: 'mailbox' }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message viewer',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['name', 'selectedMessages', 'mailbox']);
+
+        // Plain value
+        expect(properties.name).toBe('Test Message');
+        // Reference list
+        expect(Array.isArray(properties.selectedMessages)).toBe(true);
+        expect(properties.selectedMessages.length).toBe(2);
+        properties.selectedMessages.forEach((refId: string) => {
+          expect(refId).toMatch(/^ref_/);
+        });
+        // Object reference
+        expect(typeof properties.mailbox).toBe('string');
+        expect(properties.mailbox).toMatch(/^ref_/);
+        const mailboxRef = referenceStore.get(properties.mailbox);
+        expect(mailboxRef).toBeDefined();
+        expect(mailboxRef!.type).toBe('mailbox');
+      });
+
+      it('should handle object_reference in all-properties path', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              name: 'INBOX',
+              mailbox: { _type: 'object_reference', property: 'mailbox' }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        // Call without specific properties (all-properties path)
+        const properties = await executorWithJxa.getProperties(ref.id);
+
+        expect(properties.name).toBe('INBOX');
+        // object_reference should be converted to a stored reference
+        expect(typeof properties.mailbox).toBe('string');
+        expect(properties.mailbox).toMatch(/^ref_/);
+        const storedRef = referenceStore.get(properties.mailbox);
+        expect(storedRef).toBeDefined();
+        expect(storedRef!.type).toBe('mailbox');
+      });
+
+      it('should skip malformed object_reference markers with missing property', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              badMarker: { _type: 'object_reference' }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['badMarker']);
+
+        // Should pass through unchanged (no property field to create reference from)
+        expect(properties.badMarker._type).toBe('object_reference');
+        expect(properties.badMarker.property).toBeUndefined();
+      });
+    });
+
+    describe('Per-property error resilience (_error markers)', () => {
+      it('should return _error for properties that throw', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              name: 'Tab 1',
+              url: { _error: 'property access failed' }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'tab',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['name', 'url']);
+
+        expect(properties.name).toBe('Tab 1');
+        expect(properties.url).toEqual({ _error: 'property access failed' });
+      });
+
+      it('should generate JXA with try-catch around each property IIFE', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ name: 'test' }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'tab',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        await executorWithJxa.getProperties(ref.id, ['name']);
+
+        expect(capturedScript).toContain('catch(e)');
+        expect(capturedScript).toContain('_error');
+      });
+
+      it('should pass through _error markers without post-processing', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              url: { _error: 'Cannot access property' }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'tab',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['url']);
+
+        // _error objects don't have _type field, so they should not be converted to references
+        expect(properties.url._error).toBe('Cannot access property');
+        expect(properties.url._type).toBeUndefined();
+      });
+
+      it('should handle all properties failing with _error', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              name: { _error: 'property access failed' },
+              url: { _error: 'property access failed' },
+              title: { _error: 'not available' }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'tab',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['name', 'url', 'title']);
+
+        expect(properties.name).toEqual({ _error: 'property access failed' });
+        expect(properties.url).toEqual({ _error: 'property access failed' });
+        expect(properties.title).toEqual({ _error: 'not available' });
+      });
+    });
+
+    describe('createPropertyReference()', () => {
+      it('should create reference with PropertySpecifier', () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: '{}',
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const parentSpec: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+
+        const refId = executorWithJxa.createPropertyReference('Mail', parentSpec, 'mailbox');
+
+        expect(refId).toMatch(/^ref_/);
+        const storedRef = referenceStore.get(refId);
+        expect(storedRef).toBeDefined();
+        expect(storedRef!.app).toBe('Mail');
+        expect(storedRef!.type).toBe('mailbox');
+        // Should be a PropertySpecifier
+        expect(storedRef!.specifier.type).toBe('property');
+        const propSpec = storedRef!.specifier as PropertySpecifier;
+        expect(propSpec.property).toBe('mailbox');
+        expect(propSpec.of).toEqual(parentSpec);
+      });
+
+      it('should singularize property names for type', () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: '{}',
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const parentSpec: ElementSpecifier = {
+          type: 'element',
+          element: 'window',
+          index: 0,
+          container: 'application'
+        };
+
+        const refId = executorWithJxa.createPropertyReference('Safari', parentSpec, 'currentTab');
+
+        const storedRef = referenceStore.get(refId);
+        expect(storedRef).toBeDefined();
+        // 'currentTab' -> strip 'current' prefix -> 'tab'
+        expect(storedRef!.type).toBe('tab');
+      });
+
+      it('should handle property names without prefix', () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: '{}',
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const parentSpec: ElementSpecifier = {
+          type: 'element',
+          element: 'message',
+          index: 0,
+          container: 'application'
+        };
+
+        const refId = executorWithJxa.createPropertyReference('Mail', parentSpec, 'mailbox');
+
+        const storedRef = referenceStore.get(refId);
+        expect(storedRef).toBeDefined();
+        // 'mailbox' has no known prefix, stays as 'mailbox'
+        expect(storedRef!.type).toBe('mailbox');
+      });
+    });
+
+    describe('getElementsWithProperties() batch operation', () => {
+      it('should fetch elements with properties in single JXA call', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              count: 2,
+              items: [
+                { index: 0, props: { subject: 'Hello', sender: 'alice@test.com' } },
+                { index: 1, props: { subject: 'World', sender: 'bob@test.com' } }
+              ]
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', mailboxSpec);
+
+        const result = await executorWithJxa.getElementsWithProperties(
+          ref.id, 'message', ['subject', 'sender'], undefined, 10
+        );
+
+        expect(result.count).toBe(2);
+        expect(result.elements.length).toBe(2);
+        expect(result.hasMore).toBe(false);
+        // Verify references created
+        result.elements.forEach((el, index) => {
+          expect(el.reference.id).toMatch(/^ref_/);
+          expect(el.reference.app).toBe('Mail');
+          expect(el.reference.type).toBe('message');
+          expect(referenceStore.get(el.reference.id)).toEqual(el.reference);
+        });
+        // Verify properties
+        expect(result.elements[0].properties.subject).toBe('Hello');
+        expect(result.elements[0].properties.sender).toBe('alice@test.com');
+        expect(result.elements[1].properties.subject).toBe('World');
+        expect(result.elements[1].properties.sender).toBe('bob@test.com');
+      });
+
+      it('should generate JXA with property accessors for each element', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ count: 0, items: [] }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', mailboxSpec);
+
+        await executorWithJxa.getElementsWithProperties(
+          ref.id, 'message', ['subject', 'sender'], undefined, 10
+        );
+
+        // Verify the JXA script contains property access within element iteration
+        expect(capturedScript).toContain('subject');
+        expect(capturedScript).toContain('sender');
+        expect(capturedScript).toContain('el.');
+        expect(capturedScript).toContain('props');
+      });
+
+      it('should handle per-property errors in batch results', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              count: 1,
+              items: [
+                {
+                  index: 0,
+                  props: {
+                    name: 'Tab 1',
+                    url: { _error: 'property access failed' }
+                  }
+                }
+              ]
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: NamedSpecifier = {
+          type: 'named',
+          element: 'window',
+          name: 'Main',
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        const result = await executorWithJxa.getElementsWithProperties(
+          ref.id, 'tab', ['name', 'url'], undefined, 10
+        );
+
+        expect(result.elements[0].properties.name).toBe('Tab 1');
+        expect(result.elements[0].properties.url).toEqual({ _error: 'property access failed' });
+      });
+
+      it('should convert reference markers in batch properties', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              count: 1,
+              items: [
+                {
+                  index: 0,
+                  props: {
+                    name: 'Message 1',
+                    attachments: {
+                      _type: 'reference_list',
+                      property: 'attachments',
+                      count: 2,
+                      items: [{ index: 0 }, { index: 1 }]
+                    },
+                    mailbox: { _type: 'object_reference', property: 'mailbox' }
+                  }
+                }
+              ]
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', mailboxSpec);
+
+        const result = await executorWithJxa.getElementsWithProperties(
+          ref.id, 'message', ['name', 'attachments', 'mailbox'], undefined, 10
+        );
+
+        // Plain value
+        expect(result.elements[0].properties.name).toBe('Message 1');
+        // Reference list should be converted to array of ref IDs
+        expect(Array.isArray(result.elements[0].properties.attachments)).toBe(true);
+        expect(result.elements[0].properties.attachments.length).toBe(2);
+        result.elements[0].properties.attachments.forEach((refId: string) => {
+          expect(refId).toMatch(/^ref_/);
+        });
+        // Object reference should be converted to a single ref ID
+        expect(typeof result.elements[0].properties.mailbox).toBe('string');
+        expect(result.elements[0].properties.mailbox).toMatch(/^ref_/);
+      });
+
+      it('should return empty result when no JXAExecutor', async () => {
+        const executorWithoutJxa = new QueryExecutor(referenceStore);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+
+        const result = await executorWithoutJxa.getElementsWithProperties(
+          mailboxSpec, 'message', ['subject'], 'Mail', 10
+        );
+
+        expect(result.elements).toEqual([]);
+        expect(result.count).toBe(0);
+        expect(result.hasMore).toBe(false);
+      });
+
+      it('should require non-empty properties array', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: '{}',
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+
+        const error = await executorWithJxa.getElementsWithProperties(
+          mailboxSpec, 'message', [], 'Mail', 10
+        ).catch(e => e);
+
+        expect(error.message).toContain('Properties array must not be empty');
+      });
+
+      it('should validate limit parameter', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: '{}',
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+
+        // Negative limit
+        const error1 = await executorWithJxa.getElementsWithProperties(
+          mailboxSpec, 'message', ['subject'], 'Mail', -1
+        ).catch(e => e);
+        expect(error1.message).toContain('Invalid limit');
+
+        // Exceeds max
+        const error2 = await executorWithJxa.getElementsWithProperties(
+          mailboxSpec, 'message', ['subject'], 'Mail', 10001
+        ).catch(e => e);
+        expect(error2.message).toContain('Invalid limit');
+
+        // Non-integer
+        const error3 = await executorWithJxa.getElementsWithProperties(
+          mailboxSpec, 'message', ['subject'], 'Mail', 5.5
+        ).catch(e => e);
+        expect(error3.message).toContain('Invalid limit');
+      });
+
+      it('should accept reference ID as container', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              count: 1,
+              items: [{ index: 0, props: { subject: 'Test' } }]
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', mailboxSpec);
+
+        const result = await executorWithJxa.getElementsWithProperties(
+          ref.id, 'message', ['subject'], undefined, 10
+        );
+
+        expect(result.elements.length).toBe(1);
+        expect(result.elements[0].properties.subject).toBe('Test');
+      });
+
+      it('should accept ObjectSpecifier as container with app', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              count: 1,
+              items: [{ index: 0, props: { subject: 'Test' } }]
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+
+        const result = await executorWithJxa.getElementsWithProperties(
+          mailboxSpec, 'message', ['subject'], 'Mail', 10
+        );
+
+        expect(result.elements.length).toBe(1);
+        expect(result.elements[0].reference.app).toBe('Mail');
+      });
+
+      it('should throw on invalid reference container', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: '{}',
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+
+        const error = await executorWithJxa.getElementsWithProperties(
+          'ref_nonexistent-id', 'message', ['subject'], undefined, 10
+        ).catch(e => e);
+
+        expect(error.message).toContain('Reference not found: ref_nonexistent-id');
+      });
+
+      it('should return hasMore correctly', async () => {
+        // Test hasMore=true when count > limit
+        const mockExecutorMore = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              count: 50,
+              items: [
+                { index: 0, props: { subject: 'Msg 1' } },
+                { index: 1, props: { subject: 'Msg 2' } }
+              ]
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorMore = new QueryExecutor(referenceStore, mockExecutorMore as any);
+        const mailboxSpec: NamedSpecifier = {
+          type: 'named',
+          element: 'mailbox',
+          name: 'INBOX',
+          container: 'application'
+        };
+        const ref1 = await executorMore.queryObject('Mail', mailboxSpec);
+
+        const resultMore = await executorMore.getElementsWithProperties(
+          ref1.id, 'message', ['subject'], undefined, 2
+        );
+        expect(resultMore.hasMore).toBe(true);
+        expect(resultMore.count).toBe(50);
+
+        // Test hasMore=false when count <= limit
+        const mockExecutorNoMore = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              count: 2,
+              items: [
+                { index: 0, props: { subject: 'Msg 1' } },
+                { index: 1, props: { subject: 'Msg 2' } }
+              ]
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorNoMore = new QueryExecutor(referenceStore, mockExecutorNoMore as any);
+        const ref2 = await executorNoMore.queryObject('Mail', mailboxSpec);
+
+        const resultNoMore = await executorNoMore.getElementsWithProperties(
+          ref2.id, 'message', ['subject'], undefined, 10
+        );
+        expect(resultNoMore.hasMore).toBe(false);
+        expect(resultNoMore.count).toBe(2);
+      });
+    });
   });
 });

@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ReferenceStore } from '../../src/execution/reference-store.js';
 import { QueryExecutor } from '../../src/execution/query-executor.js';
-import type { NamedSpecifier, ElementSpecifier } from '../../src/types/object-specifier.js';
+import type { NamedSpecifier, ElementSpecifier, PropertySpecifier } from '../../src/types/object-specifier.js';
 
 describe('Reference Lifecycle Management', () => {
   let referenceStore: ReferenceStore;
@@ -579,6 +579,141 @@ describe('Reference Lifecycle Management', () => {
       referenceStore.delete(refIds[0]);
       expect(referenceStore.get(refIds[0])).toBeUndefined();
       expect(referenceStore.get(refIds[1])).toBeDefined();
+    });
+  });
+
+  describe('Property returning single object reference', () => {
+    it('should create usable reference from property-returned single object', async () => {
+      // Simulate: query message viewer → get mailbox property as single object ref
+      const viewerSpec: ElementSpecifier = {
+        type: 'element',
+        element: 'message viewer',
+        index: 0,
+        container: 'application'
+      };
+
+      const viewerRef = await queryExecutor.queryObject('Mail', viewerSpec);
+
+      // Create a single property reference for 'mailbox' on the viewer
+      const refId = queryExecutor.createPropertyReference(
+        'Mail',
+        viewerRef.specifier,
+        'mailbox'
+      );
+
+      expect(refId).toMatch(/^ref_/);
+
+      const ref = referenceStore.get(refId);
+      expect(ref).toBeDefined();
+      expect(ref!.app).toBe('Mail');
+      expect(ref!.type).toBe('mailbox');
+
+      // Verify the specifier is a PropertySpecifier
+      const spec = ref!.specifier as PropertySpecifier;
+      expect(spec.type).toBe('property');
+      expect(spec.property).toBe('mailbox');
+    });
+
+    it('should maintain reference lifecycle for property-created references', async () => {
+      const viewerSpec: ElementSpecifier = {
+        type: 'element',
+        element: 'message viewer',
+        index: 0,
+        container: 'application'
+      };
+
+      const viewerRef = await queryExecutor.queryObject('Mail', viewerSpec);
+
+      const refId = queryExecutor.createPropertyReference(
+        'Mail',
+        viewerRef.specifier,
+        'mailbox'
+      );
+
+      // Reference should be in the store
+      expect(referenceStore.get(refId)).toBeDefined();
+
+      // Should be deletable
+      const deleted = referenceStore.delete(refId);
+      expect(deleted).toBe(true);
+      expect(referenceStore.get(refId)).toBeUndefined();
+
+      // Viewer reference should be unaffected
+      expect(referenceStore.get(viewerRef.id)).toBeDefined();
+    });
+
+    it('should create references with correct specifier chain for single objects', async () => {
+      const viewerSpec: NamedSpecifier = {
+        type: 'named',
+        element: 'message viewer',
+        name: 'main',
+        container: 'application'
+      };
+
+      const viewerRef = await queryExecutor.queryObject('Mail', viewerSpec);
+
+      const refId = queryExecutor.createPropertyReference(
+        'Mail',
+        viewerRef.specifier,
+        'currentTab'
+      );
+
+      const ref = referenceStore.get(refId);
+      expect(ref).toBeDefined();
+
+      // Verify specifier is a PropertySpecifier with correct chain
+      const spec = ref!.specifier as PropertySpecifier;
+      expect(spec.type).toBe('property');
+      expect(spec.property).toBe('currentTab');
+
+      // The 'of' should point back to the parent specifier
+      expect(spec.of).toEqual(viewerRef.specifier);
+
+      // Type should be singularized from propertyName ('current' prefix stripped)
+      expect(ref!.type).toBe('tab');
+    });
+  });
+
+  describe('Batch getElementsWithProperties lifecycle', () => {
+    it('should return empty result when no JXAExecutor', async () => {
+      // QueryExecutor created without JXAExecutor (default in tests)
+      const containerSpec: NamedSpecifier = {
+        type: 'named',
+        element: 'mailbox',
+        name: 'inbox',
+        container: 'application'
+      };
+
+      const containerRef = await queryExecutor.queryObject('Mail', containerSpec);
+
+      const result = await queryExecutor.getElementsWithProperties(
+        containerRef.id,
+        'message',
+        ['subject', 'sender']
+      );
+
+      expect(result.elements).toEqual([]);
+      expect(result.count).toBe(0);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should require non-empty properties array', async () => {
+      const containerSpec: NamedSpecifier = {
+        type: 'named',
+        element: 'mailbox',
+        name: 'inbox',
+        container: 'application'
+      };
+
+      const containerRef = await queryExecutor.queryObject('Mail', containerSpec);
+
+      await expect(
+        queryExecutor.getElementsWithProperties(
+          containerRef.id,
+          'message',
+          []
+        )
+      ).rejects.toThrow('Properties array must not be empty');
     });
   });
 

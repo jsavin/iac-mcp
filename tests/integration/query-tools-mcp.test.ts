@@ -152,9 +152,10 @@ describe('Query Tools MCP Integration', () => {
         t.name === 'iac_mcp_query_object' ||
         t.name === 'iac_mcp_get_properties' ||
         t.name === 'iac_mcp_set_property' ||
-        t.name === 'iac_mcp_get_elements'
+        t.name === 'iac_mcp_get_elements' ||
+        t.name === 'iac_mcp_get_elements_with_properties'
       );
-      expect(queryTools).toHaveLength(4);
+      expect(queryTools).toHaveLength(5);
 
       // Should also have list_apps tool
       const listAppsTool = tools.find(t => t.name === 'list_apps');
