@@ -145,7 +145,6 @@ export class QueryExecutor {
   const app = Application("${this.escapeJxaString(reference.app)}");
   const obj = ${objectPath};
 
-  // JXA object specifiers have typeof === 'function', not 'object'
   const isObj = (v) => v !== null && v !== undefined && (typeof v === 'object' || typeof v === 'function');
 
   // Try the properties() method first (works for Finder, etc.)
@@ -641,7 +640,6 @@ export class QueryExecutor {
     return `${escapedProp}: (() => {
       try {
         const val = ${objVar}.${escapedProp}();
-        // JXA object specifiers have typeof === 'function', not 'object'
         const isObj = (v) => v !== null && v !== undefined && (typeof v === 'object' || typeof v === 'function');
         if (Array.isArray(val) && val.length > 0 && val.every(item => isObj(item))) {
           try {
