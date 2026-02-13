@@ -1105,11 +1105,27 @@ export class QueryExecutor {
   /**
    * Convert a property name to camelCase for JXA.
    *
-   * @param str - The property name (e.g., "read status")
-   * @returns Camel-cased property name (e.g., "readStatus")
+   * JXA follows Cocoa naming conventions when mapping SDEF property names:
+   * - Spaces become camelCase boundaries: "read status" → "readStatus"
+   * - Leading uppercase runs are lowercased: "URL" → "url", "URLString" → "urlString"
+   * This matches how JXA's Objective-C bridge normalizes property accessors.
+   *
+   * @param str - The property name (e.g., "read status", "URL")
+   * @returns JXA-compatible property name (e.g., "readStatus", "url")
    */
   private camelCase(str: string): string {
-    return str.replace(/\s+(\w)/g, (_, char) => char.toUpperCase());
+    // Step 1: Convert spaces to camelCase boundaries
+    const spaced = str.replace(/\s+(\w)/g, (_, char) => char.toUpperCase());
+    // Step 2: Lowercase leading uppercase run (Cocoa convention)
+    // "URL" → "url", "URLString" → "urlString", "readStatus" → "readStatus"
+    return spaced.replace(/^[A-Z]+/, (match) => {
+      if (match.length === spaced.length) {
+        // Entire string is uppercase (e.g., "URL") → all lowercase
+        return match.toLowerCase();
+      }
+      // Leading run before lowercase (e.g., "URLString") → lowercase all but last
+      return match.slice(0, -1).toLowerCase() + match.slice(-1);
+    });
   }
 
   /**

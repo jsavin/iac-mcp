@@ -1419,6 +1419,63 @@ describe('QueryExecutor', () => {
         // Verify camelCase conversion
         expect(capturedScript).toContain('readStatus()');
       });
+
+      it('should lowercase all-uppercase SDEF property names (Cocoa convention)', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ url: 'https://example.com' }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'tab',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        await executorWithJxa.getProperties(ref.id, ['URL']);
+
+        // JXA convention: all-uppercase names become all-lowercase
+        expect(capturedScript).toContain('url()');
+        expect(capturedScript).not.toContain('URL()');
+      });
+
+      it('should handle leading uppercase run with trailing lowercase (URLString → urlString)', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ urlString: 'test' }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'tab',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        await executorWithJxa.getProperties(ref.id, ['URLString']);
+
+        // Cocoa convention: leading uppercase run lowered, last uppercase kept if followed by lowercase
+        expect(capturedScript).toContain('urlString()');
+      });
     });
 
     describe('Security: Property name injection prevention', () => {
@@ -1517,10 +1574,10 @@ describe('QueryExecutor', () => {
         };
         const ref = await executorWithJxa.queryObject('Mail', specifier);
 
-        // Valid property names should work (camelCase only converts spaces)
+        // Valid property names should work
         await executorWithJxa.getProperties(ref.id, ['read-status', 'message count', 'user_id']);
 
-        // camelCase converts spaces to camelCase, preserves hyphens and underscores
+        // camelCase converts spaces to camelCase, lowercases leading uppercase runs, preserves hyphens and underscores
         expect(capturedScript).toContain('read-status()');
         expect(capturedScript).toContain('messageCount()');
         expect(capturedScript).toContain('user_id()');
