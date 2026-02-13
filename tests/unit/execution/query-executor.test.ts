@@ -2411,12 +2411,46 @@ describe('QueryExecutor', () => {
         };
         const ref = await executorWithJxa.queryObject('Safari', specifier);
 
-        await executorWithJxa.getProperties(ref.id, ['url']);
+        const properties = await executorWithJxa.getProperties(ref.id, ['url']);
 
         // The outer catch should try String() coercion before falling back to _error
         // This handles NSURL and other JXA types that throw on direct access
         // but can be coerced to string
         expect(capturedScript).toContain('String(');
+
+        // Verify end-to-end: when String() coercion succeeds, the value comes through
+        expect(properties.url).toBe('https://example.com');
+      });
+
+      it('should include coercion failure info in _error when String() also fails', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                url: { _error: "Can't convert types. (String coercion also failed)" }
+              }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'tab',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['url']);
+
+        // Verify the enriched error message includes coercion failure info
+        expect(capturedScript).toContain('String coercion also failed');
+        expect(properties.url._error).toContain('String coercion also failed');
       });
     });
 

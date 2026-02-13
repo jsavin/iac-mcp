@@ -659,8 +659,9 @@ export class QueryExecutor {
         }
         return val;
       } catch(e) {
+        // Fallback: Some JXA types (NSURL, etc.) throw on direct access but can be coerced
         try { return String(${objVar}.${escapedProp}()); } catch(e2) {}
-        return { _error: e.message || 'property access failed' };
+        return { _error: (e.message || 'property access failed') + ' (String coercion also failed)' };
       }
     })()`;
   }
