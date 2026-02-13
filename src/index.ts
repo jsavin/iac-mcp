@@ -18,6 +18,7 @@ import { PerAppCache } from './jitd/cache/per-app-cache.js';
 import { ReferenceStore } from './execution/reference-store.js';
 import { QueryExecutor } from './execution/query-executor.js';
 import { JXAExecutor } from './adapters/macos/jxa-executor.js';
+import { SystemEventsExecutor } from './execution/system-events-executor.js';
 
 /**
  * Logging utility that writes to stderr (stdout is reserved for MCP protocol)
@@ -64,6 +65,7 @@ async function main(): Promise<void> {
   const referenceStore = new ReferenceStore(15 * 60 * 1000); // 15-minute TTL
   const jxaExecutor = new JXAExecutor();
   const queryExecutor = new QueryExecutor(referenceStore, jxaExecutor);
+  const systemEventsExecutor = new SystemEventsExecutor(referenceStore, jxaExecutor);
 
   // Setup all MCP handlers
   try {
@@ -74,7 +76,8 @@ async function main(): Promise<void> {
       adapter,
       errorHandler,
       perAppCache,
-      queryExecutor
+      queryExecutor,
+      systemEventsExecutor
     );
     log('INFO', 'MCP handlers setup complete');
   } catch (error) {
