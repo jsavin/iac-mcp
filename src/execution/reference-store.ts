@@ -143,9 +143,10 @@ export class ReferenceStore {
       .sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt);
 
     for (let i = 0; i < toEvict; i++) {
-      const [id] = sorted[i];
-      this.references.delete(id);
-      logRef("evicted", { id, reason: "lru" });
+      const entry = sorted[i];
+      if (!entry) break;
+      this.references.delete(entry[0]);
+      logRef("evicted", { id: entry[0], reason: "lru" });
     }
 
     logRef("eviction_complete", {
