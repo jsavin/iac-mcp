@@ -141,7 +141,7 @@ describe("QueryExecutor Large Value Handling", () => {
   describe("getCachedValue", () => {
     it("should return full value when no options specified", () => {
       const value = "line1\nline2\nline3\nline4\nline5";
-      const cacheId = cache.store(value, "text", "ref_1");
+      const { id: cacheId } = cache.store(value, "text", "ref_1");
 
       const result = executor.getCachedValue(cacheId);
       expect(result.value).toBe(value);
@@ -152,7 +152,7 @@ describe("QueryExecutor Large Value Handling", () => {
 
     it("should return last N lines with tail_lines", () => {
       const value = "line1\nline2\nline3\nline4\nline5";
-      const cacheId = cache.store(value, "text", "ref_1");
+      const { id: cacheId } = cache.store(value, "text", "ref_1");
 
       const result = executor.getCachedValue(cacheId, { tail_lines: 2 });
       expect(result.value).toBe("line4\nline5");
@@ -161,7 +161,7 @@ describe("QueryExecutor Large Value Handling", () => {
 
     it("should return first N lines with head_lines", () => {
       const value = "line1\nline2\nline3\nline4\nline5";
-      const cacheId = cache.store(value, "text", "ref_1");
+      const { id: cacheId } = cache.store(value, "text", "ref_1");
 
       const result = executor.getCachedValue(cacheId, { head_lines: 3 });
       expect(result.value).toBe("line1\nline2\nline3");
@@ -170,7 +170,7 @@ describe("QueryExecutor Large Value Handling", () => {
 
     it("should apply offset_lines before tail_lines", () => {
       const value = "line1\nline2\nline3\nline4\nline5";
-      const cacheId = cache.store(value, "text", "ref_1");
+      const { id: cacheId } = cache.store(value, "text", "ref_1");
 
       const result = executor.getCachedValue(cacheId, { offset_lines: 1, tail_lines: 2 });
       // After offset: line2, line3, line4, line5
@@ -181,7 +181,7 @@ describe("QueryExecutor Large Value Handling", () => {
 
     it("should apply offset_lines before head_lines", () => {
       const value = "line1\nline2\nline3\nline4\nline5";
-      const cacheId = cache.store(value, "text", "ref_1");
+      const { id: cacheId } = cache.store(value, "text", "ref_1");
 
       const result = executor.getCachedValue(cacheId, { offset_lines: 2, head_lines: 2 });
       // After offset: line3, line4, line5
@@ -192,7 +192,7 @@ describe("QueryExecutor Large Value Handling", () => {
 
     it("should apply max_lines cap", () => {
       const value = "line1\nline2\nline3\nline4\nline5";
-      const cacheId = cache.store(value, "text", "ref_1");
+      const { id: cacheId } = cache.store(value, "text", "ref_1");
 
       const result = executor.getCachedValue(cacheId, { max_lines: 3 });
       expect(result.value).toBe("line1\nline2\nline3");
@@ -213,7 +213,7 @@ describe("QueryExecutor Large Value Handling", () => {
     });
 
     it("should include slice description in response", () => {
-      const cacheId = cache.store("a\nb\nc", "text", "ref_1");
+      const { id: cacheId } = cache.store("a\nb\nc", "text", "ref_1");
 
       const r1 = executor.getCachedValue(cacheId);
       expect(r1.slice).toBe("full");

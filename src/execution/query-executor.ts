@@ -12,7 +12,7 @@ import {
 import { ReferenceStore } from "./reference-store.js";
 import { JXAExecutor } from "../adapters/macos/jxa-executor.js";
 import { ResultParser, JXAError } from "../adapters/macos/result-parser.js";
-import { LargeValueCache, LARGE_VALUE_THRESHOLD, PREVIEW_LINES } from "./large-value-cache.js";
+import { LargeValueCache, LARGE_VALUE_THRESHOLD } from "./large-value-cache.js";
 
 /**
  * Regex for validating JXA-safe identifiers.
@@ -985,15 +985,13 @@ export class QueryExecutor {
     for (const key of Object.keys(props)) {
       const val = props[key];
       if (typeof val === 'string' && val.length > LARGE_VALUE_THRESHOLD) {
-        const cacheId = this.largeValueCache.store(val, key, sourceRef);
-        const lines = val.split('\n');
-        const previewLines = lines.slice(-PREVIEW_LINES);
+        const cached = this.largeValueCache.store(val, key, sourceRef);
         props[key] = {
           _large_value: true,
-          _cached_ref: cacheId,
-          _total_lines: lines.length,
-          _total_chars: val.length,
-          _preview: previewLines.join('\n'),
+          _cached_ref: cached.id,
+          _total_lines: cached.totalLines,
+          _total_chars: cached.totalChars,
+          _preview: cached.preview,
         };
       }
     }

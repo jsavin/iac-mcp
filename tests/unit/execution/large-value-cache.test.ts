@@ -44,19 +44,19 @@ describe("LargeValueCache", () => {
 
   describe("store()", () => {
     it("should return a cache ID with cache_ prefix", () => {
-      const id = cache.store("hello", "text", "ref_abc");
+      const { id } = cache.store("hello", "text", "ref_abc");
       expect(id).toMatch(/^cache_/);
     });
 
     it("should return unique IDs for different values", () => {
-      const id1 = cache.store("value1", "text", "ref_abc");
-      const id2 = cache.store("value2", "text", "ref_abc");
-      expect(id1).not.toBe(id2);
+      const r1 = cache.store("value1", "text", "ref_abc");
+      const r2 = cache.store("value2", "text", "ref_abc");
+      expect(r1.id).not.toBe(r2.id);
     });
 
     it("should store metadata correctly", () => {
       const value = "line1\nline2\nline3";
-      const id = cache.store(value, "content", "ref_xyz");
+      const { id } = cache.store(value, "content", "ref_xyz");
       const entry = cache.get(id);
       expect(entry).toBeDefined();
       expect(entry!.value).toBe(value);
@@ -69,13 +69,13 @@ describe("LargeValueCache", () => {
     });
 
     it("should count lines correctly for single-line value", () => {
-      const id = cache.store("no newlines here", "text", "ref_1");
+      const { id } = cache.store("no newlines here", "text", "ref_1");
       const entry = cache.get(id);
       expect(entry!.totalLines).toBe(1);
     });
 
     it("should count lines correctly for value ending with newline", () => {
-      const id = cache.store("line1\nline2\n", "text", "ref_1");
+      const { id } = cache.store("line1\nline2\n", "text", "ref_1");
       const entry = cache.get(id);
       expect(entry!.totalLines).toBe(3); // split('\n') on "a\nb\n" = ["a","b",""]
     });
@@ -87,14 +87,14 @@ describe("LargeValueCache", () => {
     });
 
     it("should return the cached value", () => {
-      const id = cache.store("test value", "prop", "ref_1");
+      const { id } = cache.store("test value", "prop", "ref_1");
       const entry = cache.get(id);
       expect(entry).toBeDefined();
       expect(entry!.value).toBe("test value");
     });
 
     it("should update lastAccessedAt on get", () => {
-      const id = cache.store("value", "prop", "ref_1");
+      const { id } = cache.store("value", "prop", "ref_1");
       const entry1 = cache.get(id);
       const firstAccess = entry1!.lastAccessedAt;
 
@@ -107,7 +107,7 @@ describe("LargeValueCache", () => {
     });
 
     it("should return undefined for expired entries", () => {
-      const id = cache.store("value", "prop", "ref_1");
+      const { id } = cache.store("value", "prop", "ref_1");
       const entry = cache.get(id);
       const cachedAt = entry!.cachedAt;
 
@@ -119,7 +119,7 @@ describe("LargeValueCache", () => {
     });
 
     it("should delete expired entries on access", () => {
-      const id = cache.store("value", "prop", "ref_1");
+      const { id } = cache.store("value", "prop", "ref_1");
       const entry = cache.get(id);
       const cachedAt = entry!.cachedAt;
 
@@ -135,7 +135,7 @@ describe("LargeValueCache", () => {
 
   describe("delete()", () => {
     it("should return true when entry exists", () => {
-      const id = cache.store("value", "prop", "ref_1");
+      const { id } = cache.store("value", "prop", "ref_1");
       expect(cache.delete(id)).toBe(true);
     });
 
@@ -144,7 +144,7 @@ describe("LargeValueCache", () => {
     });
 
     it("should remove entry from cache", () => {
-      const id = cache.store("value", "prop", "ref_1");
+      const { id } = cache.store("value", "prop", "ref_1");
       cache.delete(id);
       expect(cache.get(id)).toBeUndefined();
     });
@@ -182,44 +182,44 @@ describe("LargeValueCache", () => {
     it("should evict the least recently used entry when at capacity", () => {
       const smallCache = new LargeValueCache({ maxEntries: 3 });
 
-      const id1 = smallCache.store("first", "p", "ref_1");
-      const id2 = smallCache.store("second", "p", "ref_2");
-      const id3 = smallCache.store("third", "p", "ref_3");
+      const s1 = smallCache.store("first", "p", "ref_1");
+      const s2 = smallCache.store("second", "p", "ref_2");
+      const s3 = smallCache.store("third", "p", "ref_3");
 
       // All three should exist
-      expect(smallCache.get(id1)).toBeDefined();
-      expect(smallCache.get(id2)).toBeDefined();
-      expect(smallCache.get(id3)).toBeDefined();
+      expect(smallCache.get(s1.id)).toBeDefined();
+      expect(smallCache.get(s2.id)).toBeDefined();
+      expect(smallCache.get(s3.id)).toBeDefined();
 
       // Adding a 4th should evict the LRU one
       // id1 was accessed first, so it's LRU after the gets above...
       // Actually, we just accessed all three via get(). Let's use a fresh approach:
       const freshCache = new LargeValueCache({ maxEntries: 3 });
-      const fid1 = freshCache.store("first", "p", "ref_1");
-      const fid2 = freshCache.store("second", "p", "ref_2");
-      const fid3 = freshCache.store("third", "p", "ref_3");
+      const f1 = freshCache.store("first", "p", "ref_1");
+      const f2 = freshCache.store("second", "p", "ref_2");
+      const f3 = freshCache.store("third", "p", "ref_3");
 
-      // Touch fid2 and fid3 to make fid1 the LRU
+      // Touch f2 and f3 to make f1 the LRU
       vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1000);
-      freshCache.get(fid2);
-      freshCache.get(fid3);
+      freshCache.get(f2.id);
+      freshCache.get(f3.id);
 
       vi.restoreAllMocks();
 
-      // Adding a 4th entry should evict fid1 (the LRU)
-      const fid4 = freshCache.store("fourth", "p", "ref_4");
+      // Adding a 4th entry should evict f1 (the LRU)
+      const f4 = freshCache.store("fourth", "p", "ref_4");
 
-      expect(freshCache.get(fid1)).toBeUndefined(); // evicted
-      expect(freshCache.get(fid2)).toBeDefined();
-      expect(freshCache.get(fid3)).toBeDefined();
-      expect(freshCache.get(fid4)).toBeDefined();
+      expect(freshCache.get(f1.id)).toBeUndefined(); // evicted
+      expect(freshCache.get(f2.id)).toBeDefined();
+      expect(freshCache.get(f3.id)).toBeDefined();
+      expect(freshCache.get(f4.id)).toBeDefined();
     });
   });
 
   describe("Custom TTL", () => {
     it("should respect custom TTL", () => {
       const shortTtlCache = new LargeValueCache({ ttlMs: 1000 }); // 1 second
-      const id = shortTtlCache.store("value", "p", "ref_1");
+      const { id } = shortTtlCache.store("value", "p", "ref_1");
       const entry = shortTtlCache.get(id);
       const cachedAt = entry!.cachedAt;
 

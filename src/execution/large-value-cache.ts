@@ -50,9 +50,14 @@ export class LargeValueCache {
    * @param value - The full string value to cache
    * @param propertyName - The property name that produced this value
    * @param sourceRef - The reference ID of the object that owns the property
-   * @returns Cache ID (format: cache_<uuid>)
+   * @returns Cache ID and metadata (totalLines, totalChars, preview) to avoid redundant splitting
    */
-  store(value: string, propertyName: string, sourceRef: string): string {
+  store(value: string, propertyName: string, sourceRef: string): {
+    id: string;
+    totalLines: number;
+    totalChars: number;
+    preview: string;
+  } {
     // Evict if at capacity
     if (this.entries.size >= this.maxEntries) {
       this.evictLRU();
@@ -60,17 +65,21 @@ export class LargeValueCache {
 
     const id = `cache_${randomUUID()}`;
     const now = Date.now();
+    const lines = value.split('\n');
+    const totalLines = lines.length;
+    const preview = lines.slice(-PREVIEW_LINES).join('\n');
+
     this.entries.set(id, {
       value,
       propertyName,
       sourceRef,
-      totalLines: value.split('\n').length,
+      totalLines,
       totalChars: value.length,
       cachedAt: now,
       lastAccessedAt: now,
     });
 
-    return id;
+    return { id, totalLines, totalChars: value.length, preview };
   }
 
   /**
