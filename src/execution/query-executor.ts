@@ -160,6 +160,7 @@ export class QueryExecutor {
         } else if (typeof v === 'object' && !Array.isArray(v)) {
           try {
             const str = JSON.stringify(v);
+            // JSON.stringify returns undefined for JXA host objects (Objective-C bridge)
             if (str === undefined || str === 'null' || str === '{}') {
               cleaned[k] = { _type: 'object_reference', property: k };
             } else {
@@ -647,6 +648,7 @@ export class QueryExecutor {
         if (!Array.isArray(val) && typeof val === 'object' && val !== null) {
           try {
             const str = JSON.stringify(val);
+            // JSON.stringify returns undefined for JXA host objects (Objective-C bridge)
             if (str === undefined || str === 'null' || str === '{}') {
               return { _type: 'object_reference', property: '${escapedProp}' };
             }
