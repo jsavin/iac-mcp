@@ -4,7 +4,7 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
  * Generates MCP tool definitions for stateful object queries.
  * These tools are app-independent and work with any scriptable application.
  *
- * @returns Array of 4 MCP tools: query_object, get_properties, set_property, get_elements
+ * @returns Array of 5 MCP tools: query_object, get_properties, set_property, get_elements, get_elements_with_properties
  */
 export function generateQueryTools(): Tool[] {
   return [
@@ -264,6 +264,77 @@ Get files in a folder:
           },
         },
         required: ["container", "elementType"],
+      },
+    },
+
+    // Tool 5: get_elements_with_properties - Batch get elements + properties
+    {
+      name: "iac_mcp_get_elements_with_properties",
+      description: `Get child elements from a container with their properties in a single batch operation. Reduces round trips compared to calling get_elements + get_properties separately.
+
+**Usage:**
+1. Obtain a reference to a container (mailbox, folder, etc.) using query_object
+2. Call this tool with the container, element type, and desired properties
+3. Receive elements with their properties in one response
+
+**Examples:**
+
+Get messages with subject and sender:
+- container: "ref_mailbox123"
+- elementType: "message"
+- properties: ["subject", "sender", "dateReceived"]
+- limit: 10
+
+Get files with name and size:
+- container: {"type": "named", "element": "folder", "name": "Desktop", "container": "application"}
+- elementType: "file"
+- properties: ["name", "size", "modificationDate"]
+- app: "Finder"
+
+**Performance:** Fetches all data in 1-2 JXA calls instead of 2N+1 calls (where N = number of elements).
+
+**Error Resilience:** If a property fails for an element (e.g., permission denied), the error is reported per-property with an _error field, while other properties still return normally.`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          container: {
+            oneOf: [
+              {
+                type: "string",
+                description:
+                  "Reference ID of container object (app is inferred from the reference)",
+              },
+              {
+                type: "object",
+                description:
+                  "Object specifier for container (requires app parameter)",
+              },
+            ],
+          },
+          elementType: {
+            type: "string",
+            description:
+              "Type of elements to retrieve in singular form (e.g., 'message', 'file', 'event')",
+          },
+          properties: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Property names to retrieve for each element (e.g., ['subject', 'sender', 'dateReceived'])",
+          },
+          app: {
+            type: "string",
+            description:
+              "Application name or bundle ID. Required when container is an ObjectSpecifier, ignored when container is a reference ID.",
+          },
+          limit: {
+            type: "number",
+            description:
+              "Maximum number of elements to return (default: 100). Response includes hasMore flag if more exist.",
+            default: 100,
+          },
+        },
+        required: ["container", "elementType", "properties"],
       },
     },
   ];

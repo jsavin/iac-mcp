@@ -131,17 +131,7 @@ export class QueryExecutor {
         const camelProp = this.camelCase(sanitizedProp);
         // Defense-in-depth: escape camelProp even though sanitizeForJxa should prevent dangerous chars
         const escapedProp = this.escapeJxaString(camelProp);
-        return `${escapedProp}: (() => {
-      const val = obj.${escapedProp}();
-      if (Array.isArray(val) && val.length > 0 && val.every(item => typeof item === 'object' && item !== null)) {
-        try {
-          return { _type: 'reference_list', property: '${escapedProp}', count: val.length, items: val.map((_, i) => ({ index: i })) };
-        } catch(e) {
-          return val;
-        }
-      }
-      return val;
-    })()`;
+        return this.buildPropertyAccessorIIFE(escapedProp, 'obj');
       }).join(', ');
       jxaCode = `(() => {
   const app = Application("${this.escapeJxaString(reference.app)}");
@@ -159,7 +149,30 @@ export class QueryExecutor {
   try {
     const props = obj.properties();
     if (props && typeof props === 'object') {
-      return JSON.stringify(props);
+      const cleaned = {};
+      const keys = Object.keys(props);
+      for (const k of keys) {
+        const v = props[k];
+        if (v === null || v === undefined) {
+          cleaned[k] = v;
+        } else if (Array.isArray(v) && v.length > 0 && v.every(item => typeof item === 'object' && item !== null)) {
+          cleaned[k] = { _type: 'reference_list', property: k, count: v.length, items: v.map((_, i) => ({ index: i })) };
+        } else if (typeof v === 'object' && !Array.isArray(v)) {
+          try {
+            const str = JSON.stringify(v);
+            if (str === 'null' || str === '{}') {
+              cleaned[k] = { _type: 'object_reference', property: k };
+            } else {
+              cleaned[k] = v;
+            }
+          } catch(e) {
+            cleaned[k] = { _type: 'object_reference', property: k };
+          }
+        } else {
+          cleaned[k] = v;
+        }
+      }
+      return JSON.stringify(cleaned);
     }
   } catch (e) {
     // properties() failed, fall back to reflection
@@ -195,12 +208,10 @@ export class QueryExecutor {
             } else if (val instanceof Date) {
               result[name] = val.toISOString();
             } else if (typeof val === 'object') {
-              // Try to get a useful representation
-              if (val.toString && typeof val.toString === 'function') {
-                const str = val.toString();
-                if (str !== '[object Object]') {
-                  result[name] = str;
-                }
+              if (Array.isArray(val) && val.length > 0 && val.every(item => typeof item === 'object' && item !== null)) {
+                result[name] = { _type: 'reference_list', property: name, count: val.length, items: val.map((_, i) => ({ index: i })) };
+              } else if (!Array.isArray(val)) {
+                result[name] = { _type: 'object_reference', property: name };
               }
             }
           }
@@ -228,19 +239,26 @@ export class QueryExecutor {
 
     const propertiesResult: Record<string, any> = parsed.data || {};
 
-    // Post-process: convert reference_list markers into actual stored references
+    // Post-process: convert reference markers into actual stored references
     for (const key of Object.keys(propertiesResult)) {
       const val = propertiesResult[key];
-      if (val && typeof val === 'object' &&
-          val._type === 'reference_list' &&
-          typeof val.property === 'string' &&
-          typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
-        propertiesResult[key] = this.createPropertyListReferences(
-          reference.app,
-          reference.specifier,
-          val.property,
-          val.count
-        );
+      if (val && typeof val === 'object') {
+        if (val._type === 'reference_list' &&
+            typeof val.property === 'string' &&
+            typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
+          propertiesResult[key] = this.createPropertyListReferences(
+            reference.app,
+            reference.specifier,
+            val.property,
+            val.count
+          );
+        } else if (val._type === 'object_reference' && typeof val.property === 'string') {
+          propertiesResult[key] = this.createPropertyReference(
+            reference.app,
+            reference.specifier,
+            val.property
+          );
+        }
       }
     }
 
@@ -448,6 +466,203 @@ export class QueryExecutor {
   }
 
   /**
+   * Get elements from a container with their properties in a single batch operation.
+   * Reduces round trips from 2N+1 to 1-2 by fetching elements AND properties together.
+   *
+   * @param container - Reference ID or ObjectSpecifier
+   * @param elementType - Type of elements to retrieve (singular)
+   * @param properties - Array of property names to fetch per element
+   * @param app - Application name (required when container is ObjectSpecifier)
+   * @param limit - Maximum number of elements to return (default: 100)
+   * @returns Elements with embedded references and properties
+   */
+  async getElementsWithProperties(
+    container: string | ObjectSpecifier,
+    elementType: string,
+    properties: string[],
+    app?: string,
+    limit: number = 100
+  ): Promise<{
+    elements: Array<{
+      reference: ObjectReference;
+      properties: Record<string, any>;
+    }>;
+    count: number;
+    hasMore: boolean;
+  }> {
+    // 1. Resolve container (same logic as getElements)
+    let containerSpec: ObjectSpecifier;
+    let resolvedApp: string;
+
+    if (typeof container === 'string') {
+      const reference = this.referenceStore.get(container);
+      if (!reference) {
+        throw new Error(`Reference not found: ${container}. The referenced object may have been closed or deleted. Please re-query the object to get a fresh reference.`);
+      }
+      containerSpec = reference.specifier;
+      resolvedApp = reference.app;
+    } else {
+      if (!app) {
+        throw new Error('App parameter is required when container is an ObjectSpecifier');
+      }
+      containerSpec = container;
+      resolvedApp = app;
+    }
+
+    // 2. Validate inputs
+    this.sanitizeForJxa(elementType, 'elementType');
+    if (!Number.isInteger(limit) || limit < 0 || limit > 10000) {
+      throw new Error(`Invalid limit: ${limit}. Must be an integer between 0 and 10000.`);
+    }
+    if (!properties) {
+      throw new Error('Properties parameter is required');
+    }
+    if (properties.length === 0) {
+      throw new Error('Properties array must not be empty');
+    }
+
+    // Validate property names
+    const sanitizedProps = properties.map(prop => {
+      const sanitized = this.sanitizeForJxa(prop, 'property');
+      return this.camelCase(sanitized);
+    });
+
+    // 3. If no JXAExecutor, return empty result
+    if (!this.jxaExecutor) {
+      return { elements: [], count: 0, hasMore: false };
+    }
+
+    // 4. Build single JXA script that fetches elements AND properties
+    const containerPath = this.buildObjectPath(containerSpec, "app");
+    const pluralElementType = this.pluralize(elementType);
+
+    const propertyAccessors = sanitizedProps.map(prop => {
+      const escaped = this.escapeJxaString(prop);
+      return this.buildPropertyAccessorIIFE(escaped, 'el');
+    }).join(',\n          ');
+
+    const jxaCode = `(() => {
+  const app = Application("${this.escapeJxaString(resolvedApp)}");
+  const container = ${containerPath};
+  const elements = container.${pluralElementType};
+  const count = elements.length;
+  const items = [];
+  for (let i = 0; i < Math.min(count, ${limit}); i++) {
+    const el = elements[i];
+    items.push({
+      index: i,
+      props: {
+          ${propertyAccessors}
+      }
+    });
+  }
+  return JSON.stringify({ count, items });
+})()`;
+
+    // 5. Execute JXA
+    const result = await this.jxaExecutor.execute(jxaCode);
+
+    // 6. Parse result
+    const parsed = this.resultParser.parse(result, { appName: resolvedApp });
+    if (!parsed.success) {
+      throw new Error(this.formatJxaError(parsed.error!));
+    }
+
+    const jxaResult = parsed.data || { count: 0, items: [] };
+
+    // 7. Create references and post-process properties for each element
+    const elements = jxaResult.items.map((item: any, index: number) => {
+      const elementSpec: ElementSpecifier = {
+        type: 'element',
+        element: elementType,
+        index,
+        container: containerSpec
+      };
+
+      const referenceId = this.referenceStore.create(resolvedApp, elementType, elementSpec);
+      const reference = this.referenceStore.get(referenceId);
+      if (!reference) {
+        throw new Error('Failed to create element reference');
+      }
+
+      // Post-process properties: convert markers to references
+      const processedProps: Record<string, any> = item.props || {};
+      for (const key of Object.keys(processedProps)) {
+        const val = processedProps[key];
+        if (val && typeof val === 'object') {
+          if (val._type === 'reference_list' &&
+              typeof val.property === 'string' &&
+              typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
+            processedProps[key] = this.createPropertyListReferences(
+              resolvedApp,
+              elementSpec,
+              val.property,
+              val.count
+            );
+          } else if (val._type === 'object_reference' && typeof val.property === 'string') {
+            processedProps[key] = this.createPropertyReference(
+              resolvedApp,
+              elementSpec,
+              val.property
+            );
+          }
+        }
+      }
+
+      return {
+        reference,
+        properties: processedProps
+      };
+    });
+
+    return {
+      elements,
+      count: jxaResult.count,
+      hasMore: jxaResult.count > limit
+    };
+  }
+
+  /**
+   * Build a JXA IIFE that accesses a property with:
+   * - Array-of-objects detection (reference_list marker)
+   * - Single-object detection (object_reference marker, with JSON.stringify check
+   *   to distinguish real JXA specifiers from plain JS objects like {x:1, y:2})
+   * - Per-property error resilience (try-catch returning _error marker)
+   *
+   * @param escapedProp - The escaped property name (already sanitized + escaped)
+   * @param objVar - The variable name for the target object (e.g., 'obj' or 'el')
+   * @returns JXA IIFE string for inclusion in a JSON object literal
+   */
+  private buildPropertyAccessorIIFE(escapedProp: string, objVar: string): string {
+    return `${escapedProp}: (() => {
+      try {
+        const val = ${objVar}.${escapedProp}();
+        if (Array.isArray(val) && val.length > 0 && val.every(item => typeof item === 'object' && item !== null)) {
+          try {
+            return { _type: 'reference_list', property: '${escapedProp}', count: val.length, items: val.map((_, i) => ({ index: i })) };
+          } catch(e) {
+            return val;
+          }
+        }
+        if (!Array.isArray(val) && typeof val === 'object' && val !== null) {
+          try {
+            const str = JSON.stringify(val);
+            if (str === 'null' || str === '{}') {
+              return { _type: 'object_reference', property: '${escapedProp}' };
+            }
+            return val;
+          } catch(e) {
+            return { _type: 'object_reference', property: '${escapedProp}' };
+          }
+        }
+        return val;
+      } catch(e) {
+        return { _error: e.message || 'property access failed' };
+      }
+    })()`;
+  }
+
+  /**
    * Create references for items in a property-returned list.
    *
    * When a property like `selectedMessages` returns an array of JXA object specifiers,
@@ -494,6 +709,37 @@ export class QueryExecutor {
     }
 
     return referenceIds;
+  }
+
+  /**
+   * Create a reference for a single object-type property.
+   *
+   * When a property like `mailbox` or `currentTab` returns a JXA object specifier,
+   * this method creates a reference for it. The reference's specifier is a
+   * PropertySpecifier for the property on the parent object.
+   *
+   * @param app - The application name
+   * @param parentSpecifier - The specifier of the parent object that owns the property
+   * @param propertyName - The camelCase property name (e.g., "mailbox", "currentTab")
+   * @returns A single reference ID string
+   */
+  createPropertyReference(
+    app: string,
+    parentSpecifier: ObjectSpecifier,
+    propertyName: string
+  ): string {
+    // Infer element type from property name
+    const elementType = this.singularize(propertyName);
+
+    // Build a PropertySpecifier for the property on the parent
+    const propertySpec: PropertySpecifier = {
+      type: 'property',
+      property: propertyName,
+      of: parentSpecifier
+    };
+
+    const refId = this.referenceStore.create(app, elementType, propertySpec);
+    return refId;
   }
 
   /**
@@ -609,7 +855,9 @@ export class QueryExecutor {
       throw new Error(`${fieldName} exceeds maximum length (${MAX_IDENTIFIER_LENGTH} characters)`);
     }
 
-    // Character allowlist check
+    // Character allowlist check — also blocks prototype pollution vectors
+    // (e.g., __proto__, constructor) since underscores at start are only allowed
+    // as part of the general [a-zA-Z0-9_ \-] pattern, not as prefix-only
     if (!SAFE_IDENTIFIER_REGEX.test(value)) {
       throw new Error(`${fieldName} contains invalid characters. Only alphanumeric, spaces, hyphens, and underscores are allowed.`);
     }

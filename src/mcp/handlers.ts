@@ -410,6 +410,29 @@ function isSetPropertyParams(value: unknown): value is SetPropertyParams {
 }
 
 /**
+ * Type guard for iac_mcp_get_elements_with_properties parameters
+ * Runtime validation of parameter structure
+ */
+interface GetElementsWithPropertiesParams {
+  container: string | ObjectSpecifier;
+  elementType: string;
+  properties: string[];
+  app?: string;
+  limit?: number;
+}
+
+function isGetElementsWithPropertiesParams(value: unknown): value is GetElementsWithPropertiesParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.elementType !== 'string') return false;
+  if (!Array.isArray(obj.properties)) return false;
+  if (typeof obj.container !== 'string' && (typeof obj.container !== 'object' || obj.container === null)) return false;
+  if (obj.app !== undefined && typeof obj.app !== 'string') return false;
+  if (obj.limit !== undefined && typeof obj.limit !== 'number') return false;
+  return true;
+}
+
+/**
  * Check if a warning is security-related
  *
  * @param warning - Parse warning to check
@@ -994,6 +1017,22 @@ export async function setupHandlers(
           };
         }
         return await handleSetProperty(queryExecutor, args);
+      }
+
+      if (toolName === 'iac_mcp_get_elements_with_properties') {
+        if (!isGetElementsWithPropertiesParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_get_elements_with_properties. Expected: { container: string|object, elementType: string, properties: string[], app?: string, limit?: number }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        return await handleGetElementsWithProperties(queryExecutor, args);
       }
 
       // Check for execute_app_command
@@ -1906,6 +1945,163 @@ async function handleSetProperty(
             error: 'property_read_only',
             property: params.property,
             message: `Property "${params.property}" is read-only and cannot be modified`,
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          error: 'execution_failed',
+          message,
+        }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle get_elements_with_properties tool call
+ *
+ * Gets elements from a container with their properties in one batch operation.
+ */
+async function handleGetElementsWithProperties(
+  queryExecutor: QueryExecutor,
+  params: { container: string | ObjectSpecifier; elementType: string; properties: string[]; app?: string; limit?: number }
+): Promise<{
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+}> {
+  try {
+    console.error(`[CallTool/get_elements_with_properties] Getting elements of type: ${params.elementType} with properties: ${params.properties.join(', ')}`);
+
+    // Validate parameters
+    if (!params.container) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing "container" parameter',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    if (!params.elementType || typeof params.elementType !== 'string') {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing or invalid "elementType" parameter',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    if (!Array.isArray(params.properties) || params.properties.length === 0) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'invalid_parameter',
+            message: 'Missing or empty "properties" parameter. Must be a non-empty array of property names.',
+          }),
+        }],
+        isError: true,
+      };
+    }
+
+    // Validate container
+    if (typeof params.container === 'string') {
+      if (!isReferenceId(params.container)) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Container string must be a valid reference ID (format: ref_<uuid>)',
+            }),
+          }],
+          isError: true,
+        };
+      }
+    } else {
+      const containerValidation = validateObjectSpecifier(params.container);
+      if (!containerValidation.valid) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Invalid "container" specifier',
+              details: containerValidation.errors,
+            }),
+          }],
+          isError: true,
+        };
+      }
+
+      if (!params.app) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'invalid_parameter',
+              message: 'Missing "app" parameter. App is required when container is an ObjectSpecifier.',
+            }),
+          }],
+          isError: true,
+        };
+      }
+    }
+
+    const result = await queryExecutor.getElementsWithProperties(
+      params.container,
+      params.elementType,
+      params.properties,
+      params.app,
+      params.limit
+    );
+
+    console.error(`[CallTool/get_elements_with_properties] Retrieved ${result.elements.length} elements (total: ${result.count})`);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({
+          elements: result.elements.map(el => ({
+            reference: {
+              id: el.reference.id,
+              type: el.reference.type,
+              app: el.reference.app,
+            },
+            properties: el.properties,
+          })),
+          count: result.count,
+          hasMore: result.hasMore,
+        }),
+      }],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/get_elements_with_properties] Error: ${message}`);
+
+    if (message.includes('Reference not found')) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'reference_not_found',
+            message: 'The referenced container object no longer exists or has been evicted from the store. The object may have been closed, deleted, or the reference was evicted due to store capacity.',
+            suggestion: 'Re-query the container object using get_elements with a fresh specifier to obtain a new reference.',
           }),
         }],
         isError: true,
