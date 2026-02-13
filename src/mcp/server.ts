@@ -27,6 +27,7 @@ import { ErrorHandler } from '../error-handler.js';
 import { PerAppCache } from '../jitd/cache/per-app-cache.js';
 import { ReferenceStore } from '../execution/reference-store.js';
 import { QueryExecutor } from '../execution/query-executor.js';
+import { SystemEventsExecutor } from '../execution/system-events-executor.js';
 import { setupHandlers } from './handlers.js';
 
 /**
@@ -108,6 +109,7 @@ export class IACMCPServer {
   private perAppCache: PerAppCache;
   private referenceStore: ReferenceStore;
   private queryExecutor: QueryExecutor;
+  private systemEventsExecutor: SystemEventsExecutor;
 
   // State tracking
   private status: ServerStatus = {
@@ -180,6 +182,11 @@ export class IACMCPServer {
     this.queryExecutor = this.options.disableJxaExecution
       ? new QueryExecutor(this.referenceStore)
       : new QueryExecutor(this.referenceStore, this.jxaExecutor);
+
+    // Initialize System Events executor (shares ReferenceStore with query executor)
+    this.systemEventsExecutor = this.options.disableJxaExecution
+      ? new SystemEventsExecutor(this.referenceStore)
+      : new SystemEventsExecutor(this.referenceStore, this.jxaExecutor);
   }
 
   /**
@@ -221,7 +228,8 @@ export class IACMCPServer {
         this.adapter,
         this.errorHandler,
         this.perAppCache,
-        this.queryExecutor
+        this.queryExecutor,
+        this.systemEventsExecutor
       );
 
       this.status.initialized = true;

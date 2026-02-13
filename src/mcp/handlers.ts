@@ -39,7 +39,9 @@ import type { PerAppCache } from '../jitd/cache/per-app-cache.js';
 import { SDEFParser, type ParseWarning } from '../jitd/discovery/parse-sdef.js';
 import { buildFallbackMetadata } from '../jitd/discovery/app-metadata-builder.js';
 import { QueryExecutor } from '../execution/query-executor.js';
+import { SystemEventsExecutor } from '../execution/system-events-executor.js';
 import { generateQueryTools } from '../jitd/tool-generator/query-tools.js';
+import { generateSystemEventsTools } from '../jitd/tool-generator/system-events-tools.js';
 import { validateObjectSpecifier, isReferenceId } from '../types/object-specifier.js';
 import type { ObjectSpecifier } from '../types/object-specifier.js';
 
@@ -757,7 +759,8 @@ export async function setupHandlers(
   adapter: MacOSAdapter,
   errorHandler: ErrorHandler,
   perAppCache: PerAppCache,
-  queryExecutor: QueryExecutor
+  queryExecutor: QueryExecutor,
+  systemEventsExecutor?: SystemEventsExecutor
 ): Promise<void> {
   // Store discovered tools in memory for CallTool lookups
   // Using Map for O(1) lookups instead of Array.find() which is O(n)
@@ -897,13 +900,16 @@ export async function setupHandlers(
       // Generate query tools
       const queryTools = generateQueryTools();
 
+      // Generate System Events UI automation tools
+      const systemEventsTools = generateSystemEventsTools();
+
       // Include dynamically loaded tools from previous get_app_tools calls
       // This ensures ListTools is consistent with what CallTool can execute
       const dynamicallyLoadedTools = Array.from(discoveredToolsMap.values());
 
-      // Return core tools + query tools + dynamically loaded tools + app metadata
+      // Return core tools + query tools + system events tools + dynamically loaded tools + app metadata
       return {
-        tools: [getAppToolsTool, listAppsTool, executeAppCommandTool, ...queryTools, ...dynamicallyLoadedTools],
+        tools: [getAppToolsTool, listAppsTool, executeAppCommandTool, ...queryTools, ...systemEventsTools, ...dynamicallyLoadedTools],
         _app_metadata: appMetadataList,
       };
 
@@ -1066,6 +1072,157 @@ export async function setupHandlers(
           };
         }
         return await handleGetPropertiesBatch(queryExecutor, args);
+      }
+
+      // Check for System Events UI automation tools
+      if (toolName === 'iac_mcp_activate_app') {
+        if (!isActivateAppParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_activate_app. Expected: { app: string }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        if (systemEventsExecutor) {
+          return await handleActivateApp(systemEventsExecutor, args);
+        }
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ error: 'system_events_not_available', message: 'System Events executor not configured' }),
+          }],
+          isError: true,
+        };
+      }
+
+      if (toolName === 'iac_mcp_ui_snapshot') {
+        if (!isUISnapshotParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_ui_snapshot. Expected: { app: string, max_depth?: number }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        if (systemEventsExecutor) {
+          return await handleUISnapshot(systemEventsExecutor, args);
+        }
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ error: 'system_events_not_available', message: 'System Events executor not configured' }),
+          }],
+          isError: true,
+        };
+      }
+
+      if (toolName === 'iac_mcp_click_menu') {
+        if (!isClickMenuParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_click_menu. Expected: { app: string, menu_path: string }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        if (systemEventsExecutor) {
+          return await handleClickMenu(systemEventsExecutor, args);
+        }
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ error: 'system_events_not_available', message: 'System Events executor not configured' }),
+          }],
+          isError: true,
+        };
+      }
+
+      if (toolName === 'iac_mcp_send_keystroke') {
+        if (!isSendKeystrokeParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_send_keystroke. Expected: { app: string, key: string, modifiers?: string[] }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        if (systemEventsExecutor) {
+          return await handleSendKeystroke(systemEventsExecutor, args);
+        }
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ error: 'system_events_not_available', message: 'System Events executor not configured' }),
+          }],
+          isError: true,
+        };
+      }
+
+      if (toolName === 'iac_mcp_click_element') {
+        if (!isClickElementParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_click_element. Expected: { ref: string }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        if (systemEventsExecutor) {
+          return await handleClickElement(systemEventsExecutor, args);
+        }
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ error: 'system_events_not_available', message: 'System Events executor not configured' }),
+          }],
+          isError: true,
+        };
+      }
+
+      if (toolName === 'iac_mcp_set_value') {
+        if (!isSetValueParams(args)) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'invalid_parameter',
+                message: 'Invalid parameters for iac_mcp_set_value. Expected: { ref: string, value: any }',
+              }),
+            }],
+            isError: true,
+          };
+        }
+        if (systemEventsExecutor) {
+          return await handleSetValue(systemEventsExecutor, args);
+        }
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ error: 'system_events_not_available', message: 'System Events executor not configured' }),
+          }],
+          isError: true,
+        };
       }
 
       // Check for execute_app_command
@@ -2365,5 +2522,283 @@ export function formatPermissionDeniedResponse(decision: PermissionDecision): Re
     requiresPrompt: decision.requiresPrompt,
     timestamp: new Date().toISOString(),
   };
+}
+
+// =============================================================================
+// System Events UI Automation - Type Guards & Handlers
+// =============================================================================
+
+/**
+ * Type guard for iac_mcp_activate_app parameters
+ */
+interface ActivateAppParams {
+  app: string;
+}
+
+function isActivateAppParams(value: unknown): value is ActivateAppParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.app === 'string';
+}
+
+/**
+ * Type guard for iac_mcp_ui_snapshot parameters
+ */
+interface UISnapshotParams {
+  app: string;
+  max_depth?: number;
+}
+
+function isUISnapshotParams(value: unknown): value is UISnapshotParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.app !== 'string') return false;
+  if (obj.max_depth !== undefined && typeof obj.max_depth !== 'number') return false;
+  return true;
+}
+
+/**
+ * Type guard for iac_mcp_click_menu parameters
+ */
+interface ClickMenuParams {
+  app: string;
+  menu_path: string;
+}
+
+function isClickMenuParams(value: unknown): value is ClickMenuParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.app === 'string' && typeof obj.menu_path === 'string';
+}
+
+/**
+ * Type guard for iac_mcp_send_keystroke parameters
+ */
+interface SendKeystrokeParams {
+  app: string;
+  key: string;
+  modifiers?: string[];
+}
+
+function isSendKeystrokeParams(value: unknown): value is SendKeystrokeParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.app !== 'string') return false;
+  if (typeof obj.key !== 'string') return false;
+  if (obj.modifiers !== undefined && !Array.isArray(obj.modifiers)) return false;
+  return true;
+}
+
+/**
+ * Type guard for iac_mcp_click_element parameters
+ */
+interface ClickElementParams {
+  ref: string;
+}
+
+function isClickElementParams(value: unknown): value is ClickElementParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.ref === 'string';
+}
+
+/**
+ * Type guard for iac_mcp_set_value parameters
+ */
+interface SetValueParams {
+  ref: string;
+  value: unknown;
+}
+
+function isSetValueParams(value: unknown): value is SetValueParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.ref !== 'string') return false;
+  return 'value' in obj;
+}
+
+/**
+ * Handle activate_app tool call
+ */
+async function handleActivateApp(
+  executor: SystemEventsExecutor,
+  params: ActivateAppParams
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  try {
+    console.error(`[CallTool/activate_app] Activating app: ${params.app}`);
+    const result = await executor.activateApp(params.app);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify(result),
+      }],
+      isError: !result.success,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/activate_app] Error: ${message}`);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ success: false, error: message }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle ui_snapshot tool call
+ */
+async function handleUISnapshot(
+  executor: SystemEventsExecutor,
+  params: UISnapshotParams
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  try {
+    console.error(`[CallTool/ui_snapshot] Capturing UI snapshot for: ${params.app}`);
+    const result = await executor.uiSnapshot(params.app, params.max_depth);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify(result),
+      }],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/ui_snapshot] Error: ${message}`);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ app: params.app, windows: [], _warning: message }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle click_menu tool call
+ */
+async function handleClickMenu(
+  executor: SystemEventsExecutor,
+  params: ClickMenuParams
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  try {
+    console.error(`[CallTool/click_menu] Clicking menu: ${params.menu_path} in ${params.app}`);
+    const result = await executor.clickMenu(params.app, params.menu_path);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify(result),
+      }],
+      isError: !result.success,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/click_menu] Error: ${message}`);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ success: false, error: message }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle send_keystroke tool call
+ */
+async function handleSendKeystroke(
+  executor: SystemEventsExecutor,
+  params: SendKeystrokeParams
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  try {
+    console.error(`[CallTool/send_keystroke] Sending keystroke: ${params.key} to ${params.app}`);
+    const result = await executor.sendKeystroke(params.app, params.key, params.modifiers);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify(result),
+      }],
+      isError: !result.success,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/send_keystroke] Error: ${message}`);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ success: false, error: message }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle click_element tool call
+ */
+async function handleClickElement(
+  executor: SystemEventsExecutor,
+  params: ClickElementParams
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  try {
+    console.error(`[CallTool/click_element] Clicking element: ${params.ref}`);
+    const result = await executor.clickElement(params.ref);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify(result),
+      }],
+      isError: !result.success,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/click_element] Error: ${message}`);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ success: false, error: message }),
+      }],
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Handle set_value tool call
+ */
+async function handleSetValue(
+  executor: SystemEventsExecutor,
+  params: SetValueParams
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  try {
+    console.error(`[CallTool/set_value] Setting value on element: ${params.ref}`);
+    const result = await executor.setValue(params.ref, params.value);
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify(result),
+      }],
+      isError: !result.success,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CallTool/set_value] Error: ${message}`);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify({ success: false, error: message }),
+      }],
+      isError: true,
+    };
+  }
 }
 
