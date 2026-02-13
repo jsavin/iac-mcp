@@ -28,6 +28,7 @@ import { PerAppCache } from '../jitd/cache/per-app-cache.js';
 import { ReferenceStore } from '../execution/reference-store.js';
 import { QueryExecutor } from '../execution/query-executor.js';
 import { SystemEventsExecutor } from '../execution/system-events-executor.js';
+import { LargeValueCache } from '../execution/large-value-cache.js';
 import { setupHandlers } from './handlers.js';
 
 /**
@@ -179,9 +180,10 @@ export class IACMCPServer {
     // Initialize query execution components
     // Pass JXAExecutor only if JXA execution is enabled (default: enabled)
     this.referenceStore = new ReferenceStore(15 * 60 * 1000); // 15-minute TTL
+    const largeValueCache = new LargeValueCache();
     this.queryExecutor = this.options.disableJxaExecution
-      ? new QueryExecutor(this.referenceStore)
-      : new QueryExecutor(this.referenceStore, this.jxaExecutor);
+      ? new QueryExecutor(this.referenceStore, undefined, largeValueCache)
+      : new QueryExecutor(this.referenceStore, this.jxaExecutor, largeValueCache);
 
     // Initialize System Events executor (shares ReferenceStore with query executor)
     this.systemEventsExecutor = this.options.disableJxaExecution
