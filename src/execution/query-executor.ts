@@ -129,10 +129,16 @@ export class QueryExecutor {
       const propertyAccess = properties.map(prop => {
         const sanitizedProp = this.sanitizeForJxa(prop, 'property');
         const camelProp = this.camelCase(sanitizedProp);
-        return `${camelProp}: (() => {
-      const val = obj.${camelProp}();
-      if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object' && val[0] !== null) {
-        try { return { _type: 'reference_list', property: '${camelProp}', count: val.length, items: val.map((_, i) => ({ index: i })) }; } catch(e) {}
+        // Defense-in-depth: escape camelProp even though sanitizeForJxa should prevent dangerous chars
+        const escapedProp = this.escapeJxaString(camelProp);
+        return `${escapedProp}: (() => {
+      const val = obj.${escapedProp}();
+      if (Array.isArray(val) && val.length > 0 && val.every(item => typeof item === 'object' && item !== null)) {
+        try {
+          return { _type: 'reference_list', property: '${escapedProp}', count: val.length, items: val.map((_, i) => ({ index: i })) };
+        } catch(e) {
+          return val;
+        }
       }
       return val;
     })()`;
@@ -220,13 +226,16 @@ export class QueryExecutor {
       throw new Error(this.formatJxaError(parsed.error!));
     }
 
-    const properties_result: Record<string, any> = parsed.data || {};
+    const propertiesResult: Record<string, any> = parsed.data || {};
 
     // Post-process: convert reference_list markers into actual stored references
-    for (const key of Object.keys(properties_result)) {
-      const val = properties_result[key];
-      if (val && typeof val === 'object' && val._type === 'reference_list') {
-        properties_result[key] = this.createPropertyListReferences(
+    for (const key of Object.keys(propertiesResult)) {
+      const val = propertiesResult[key];
+      if (val && typeof val === 'object' &&
+          val._type === 'reference_list' &&
+          typeof val.property === 'string' &&
+          typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
+        propertiesResult[key] = this.createPropertyListReferences(
           reference.app,
           reference.specifier,
           val.property,
@@ -235,7 +244,7 @@ export class QueryExecutor {
       }
     }
 
-    return properties_result;
+    return propertiesResult;
   }
 
   /**

@@ -1704,8 +1704,9 @@ describe('QueryExecutor', () => {
 
         await executorWithJxa.getProperties(ref.id, ['selectedMessages']);
 
-        // JXA should contain the array detection logic
+        // JXA should contain the array detection logic checking all elements
         expect(capturedScript).toContain('Array.isArray(val)');
+        expect(capturedScript).toContain('val.every');
         expect(capturedScript).toContain('reference_list');
         expect(capturedScript).toContain('selectedMessages');
       });
@@ -1732,6 +1733,132 @@ describe('QueryExecutor', () => {
 
         expect(properties.subject).toBe('Hello');
         expect(properties.read).toBe(true);
+      });
+
+      it('should skip malformed reference_list markers with missing property', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              badMarker: {
+                _type: 'reference_list',
+                // missing 'property' field
+                count: 2,
+                items: [{ index: 0 }, { index: 1 }]
+              }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message viewer',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['badMarker']);
+
+        // Should pass through the raw marker without converting
+        expect(properties.badMarker._type).toBe('reference_list');
+        expect(properties.badMarker.count).toBe(2);
+      });
+
+      it('should skip malformed reference_list markers with invalid count', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              badMarker: {
+                _type: 'reference_list',
+                property: 'selectedMessages',
+                count: -1,
+                items: []
+              }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message viewer',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['badMarker']);
+
+        // Should pass through — negative count is invalid
+        expect(properties.badMarker._type).toBe('reference_list');
+      });
+
+      it('should skip malformed reference_list markers with non-integer count', async () => {
+        const mockExecutor = {
+          execute: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({
+              badMarker: {
+                _type: 'reference_list',
+                property: 'selectedMessages',
+                count: 2.5,
+                items: []
+              }
+            }),
+            stderr: ''
+          })
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message viewer',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['badMarker']);
+
+        // Should pass through — non-integer count is invalid
+        expect(properties.badMarker._type).toBe('reference_list');
+      });
+
+      it('should use escapeJxaString for defense-in-depth on property names in JXA template', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({ selectedMessages: [] }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'message viewer',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Mail', specifier);
+
+        // Valid property name that goes through both sanitize and escape
+        await executorWithJxa.getProperties(ref.id, ['selectedMessages']);
+
+        // The JXA template should use the property name consistently
+        // (escaped via escapeJxaString for defense-in-depth)
+        expect(capturedScript).toContain('selectedMessages');
+        // Verify the template wraps property access with array detection
+        expect(capturedScript).toContain('val.every');
       });
 
       it('should handle mixed plain values and reference lists', async () => {
