@@ -6,7 +6,8 @@ import {
   isIdSpecifier,
   isPropertySpecifier,
   isApplicationSpecifier,
-  ElementSpecifier
+  ElementSpecifier,
+  PropertySpecifier
 } from "../types/object-specifier.js";
 import { ReferenceStore } from "./reference-store.js";
 import { JXAExecutor } from "../adapters/macos/jxa-executor.js";
@@ -122,10 +123,25 @@ export class QueryExecutor {
 
     if (properties && properties.length > 0) {
       // Get specific properties - sanitize each property name first to prevent injection
+      // Each property is wrapped in a helper that detects arrays of JXA object specifiers
+      // (e.g., selectedMessages) and serializes them as reference_list metadata instead of
+      // attempting JSON.stringify (which produces [null] for object specifiers).
       const propertyAccess = properties.map(prop => {
         const sanitizedProp = this.sanitizeForJxa(prop, 'property');
         const camelProp = this.camelCase(sanitizedProp);
-        return `${camelProp}: obj.${camelProp}()`;
+        // Defense-in-depth: escape camelProp even though sanitizeForJxa should prevent dangerous chars
+        const escapedProp = this.escapeJxaString(camelProp);
+        return `${escapedProp}: (() => {
+      const val = obj.${escapedProp}();
+      if (Array.isArray(val) && val.length > 0 && val.every(item => typeof item === 'object' && item !== null)) {
+        try {
+          return { _type: 'reference_list', property: '${escapedProp}', count: val.length, items: val.map((_, i) => ({ index: i })) };
+        } catch(e) {
+          return val;
+        }
+      }
+      return val;
+    })()`;
       }).join(', ');
       jxaCode = `(() => {
   const app = Application("${this.escapeJxaString(reference.app)}");
@@ -201,16 +217,34 @@ export class QueryExecutor {
     }
 
     // 5. Execute JXA
-    const result = await this.jxaExecutor.execute(jxaCode);
+    const jxaResult = await this.jxaExecutor.execute(jxaCode);
 
     // 6. Parse result and handle errors
-    const parsed = this.resultParser.parse(result, { appName: reference.app });
+    const parsed = this.resultParser.parse(jxaResult, { appName: reference.app });
 
     if (!parsed.success) {
       throw new Error(this.formatJxaError(parsed.error!));
     }
 
-    return parsed.data || {};
+    const propertiesResult: Record<string, any> = parsed.data || {};
+
+    // Post-process: convert reference_list markers into actual stored references
+    for (const key of Object.keys(propertiesResult)) {
+      const val = propertiesResult[key];
+      if (val && typeof val === 'object' &&
+          val._type === 'reference_list' &&
+          typeof val.property === 'string' &&
+          typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
+        propertiesResult[key] = this.createPropertyListReferences(
+          reference.app,
+          reference.specifier,
+          val.property,
+          val.count
+        );
+      }
+    }
+
+    return propertiesResult;
   }
 
   /**
@@ -414,6 +448,92 @@ export class QueryExecutor {
   }
 
   /**
+   * Create references for items in a property-returned list.
+   *
+   * When a property like `selectedMessages` returns an array of JXA object specifiers,
+   * this method creates individual references for each item. Each reference's specifier
+   * is an ElementSpecifier with:
+   * - element: inferred from property name (strip trailing 's' for plural, e.g., selectedMessages → message)
+   * - index: position in the array
+   * - container: a PropertySpecifier for the property on the parent object
+   *
+   * @param app - The application name
+   * @param parentSpecifier - The specifier of the parent object that owns the property
+   * @param propertyName - The camelCase property name (e.g., "selectedMessages")
+   * @param count - Number of items in the list
+   * @returns Array of reference IDs for each item
+   */
+  createPropertyListReferences(
+    app: string,
+    parentSpecifier: ObjectSpecifier,
+    propertyName: string,
+    count: number
+  ): string[] {
+    // Infer element type from property name:
+    // "selectedMessages" → "message", "windows" → "window"
+    const elementType = this.singularize(propertyName);
+
+    // Build a PropertySpecifier for the property on the parent
+    const propertySpec: PropertySpecifier = {
+      type: 'property',
+      property: propertyName,
+      of: parentSpecifier
+    };
+
+    const referenceIds: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const elementSpec: ElementSpecifier = {
+        type: 'element',
+        element: elementType,
+        index: i,
+        container: propertySpec
+      };
+
+      const refId = this.referenceStore.create(app, elementType, elementSpec);
+      referenceIds.push(refId);
+    }
+
+    return referenceIds;
+  }
+
+  /**
+   * Infer singular element type from a property name.
+   * Strips common prefixes (like "selected") and converts plural to singular.
+   *
+   * Examples:
+   * - "selectedMessages" → "message"
+   * - "windows" → "window"
+   * - "selection" → "selection" (no change for non-plural)
+   *
+   * @param propertyName - The camelCase property name
+   * @returns Inferred singular element type
+   */
+  private singularize(propertyName: string): string {
+    // Strip common prefixes like "selected", "visible", "current"
+    let name = propertyName;
+    const prefixes = ['selected', 'visible', 'current', 'open', 'recent'];
+    for (const prefix of prefixes) {
+      if (name.startsWith(prefix) && name.length > prefix.length) {
+        name = name.charAt(prefix.length).toLowerCase() + name.slice(prefix.length + 1);
+        break;
+      }
+    }
+
+    // Convert plural to singular
+    if (name.endsWith('ies') && name.length > 3) {
+      return name.slice(0, -3) + 'y';
+    }
+    if (name.endsWith('ses') || name.endsWith('xes') || name.endsWith('ches') || name.endsWith('shes')) {
+      return name.slice(0, -2);
+    }
+    if (name.endsWith('s') && !name.endsWith('ss') && name.length > 1) {
+      return name.slice(0, -1);
+    }
+
+    return name;
+  }
+
+  /**
    * Format a JXA error into a user-friendly message.
    *
    * @param error - The JXA error object
@@ -556,6 +676,16 @@ export class QueryExecutor {
       const containerPath = specifier.container === "application"
         ? appVar
         : this.buildObjectPath(specifier.container, appVar);
+
+      // When container is a PropertySpecifier (e.g., selectedMessages()), the result
+      // is a plain JS array, not a JXA element collection. Index directly into it
+      // instead of accessing a named element collection.
+      // Correct:   app.messageViewers[0].selectedMessages()[0]
+      // Incorrect: app.messageViewers[0].selectedMessages().messages[0]
+      if (isPropertySpecifier(specifier.container)) {
+        return `${containerPath}[${specifier.index}]`;
+      }
+
       // JXA: app.messages[0] or container.messages[index]
       // Note: index is a number, no sanitization needed
       return `${containerPath}.${this.pluralize(sanitizedElement)}[${specifier.index}]`;
