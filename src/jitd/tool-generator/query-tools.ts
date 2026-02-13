@@ -360,7 +360,9 @@ Get names and sizes of multiple files:
 
 **Performance:** References from the same app are batched into a single JXA call. References from different apps run concurrently.
 
-**Error Resilience:** If one reference fails (e.g., expired), its entry gets an error field while others succeed normally.`,
+**Error Resilience:** If one reference fails (e.g., expired), its entry gets an error field while others succeed normally.
+
+**Order:** Results are returned in the same order as the input references array.`,
       inputSchema: {
         type: "object",
         properties: {

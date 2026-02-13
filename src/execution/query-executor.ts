@@ -241,31 +241,7 @@ export class QueryExecutor {
     }
 
     const propertiesResult: Record<string, any> = parsed.data || {};
-
-    // Post-process: convert reference markers into actual stored references
-    for (const key of Object.keys(propertiesResult)) {
-      const val = propertiesResult[key];
-      if (val && typeof val === 'object') {
-        if (val._type === 'reference_list' &&
-            typeof val.property === 'string' &&
-            typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
-          propertiesResult[key] = this.createPropertyListReferences(
-            reference.app,
-            reference.specifier,
-            val.property,
-            val.count
-          );
-        } else if (val._type === 'object_reference' && typeof val.property === 'string') {
-          propertiesResult[key] = this.createPropertyReference(
-            reference.app,
-            reference.specifier,
-            val.property
-          );
-        }
-      }
-    }
-
-    return propertiesResult;
+    return this.postProcessPropertyReferences(propertiesResult, reference.app, reference.specifier);
   }
 
   /**
@@ -589,28 +565,9 @@ export class QueryExecutor {
       }
 
       // Post-process properties: convert markers to references
-      const processedProps: Record<string, any> = item.props || {};
-      for (const key of Object.keys(processedProps)) {
-        const val = processedProps[key];
-        if (val && typeof val === 'object') {
-          if (val._type === 'reference_list' &&
-              typeof val.property === 'string' &&
-              typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
-            processedProps[key] = this.createPropertyListReferences(
-              resolvedApp,
-              elementSpec,
-              val.property,
-              val.count
-            );
-          } else if (val._type === 'object_reference' && typeof val.property === 'string') {
-            processedProps[key] = this.createPropertyReference(
-              resolvedApp,
-              elementSpec,
-              val.property
-            );
-          }
-        }
-      }
+      const processedProps = this.postProcessPropertyReferences(
+        item.props || {}, resolvedApp, elementSpec
+      );
 
       return {
         reference,
@@ -784,29 +741,9 @@ export class QueryExecutor {
               index: entry.index,
             });
           } else {
-            const processedProps: Record<string, any> = jxaEntry.props || {};
-            // Post-process: convert reference markers into actual stored references
-            for (const key of Object.keys(processedProps)) {
-              const val = processedProps[key];
-              if (val && typeof val === 'object') {
-                if (val._type === 'reference_list' &&
-                    typeof val.property === 'string' &&
-                    typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
-                  processedProps[key] = this.createPropertyListReferences(
-                    entry.reference.app,
-                    entry.reference.specifier,
-                    val.property,
-                    val.count
-                  );
-                } else if (val._type === 'object_reference' && typeof val.property === 'string') {
-                  processedProps[key] = this.createPropertyReference(
-                    entry.reference.app,
-                    entry.reference.specifier,
-                    val.property
-                  );
-                }
-              }
-            }
+            const processedProps = this.postProcessPropertyReferences(
+              jxaEntry.props || {}, entry.reference.app, entry.reference.specifier
+            );
             results.push({
               referenceId: entry.referenceId,
               properties: processedProps,
@@ -831,6 +768,39 @@ export class QueryExecutor {
 
     // 5. Sort by original order and strip index
     return results.sort((a, b) => a.index - b.index).map(({ index: _index, ...rest }) => rest);
+  }
+
+  /**
+   * Post-process a properties record to convert JXA reference markers into stored references.
+   * Shared by getProperties, getElementsWithProperties, and getPropertiesBatch.
+   *
+   * Converts:
+   * - `{ _type: 'reference_list', property, count }` → array of reference IDs
+   * - `{ _type: 'object_reference', property }` → single reference ID
+   *
+   * @param props - The raw properties record from JXA execution
+   * @param app - Application name for reference creation
+   * @param specifier - Parent object specifier for reference creation
+   * @returns The same record with markers replaced by reference IDs (mutated in place)
+   */
+  private postProcessPropertyReferences(
+    props: Record<string, any>,
+    app: string,
+    specifier: ObjectSpecifier
+  ): Record<string, any> {
+    for (const key of Object.keys(props)) {
+      const val = props[key];
+      if (val && typeof val === 'object') {
+        if (val._type === 'reference_list' &&
+            typeof val.property === 'string' &&
+            typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
+          props[key] = this.createPropertyListReferences(app, specifier, val.property, val.count);
+        } else if (val._type === 'object_reference' && typeof val.property === 'string') {
+          props[key] = this.createPropertyReference(app, specifier, val.property);
+        }
+      }
+    }
+    return props;
   }
 
   /**
