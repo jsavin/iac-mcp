@@ -2235,6 +2235,44 @@ describe('QueryExecutor', () => {
         expect(properties.badMarker._type).toBe('object_reference');
         expect(properties.badMarker.property).toBeUndefined();
       });
+
+      it('should detect object_reference when JSON.stringify returns undefined (JXA host objects)', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                currentTab: { _type: 'object_reference', property: 'currentTab' }
+              }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'window',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        const properties = await executorWithJxa.getProperties(ref.id, ['currentTab']);
+
+        // Verify JXA template checks for undefined from JSON.stringify
+        // (JSON.stringify returns undefined for JXA host objects like tabs)
+        expect(capturedScript).toContain('str === undefined');
+
+        // Post-processing should convert to stored reference
+        expect(typeof properties.currentTab).toBe('string');
+        expect(properties.currentTab).toMatch(/^ref_/);
+        const storedRef = referenceStore.get(properties.currentTab);
+        expect(storedRef).toBeDefined();
+        expect(storedRef!.type).toBe('tab');
+      });
     });
 
     describe('Per-property error resilience (_error markers)', () => {
@@ -2347,6 +2385,38 @@ describe('QueryExecutor', () => {
         expect(properties.name).toEqual({ _error: 'property access failed' });
         expect(properties.url).toEqual({ _error: 'property access failed' });
         expect(properties.title).toEqual({ _error: 'not available' });
+      });
+
+      it('should attempt String() coercion before returning _error', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                url: 'https://example.com'
+              }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'tab',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        await executorWithJxa.getProperties(ref.id, ['url']);
+
+        // The outer catch should try String() coercion before falling back to _error
+        // This handles NSURL and other JXA types that throw on direct access
+        // but can be coerced to string
+        expect(capturedScript).toContain('String(');
       });
     });
 
