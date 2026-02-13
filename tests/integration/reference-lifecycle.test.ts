@@ -509,6 +509,79 @@ describe('Reference Lifecycle Management', () => {
     });
   });
 
+  describe('Property returning reference list → use returned references', () => {
+    it('should create usable references from property-returned object lists', async () => {
+      // Simulate: query message viewer → get selectedMessages → use returned refs
+      const viewerSpec: NamedSpecifier = {
+        type: 'named',
+        element: 'message viewer',
+        name: 'main',
+        container: 'application'
+      };
+
+      // Step 1: Query the message viewer
+      const viewerRef = await queryExecutor.queryObject('Mail', viewerSpec);
+      expect(viewerRef.id).toMatch(/^ref_/);
+
+      // Step 2: Use createPropertyListReferences (simulating what getProperties
+      // does after receiving reference_list from JXA)
+      const refIds = (queryExecutor as any).createPropertyListReferences(
+        'Mail',
+        viewerRef.specifier,
+        'selectedMessages',
+        2
+      );
+
+      expect(refIds.length).toBe(2);
+
+      // Step 3: Each returned reference should be retrievable and usable
+      for (let i = 0; i < refIds.length; i++) {
+        const msgRef = referenceStore.get(refIds[i]);
+        expect(msgRef).toBeDefined();
+        expect(msgRef!.app).toBe('Mail');
+        expect(msgRef!.type).toBe('message');
+
+        // Verify specifier chain is correct for JXA path generation
+        const spec = msgRef!.specifier as ElementSpecifier;
+        expect(spec.type).toBe('element');
+        expect(spec.index).toBe(i);
+
+        // Container should be PropertySpecifier pointing back to viewer
+        const container = spec.container;
+        expect(typeof container).toBe('object');
+        expect((container as any).type).toBe('property');
+        expect((container as any).property).toBe('selectedMessages');
+      }
+    });
+
+    it('should maintain reference lifecycle for property-list-created references', async () => {
+      const viewerSpec: ElementSpecifier = {
+        type: 'element',
+        element: 'message viewer',
+        index: 0,
+        container: 'application'
+      };
+
+      const viewerRef = await queryExecutor.queryObject('Mail', viewerSpec);
+
+      const refIds = (queryExecutor as any).createPropertyListReferences(
+        'Mail',
+        viewerRef.specifier,
+        'selectedMessages',
+        2
+      );
+
+      // References should be in the store
+      const totalCount = referenceStore.getStats().totalReferences;
+      expect(totalCount).toBeGreaterThanOrEqual(3); // viewer + 2 messages
+
+      // References should be deletable
+      referenceStore.delete(refIds[0]);
+      expect(referenceStore.get(refIds[0])).toBeUndefined();
+      expect(referenceStore.get(refIds[1])).toBeDefined();
+    });
+  });
+
   describe('Backward Compatibility', () => {
     it('should be safe to call stopCleanup multiple times', () => {
       referenceStore.stopCleanup();
