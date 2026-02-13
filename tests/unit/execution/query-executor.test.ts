@@ -2183,8 +2183,8 @@ describe('QueryExecutor', () => {
 
         await executorWithJxa.getProperties(ref.id, ['mailbox']);
 
-        // Verify JXA contains the single-object detection logic
-        expect(capturedScript).toContain('!Array.isArray(val) && typeof val === \'object\'');
+        // Verify JXA contains the single-object detection logic (uses isObj helper)
+        expect(capturedScript).toContain('!Array.isArray(val) && isObj(val)');
         expect(capturedScript).toContain('object_reference');
       });
 
@@ -2329,6 +2329,37 @@ describe('QueryExecutor', () => {
         const storedRef = referenceStore.get(properties.currentTab);
         expect(storedRef).toBeDefined();
         expect(storedRef!.type).toBe('tab');
+      });
+
+      it('should detect JXA object specifiers with typeof function (not just object)', async () => {
+        let capturedScript = '';
+        const mockExecutor = {
+          execute: async (script: string) => {
+            capturedScript = script;
+            return {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                currentTab: { _type: 'object_reference', property: 'currentTab' },
+                selectedMessages: { _type: 'reference_list', property: 'selectedMessages', count: 1, items: [{ index: 0 }] }
+              }),
+              stderr: ''
+            };
+          }
+        };
+
+        const executorWithJxa = new QueryExecutor(referenceStore, mockExecutor as any);
+        const specifier: ElementSpecifier = {
+          type: 'element',
+          element: 'window',
+          index: 0,
+          container: 'application'
+        };
+        const ref = await executorWithJxa.queryObject('Safari', specifier);
+
+        await executorWithJxa.getProperties(ref.id, ['currentTab', 'selectedMessages']);
+
+        // JXA object specifiers report typeof === 'function', so detection must check for both
+        expect(capturedScript).toContain("typeof v === 'function'");
       });
     });
 

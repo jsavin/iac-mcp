@@ -145,6 +145,9 @@ export class QueryExecutor {
   const app = Application("${this.escapeJxaString(reference.app)}");
   const obj = ${objectPath};
 
+  // JXA object specifiers have typeof === 'function', not 'object'
+  const isObj = (v) => v !== null && v !== undefined && (typeof v === 'object' || typeof v === 'function');
+
   // Try the properties() method first (works for Finder, etc.)
   try {
     const props = obj.properties();
@@ -155,9 +158,9 @@ export class QueryExecutor {
         const v = props[k];
         if (v === null || v === undefined) {
           cleaned[k] = v;
-        } else if (Array.isArray(v) && v.length > 0 && v.every(item => typeof item === 'object' && item !== null)) {
+        } else if (Array.isArray(v) && v.length > 0 && v.every(item => isObj(item))) {
           cleaned[k] = { _type: 'reference_list', property: k, count: v.length, items: v.map((_, i) => ({ index: i })) };
-        } else if (typeof v === 'object' && !Array.isArray(v)) {
+        } else if (isObj(v) && !Array.isArray(v)) {
           try {
             const str = JSON.stringify(v);
             // JSON.stringify returns undefined for JXA host objects (Objective-C bridge)
@@ -208,8 +211,8 @@ export class QueryExecutor {
               result[name] = val;
             } else if (val instanceof Date) {
               result[name] = val.toISOString();
-            } else if (typeof val === 'object') {
-              if (Array.isArray(val) && val.length > 0 && val.every(item => typeof item === 'object' && item !== null)) {
+            } else if (typeof val === 'object' || typeof val === 'function') {
+              if (Array.isArray(val) && val.length > 0 && val.every(item => isObj(item))) {
                 result[name] = { _type: 'reference_list', property: name, count: val.length, items: val.map((_, i) => ({ index: i })) };
               } else if (!Array.isArray(val)) {
                 result[name] = { _type: 'object_reference', property: name };
@@ -638,14 +641,16 @@ export class QueryExecutor {
     return `${escapedProp}: (() => {
       try {
         const val = ${objVar}.${escapedProp}();
-        if (Array.isArray(val) && val.length > 0 && val.every(item => typeof item === 'object' && item !== null)) {
+        // JXA object specifiers have typeof === 'function', not 'object'
+        const isObj = (v) => v !== null && v !== undefined && (typeof v === 'object' || typeof v === 'function');
+        if (Array.isArray(val) && val.length > 0 && val.every(item => isObj(item))) {
           try {
             return { _type: 'reference_list', property: '${escapedProp}', count: val.length, items: val.map((_, i) => ({ index: i })) };
           } catch(e) {
             return val;
           }
         }
-        if (!Array.isArray(val) && typeof val === 'object' && val !== null) {
+        if (!Array.isArray(val) && isObj(val)) {
           try {
             const str = JSON.stringify(val);
             // JSON.stringify returns undefined for JXA host objects (Objective-C bridge)
