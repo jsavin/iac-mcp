@@ -761,4 +761,74 @@ describe('Reference Lifecycle Management', () => {
       expect(retrieved?.id).toBe(ref.id);
     });
   });
+
+  describe('Batch Get Properties', () => {
+    it('should return properties for multiple references from same app', async () => {
+      const spec1: NamedSpecifier = {
+        type: 'named',
+        element: 'mailbox',
+        name: 'inbox',
+        container: 'application'
+      };
+      const spec2: NamedSpecifier = {
+        type: 'named',
+        element: 'mailbox',
+        name: 'sent',
+        container: 'application'
+      };
+
+      const ref1 = await queryExecutor.queryObject('Mail', spec1);
+      const ref2 = await queryExecutor.queryObject('Mail', spec2);
+
+      // Without JXA executor, returns empty properties
+      const results = await queryExecutor.getPropertiesBatch([ref1.id, ref2.id]);
+      expect(results).toHaveLength(2);
+      expect(results[0]).toEqual({ referenceId: ref1.id, properties: {} });
+      expect(results[1]).toEqual({ referenceId: ref2.id, properties: {} });
+    });
+
+    it('should handle mix of valid and expired references', async () => {
+      const spec: NamedSpecifier = {
+        type: 'named',
+        element: 'mailbox',
+        name: 'inbox',
+        container: 'application'
+      };
+
+      const ref = await queryExecutor.queryObject('Mail', spec);
+
+      const results = await queryExecutor.getPropertiesBatch([ref.id, 'ref_expired_123']);
+      expect(results).toHaveLength(2);
+      expect(results[0]).toEqual({ referenceId: ref.id, properties: {} });
+      expect((results[1] as any).error).toContain('Reference not found');
+    });
+
+    it('should handle references from different apps', async () => {
+      const mailSpec: NamedSpecifier = {
+        type: 'named',
+        element: 'mailbox',
+        name: 'inbox',
+        container: 'application'
+      };
+      const finderSpec: NamedSpecifier = {
+        type: 'named',
+        element: 'folder',
+        name: 'Desktop',
+        container: 'application'
+      };
+
+      const mailRef = await queryExecutor.queryObject('Mail', mailSpec);
+      const finderRef = await queryExecutor.queryObject('Finder', finderSpec);
+
+      const results = await queryExecutor.getPropertiesBatch([mailRef.id, finderRef.id]);
+      expect(results).toHaveLength(2);
+      expect(results[0]!.referenceId).toBe(mailRef.id);
+      expect(results[1]!.referenceId).toBe(finderRef.id);
+    });
+
+    it('should return empty array for empty input', async () => {
+      const results = await queryExecutor.getPropertiesBatch([]);
+      expect(results).toEqual([]);
+    });
+  });
 });

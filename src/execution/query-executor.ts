@@ -241,31 +241,7 @@ export class QueryExecutor {
     }
 
     const propertiesResult: Record<string, any> = parsed.data || {};
-
-    // Post-process: convert reference markers into actual stored references
-    for (const key of Object.keys(propertiesResult)) {
-      const val = propertiesResult[key];
-      if (val && typeof val === 'object') {
-        if (val._type === 'reference_list' &&
-            typeof val.property === 'string' &&
-            typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
-          propertiesResult[key] = this.createPropertyListReferences(
-            reference.app,
-            reference.specifier,
-            val.property,
-            val.count
-          );
-        } else if (val._type === 'object_reference' && typeof val.property === 'string') {
-          propertiesResult[key] = this.createPropertyReference(
-            reference.app,
-            reference.specifier,
-            val.property
-          );
-        }
-      }
-    }
-
-    return propertiesResult;
+    return this.postProcessPropertyReferences(propertiesResult, reference.app, reference.specifier);
   }
 
   /**
@@ -589,28 +565,9 @@ export class QueryExecutor {
       }
 
       // Post-process properties: convert markers to references
-      const processedProps: Record<string, any> = item.props || {};
-      for (const key of Object.keys(processedProps)) {
-        const val = processedProps[key];
-        if (val && typeof val === 'object') {
-          if (val._type === 'reference_list' &&
-              typeof val.property === 'string' &&
-              typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
-            processedProps[key] = this.createPropertyListReferences(
-              resolvedApp,
-              elementSpec,
-              val.property,
-              val.count
-            );
-          } else if (val._type === 'object_reference' && typeof val.property === 'string') {
-            processedProps[key] = this.createPropertyReference(
-              resolvedApp,
-              elementSpec,
-              val.property
-            );
-          }
-        }
-      }
+      const processedProps = this.postProcessPropertyReferences(
+        item.props || {}, resolvedApp, elementSpec
+      );
 
       return {
         reference,
@@ -623,6 +580,227 @@ export class QueryExecutor {
       count: jxaResult.count,
       hasMore: jxaResult.count > limit
     };
+  }
+
+  /**
+   * Get properties for multiple references in a single batch call.
+   * Groups references by app and runs each app group concurrently.
+   *
+   * @param referenceIds - Array of reference IDs to fetch properties for
+   * @param properties - Optional array of property names to retrieve
+   * @returns Array of results (one per reference) with properties or error
+   */
+  async getPropertiesBatch(
+    referenceIds: string[],
+    properties?: string[]
+  ): Promise<Array<{ referenceId: string; properties: Record<string, any> } | { referenceId: string; error: string }>> {
+    // Handle empty array
+    if (referenceIds.length === 0) {
+      return [];
+    }
+
+    // Internal type with index for reordering
+    type IndexedResult = { referenceId: string; index: number } & ({ properties: Record<string, any> } | { error: string });
+
+    // 1. Resolve all references, collect errors for missing ones
+    const resolved: Array<{ referenceId: string; reference: ObjectReference; index: number }> = [];
+    const results: IndexedResult[] = [];
+
+    for (let i = 0; i < referenceIds.length; i++) {
+      const refId = referenceIds[i]!;
+      const reference = this.referenceStore.get(refId);
+      if (!reference) {
+        results.push({
+          referenceId: refId,
+          error: `Reference not found: ${refId}. The referenced object may have been closed or deleted.`,
+          index: i,
+        });
+      } else {
+        resolved.push({ referenceId: refId, reference, index: i });
+      }
+    }
+
+    // 2. If no JXAExecutor, return empty properties for all valid refs
+    if (!this.jxaExecutor) {
+      for (const entry of resolved) {
+        results.push({ referenceId: entry.referenceId, properties: {}, index: entry.index });
+      }
+      return results.sort((a, b) => a.index - b.index).map(({ index: _index, ...rest }) => rest);
+    }
+
+    // 3. Group valid references by app
+    const appGroups = new Map<string, typeof resolved>();
+    for (const entry of resolved) {
+      const app = entry.reference.app;
+      const group = appGroups.get(app);
+      if (group) {
+        group.push(entry);
+      } else {
+        appGroups.set(app, [entry]);
+      }
+    }
+
+    // 4. Build and execute JXA for each app group concurrently
+    const groupPromises = Array.from(appGroups.entries()).map(async ([app, entries]) => {
+      try {
+        // Build a single JXA script for all references in this app group
+        const refScripts = entries.map((entry, idx) => {
+          const objectPath = this.buildObjectPath(entry.reference.specifier, "app");
+
+          if (properties && properties.length > 0) {
+            const propertyAccess = properties.map(prop => {
+              const sanitizedProp = this.sanitizeForJxa(prop, 'property');
+              const camelProp = this.camelCase(sanitizedProp);
+              const escapedProp = this.escapeJxaString(camelProp);
+              return this.buildPropertyAccessorIIFE(escapedProp, `obj${idx}`);
+            }).join(', ');
+            return `(() => {
+      try {
+        const obj${idx} = ${objectPath};
+        return { idx: ${idx}, props: { ${propertyAccess} } };
+      } catch(e) {
+        return { idx: ${idx}, error: e.message || 'property access failed' };
+      }
+    })()`;
+          } else {
+            // Get all properties using properties() method
+            return `(() => {
+      try {
+        const obj${idx} = ${objectPath};
+        const isObj = (v) => v !== null && v !== undefined && (typeof v === 'object' || typeof v === 'function');
+        try {
+          const props = obj${idx}.properties();
+          if (props && typeof props === 'object') {
+            const cleaned = {};
+            const keys = Object.keys(props);
+            for (const k of keys) {
+              const v = props[k];
+              if (v === null || v === undefined) {
+                cleaned[k] = v;
+              } else if (Array.isArray(v) && v.length > 0 && v.every(item => isObj(item))) {
+                cleaned[k] = { _type: 'reference_list', property: k, count: v.length, items: v.map((_, i) => ({ index: i })) };
+              } else if (isObj(v) && !Array.isArray(v)) {
+                try {
+                  const str = JSON.stringify(v);
+                  if (str === undefined || str === 'null' || str === '{}') {
+                    cleaned[k] = { _type: 'object_reference', property: k };
+                  } else {
+                    cleaned[k] = v;
+                  }
+                } catch(e) {
+                  cleaned[k] = { _type: 'object_reference', property: k };
+                }
+              } else {
+                cleaned[k] = v;
+              }
+            }
+            return { idx: ${idx}, props: cleaned };
+          }
+        } catch (e) {}
+        return { idx: ${idx}, props: {} };
+      } catch(e) {
+        return { idx: ${idx}, error: e.message || 'property access failed' };
+      }
+    })()`;
+          }
+        });
+
+        const jxaCode = `(() => {
+  const app = Application("${this.escapeJxaString(app)}");
+  const results = [
+    ${refScripts.join(',\n    ')}
+  ];
+  return JSON.stringify(results);
+})()`;
+
+        const jxaResult = await this.jxaExecutor!.execute(jxaCode);
+        const parsed = this.resultParser.parse(jxaResult, { appName: app });
+
+        if (!parsed.success) {
+          // Entire app group failed - mark all entries as errors
+          for (const entry of entries) {
+            results.push({
+              referenceId: entry.referenceId,
+              error: this.formatJxaError(parsed.error!),
+              index: entry.index,
+            });
+          }
+          return;
+        }
+
+        const jxaResults: Array<{ idx: number; props?: Record<string, any>; error?: string }> = parsed.data || [];
+
+        // Map results back to entries
+        for (const jxaEntry of jxaResults) {
+          const entry = entries[jxaEntry.idx];
+          if (!entry) continue;
+          if (jxaEntry.error) {
+            results.push({
+              referenceId: entry.referenceId,
+              error: jxaEntry.error,
+              index: entry.index,
+            });
+          } else {
+            const processedProps = this.postProcessPropertyReferences(
+              jxaEntry.props || {}, entry.reference.app, entry.reference.specifier
+            );
+            results.push({
+              referenceId: entry.referenceId,
+              properties: processedProps,
+              index: entry.index,
+            });
+          }
+        }
+      } catch (error) {
+        // Unexpected error for this app group
+        const message = error instanceof Error ? error.message : String(error);
+        for (const entry of entries) {
+          results.push({
+            referenceId: entry.referenceId,
+            error: message,
+            index: entry.index,
+          });
+        }
+      }
+    });
+
+    await Promise.allSettled(groupPromises);
+
+    // 5. Sort by original order and strip index
+    return results.sort((a, b) => a.index - b.index).map(({ index: _index, ...rest }) => rest);
+  }
+
+  /**
+   * Post-process a properties record to convert JXA reference markers into stored references.
+   * Shared by getProperties, getElementsWithProperties, and getPropertiesBatch.
+   *
+   * Converts:
+   * - `{ _type: 'reference_list', property, count }` → array of reference IDs
+   * - `{ _type: 'object_reference', property }` → single reference ID
+   *
+   * @param props - The raw properties record from JXA execution
+   * @param app - Application name for reference creation
+   * @param specifier - Parent object specifier for reference creation
+   * @returns The same record with markers replaced by reference IDs (mutated in place)
+   */
+  private postProcessPropertyReferences(
+    props: Record<string, any>,
+    app: string,
+    specifier: ObjectSpecifier
+  ): Record<string, any> {
+    for (const key of Object.keys(props)) {
+      const val = props[key];
+      if (val && typeof val === 'object') {
+        if (val._type === 'reference_list' &&
+            typeof val.property === 'string' &&
+            typeof val.count === 'number' && Number.isInteger(val.count) && val.count >= 0) {
+          props[key] = this.createPropertyListReferences(app, specifier, val.property, val.count);
+        } else if (val._type === 'object_reference' && typeof val.property === 'string') {
+          props[key] = this.createPropertyReference(app, specifier, val.property);
+        }
+      }
+    }
+    return props;
   }
 
   /**
