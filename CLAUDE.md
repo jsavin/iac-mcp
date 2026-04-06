@@ -413,6 +413,12 @@ git worktree remove ../iac-mcp-<feature-name>
 
 ---
 
+## /gate Configuration
+
+Reviewers:
+- bar-raiser
+- security-reviewer
+
 ## PR Workflow
 
 **Protocol:**
